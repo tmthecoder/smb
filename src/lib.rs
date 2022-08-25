@@ -1,15 +1,22 @@
+mod parser;
+
+use num_enum::TryFromPrimitive;
 use std::io::Read;
 use std::net::{IpAddr, TcpListener, TcpStream, ToSocketAddrs};
 
+#[derive(Debug)]
 pub struct SMBServer {
     socket: TcpListener
 }
 
+#[derive(Debug)]
 pub struct SMBConnection {
     stream: TcpStream
 }
 
-pub enum SMBMessage {
+#[repr(u8)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
+pub enum SMBMessageCommandCode {
     CreateDirectory,
     DeleteDirectory,
     Open,
@@ -31,7 +38,7 @@ pub enum SMBMessage {
     Seek,
     LockAndRead,
     WriteAndUnlock,
-    ReadRaw,
+    ReadRaw = 0x1A,
     ReadMPX,
     ReadMPXSecondary,
     WriteRaw,
@@ -59,27 +66,27 @@ pub enum SMBMessage {
     Transaction2Secondary,
     FindClose2,
     FindNotifyClose,
-    TreeConnect,
+    TreeConnect = 0x70,
     TreeDisconnect,
     Negotiate,
     SessionSetupANDX,
     LogoffANDX,
     TreeConnectANDX,
-    QueryInformationDisk,
+    QueryInformationDisk = 0x80,
     Search,
     Find,
     FindUnique,
     FindClose,
-    NTTransact,
+    NTTransact = 0xA0,
     NTTransactSecondary,
     NTCreateANDX,
     NTCancel,
     NTRename,
-    OpenPrintFile,
+    OpenPrintFile = 0xC0,
     WritePrintFile,
     ClosePrintFile,
     GetPrintQueue,
-    ReadBulk,
+    ReadBulk = 0xD9,
     WriteBulkData
 }
 
@@ -92,26 +99,33 @@ pub struct SMBMessageIterator<'a> {
 }
 
 impl SMBServer {
-    fn new<A: ToSocketAddrs>(addr: A) -> std::io::Result<Self> {
+    pub fn new<A: ToSocketAddrs>(addr: A) -> std::io::Result<Self> {
         let socket = TcpListener::bind(addr)?;
         Ok(SMBServer { socket })
     }
 }
 
 impl SMBServer {
-    fn connections(&self) -> SMBConnectionIterator {
+    pub fn connections(&self) -> SMBConnectionIterator {
         SMBConnectionIterator { server: self }
     }
 }
 
 impl SMBConnection {
-    fn messages(&mut self) -> SMBMessageIterator {
+    pub fn messages(&mut self) -> SMBMessageIterator {
         SMBMessageIterator { stream: self }
     }
 }
 
-impl SMBMessage {
+impl SMBMessageCommandCode {
     fn parse(data: &[u8]) -> Option<Self> {
+        println!("data: {:?} len: {}", data, data.len());
+        if let Some(pos) = data.iter().position(|x| *x == 'S' as u8) {
+            if data[pos..].starts_with(b"SMB") {
+                println!("GOT SMB: {}", pos);
+                return SMBMessageCommandCode::try_from(data[pos + 3]).ok()
+            }
+        }
         None
     }
 }
@@ -130,12 +144,13 @@ impl Iterator for SMBConnectionIterator<'_> {
 }
 
 impl Iterator for SMBMessageIterator<'_> {
-    type Item = SMBMessage;
+    type Item = SMBMessageCommandCode;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut buffer = [0_u8; 128];
+        let mut carryover = [0_u8; 128];
         match self.stream.stream.read(&mut buffer) {
-            Ok(read) => SMBMessage::parse(&buffer[0..read]),
+            Ok(read) => SMBMessageCommandCode::parse(&buffer[0..read]),
             _ => None
         }
     }
