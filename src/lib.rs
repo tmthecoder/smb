@@ -1,3 +1,4 @@
+pub mod header;
 mod parser;
 
 use num_enum::TryFromPrimitive;
