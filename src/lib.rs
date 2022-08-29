@@ -19,7 +19,7 @@ pub struct SMBConnectionIterator<'a> {
 }
 
 pub struct SMBMessageIterator<'a> {
-    stream: &'a mut SMBConnection
+    connection: &'a mut SMBConnection
 }
 
 impl SMBServer {
@@ -37,7 +37,7 @@ impl SMBServer {
 
 impl SMBConnection {
     pub fn messages(&mut self) -> SMBMessageIterator {
-        SMBMessageIterator { stream: self }
+        SMBMessageIterator { connection: self }
     }
 }
 
