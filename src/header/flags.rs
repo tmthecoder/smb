@@ -9,7 +9,8 @@ bitflags! {
         const REQUEST_OPLOCK       = 0b100000;
         const CANONICAL_PATHNAMES  = 0b10000;
         const CASELESS_PATHNAMES   = 0b1000;
-        const CLIENT_BUF_AVAIL     = 0b100;
+        const RESERVED             = 0b100;
+        const CLIENT_BUF_AVAIL     = 0b10;
         const SUPPORT_LOCKREAD     = 0b1;
     }
 }

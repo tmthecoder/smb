@@ -19,3 +19,15 @@ pub enum NTStatusLevel {
     Warning,
     Error
 }
+
+impl SMBStatus {
+    pub(crate) fn from_bytes(bytes: &[u8]) {
+
+    }
+}
+
+impl SMBStatus {
+    pub(crate) fn as_bytes(&self) -> &[u8] {
+        &[0_u8]
+    }
+}
