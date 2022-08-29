@@ -2,7 +2,10 @@ pub mod header;
 pub mod parameters;
 pub mod data;
 
+use std::io::Read;
+use std::iter;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use crate::header::SMBHeader;
 
 #[derive(Debug)]
 pub struct SMBServer {
@@ -54,18 +57,28 @@ impl Iterator for SMBConnectionIterator<'_> {
     }
 }
 
-// impl Iterator for SMBMessageIterator<'_> {
-//     type Item = SMBMessageCommandCode;
-//
-//     fn next(&mut self) -> Option<Self::Item> {
-//         let mut buffer = [0_u8; 128];
-//         let mut carryover = [0_u8; 128];
-//         match self.stream.stream.read(&mut buffer) {
-//             Ok(read) => SMBMessageCommandCode::parse(&buffer[0..read]),
-//             _ => None
-//         }
-//     }
-// }
+impl Iterator for SMBMessageIterator<'_> {
+    type Item = SMBHeader;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut buffer = [0_u8; 128];
+        let mut carryover = [0_u8; 128];
+        match self.connection.stream.read(&mut buffer) {
+
+            Ok(read) => {
+                println!("buffer: {:?}", buffer);
+                if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
+                    if buffer[pos..].starts_with(b"SMB") {
+                        println!("GOT SMB: {}", pos);
+                        return SMBHeader::parse(&buffer[(pos + 3)..read])
+                    }
+                }
+                None
+            }
+            _ => None
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

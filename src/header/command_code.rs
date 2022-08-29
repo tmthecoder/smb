@@ -1,7 +1,8 @@
 use num_enum::TryFromPrimitive;
+use serde::{Serialize, Deserialize};
 
 #[repr(u8)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
 pub enum SMBCommandCode {
     CreateDirectory,
     DeleteDirectory,
@@ -74,17 +75,4 @@ pub enum SMBCommandCode {
     GetPrintQueue,
     ReadBulk = 0xD9,
     WriteBulkData
-}
-
-impl SMBCommandCode {
-    fn parse(data: &[u8]) -> Option<Self> {
-        println!("data: {:?} len: {}", data, data.len());
-        if let Some(pos) = data.iter().position(|x| *x == 'S' as u8) {
-            if data[pos..].starts_with(b"SMB") {
-                println!("GOT SMB: {}", pos);
-                return SMBCommandCode::try_from(data[pos + 3]).ok()
-            }
-        }
-        None
-    }
 }

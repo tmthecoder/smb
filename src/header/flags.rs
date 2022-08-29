@@ -1,14 +1,16 @@
 use bitflags::bitflags;
+use serde::{Serialize, Deserialize};
 
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct SMBFlags: u8 {
-        const SERVER_TO_REDIR = 0b10000000;
+        const SERVER_TO_REDIR      = 0b10000000;
         const REQUEST_BATCH_OPLOCK = 0b1000000;
-        const REQUEST_OPLOCK = 0b100000;
-        const CANONICAL_PATHNAMES = 0b10000;
-        const CASELESS_PATHNAMES = 0b1000;
-        const CLIENT_BUF_AVAIL = 0b100;
-        const SUPPORT_LOCKREAD = 0b1;
+        const REQUEST_OPLOCK       = 0b100000;
+        const CANONICAL_PATHNAMES  = 0b10000;
+        const CASELESS_PATHNAMES   = 0b1000;
+        const CLIENT_BUF_AVAIL     = 0b100;
+        const SUPPORT_LOCKREAD     = 0b1;
     }
 }
 
