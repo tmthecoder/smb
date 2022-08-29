@@ -1,14 +1,14 @@
-pub(crate) enum SMBStatus {
+pub enum SMBStatus {
     NTStatus(NTStatusLevel),
     DosError(char, char, u16)
 }
 
-struct NTStatusCode {
+pub struct NTStatusCode {
     level: NTStatusLevel,
 }
 
 #[repr(u8)]
-enum NTStatusLevel {
+pub enum NTStatusLevel {
     Success,
     Information,
     Warning,

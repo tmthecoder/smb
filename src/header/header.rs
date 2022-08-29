@@ -1,7 +1,6 @@
-use crate::header;
-use crate::header::SMBCommandCode;
+use crate::header::{SMBCommandCode, SMBExtra, SMBFlags, SMBFlags2, SMBStatus};
 
-pub(crate) struct SMBHeader {
+pub struct SMBHeader {
     command: SMBCommandCode,
     status: SMBStatus,
     flags: SMBFlags,

@@ -1,6 +1,8 @@
+use num_enum::TryFromPrimitive;
+
 #[repr(u8)]
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
-pub(crate) enum SMBCommandCode {
+pub enum SMBCommandCode {
     CreateDirectory,
     DeleteDirectory,
     Open,

@@ -2,9 +2,7 @@ pub mod header;
 pub mod parameters;
 pub mod data;
 
-use num_enum::TryFromPrimitive;
-use std::io::Read;
-use std::net::{IpAddr, TcpListener, TcpStream, ToSocketAddrs};
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 
 #[derive(Debug)]
 pub struct SMBServer {

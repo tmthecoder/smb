@@ -1,3 +1,3 @@
-pub(crate) enum SMBFlags2 {
+pub enum SMBFlags2 {
 
 }

@@ -1,3 +1,3 @@
-pub(crate) enum SMBExtra {
+pub enum SMBExtra {
 
 }
