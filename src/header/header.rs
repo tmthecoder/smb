@@ -1,6 +1,7 @@
 use crate::header;
+use crate::header::SMBCommandCode;
 
-pub struct SMBHeader {
+pub(crate) struct SMBHeader {
     command: SMBCommandCode,
     status: SMBStatus,
     flags: SMBFlags,
@@ -12,32 +13,5 @@ pub struct SMBHeader {
     mid: u16
 }
 
-enum SMBStatus {
-    NTStatus(NTStatusLevel),
-    DosError(char, char, u16)
-}
 
-struct NTStatusCode {
-    level: NTStatusLevel,
-}
-
-#[repr(u8)]
-enum NTStatusLevel {
-    Success,
-    Information,
-    Warning,
-    Error
-}
-
-enum SMBFlags {
-
-}
-
-enum SMBFlags2 {
-
-}
-
-enum SMBExtra {
-
-}
 

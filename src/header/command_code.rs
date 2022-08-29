@@ -1,6 +1,6 @@
 #[repr(u8)]
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive)]
-pub enum SMBCommandCode {
+pub(crate) enum SMBCommandCode {
     CreateDirectory,
     DeleteDirectory,
     Open,

@@ -1,5 +1,6 @@
 pub mod header;
-mod parser;
+pub mod parameters;
+pub mod data;
 
 use num_enum::TryFromPrimitive;
 use std::io::Read;
