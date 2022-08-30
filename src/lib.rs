@@ -1,6 +1,7 @@
 pub mod header;
 pub mod parameters;
 pub mod data;
+mod byte_helper;
 
 use std::io::Read;
 use std::iter;
