@@ -65,13 +65,13 @@ impl Iterator for SMBMessageIterator<'_> {
         let mut buffer = [0_u8; 128];
         let mut carryover = [0_u8; 128];
         match self.connection.stream.read(&mut buffer) {
-
             Ok(read) => {
                 println!("buffer: {:?}", buffer);
                 if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
                     if buffer[pos..].starts_with(b"SMB") {
                         println!("GOT SMB: {}", pos);
-                        return SMBHeader::parse(&buffer[(pos + 3)..read])
+
+                        return SMBHeader::from_bytes(&buffer[(pos + 3)..read])
                     }
                 }
                 None

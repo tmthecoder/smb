@@ -1,7 +1,6 @@
 use crate::header::{SMBCommandCode, SMBExtra, SMBFlags, SMBFlags2, SMBStatus};
 use serde::{Serialize, Deserialize};
 use crate::byte_helper::bytes_to_u16;
-use crate::header::status::NTStatusLevel;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBHeader {
@@ -17,15 +16,15 @@ pub struct SMBHeader {
 }
 
 impl SMBHeader {
-    pub fn from_bytes(bytes: &[u8; 28]) -> Option<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() < 28 {
             return None;
         }
         Some(SMBHeader {
-            command: bytes[0].try_into().unwrap(),
-            status: SMBStatus::NTStatus(NTStatusLevel::Success),
+            command: bytes[0].try_into().ok()?,
+            status: SMBStatus::from_bytes(&bytes[1..5])?,
             flags: SMBFlags::from_bits_truncate(bytes[5]),
-            flags2: SMBFlags2::from_bits_truncate(((bytes[6] as u16) << 2) + bytes[7] as u16),
+            flags2: SMBFlags2::from_bits_truncate(bytes_to_u16(&bytes[6..8])),
             extra: SMBExtra::from_bytes(&bytes[8..20]),
             tid: bytes_to_u16(&bytes[20..22]),
             pid: bytes_to_u16(&bytes[22..24]),
