@@ -6,7 +6,7 @@ mod flags2;
 mod extra;
 
 pub type SMBCommandCode = command_code::SMBCommandCode;
-pub type SMBHeader = header::SMBSyncHeader;
+pub type SMBSyncHeader = header::SMBSyncHeader;
 pub type SMBFlags = flags::SMBFlags;
 pub type SMBStatus = status::SMBStatus;
 pub type SMBExtra = extra::SMBExtra;

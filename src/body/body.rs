@@ -1,20 +1,29 @@
 use serde::{Deserialize, Serialize};
 use crate::body::Body;
 use crate::header::{LegacySMBCommandCode, LegacySMBHeader, SMBCommandCode};
-use crate::SMBHeader;
+use crate::SMBSyncHeader;
 use std::str;
+use crate::body::negotiate::{SMBDialect, SMBNegotiationBody};
+use crate::byte_helper::bytes_to_u16;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum SMBBody {
     None,
-    Negotiate
+    Negotiate(SMBNegotiationBody),
+
 }
 
-impl Body<SMBHeader> for SMBBody {
+impl Body<SMBSyncHeader> for SMBBody {
     type Item = SMBBody;
 
-    fn from_bytes_and_header<'a>(bytes: &'a [u8], header: &SMBHeader) -> (Self::Item, &'a [u8]) {
-        (SMBBody::None, bytes)
+    fn from_bytes_and_header<'a>(bytes: &'a [u8], header: &SMBSyncHeader) -> (Self::Item, &'a [u8]) {
+        match header.command {
+            SMBCommandCode::Negotiate => {
+                let (negotiation_body, carryover) = SMBNegotiationBody::from_bytes(bytes);
+                (SMBBody::Negotiate(negotiation_body), carryover)
+            },
+            _ => (SMBBody::None, bytes)
+        }
     }
 }
 

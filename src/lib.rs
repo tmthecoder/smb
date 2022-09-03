@@ -8,7 +8,7 @@ mod byte_helper;
 use std::io::Read;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use crate::body::{LegacySMBBody, SMBBody};
-use crate::header::{Header, SMBHeader};
+use crate::header::{Header, SMBSyncHeader};
 use crate::message::SMBMessage;
 
 #[derive(Debug)]
@@ -68,13 +68,13 @@ impl Iterator for SMBConnectionIterator<'_> {
 }
 
 impl Iterator for SMBMessageIterator<'_> {
-    type Item = SMBMessage<SMBHeader, SMBBody>;
+    type Item = SMBMessage<SMBSyncHeader, SMBBody>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut buffer = [0_u8; 128];
         println!("In next: {} W carryover: {:?}", self.carryover_len, self.carryover);
         if self.carryover_len >= 32 && self.carryover.starts_with(b"SMB") {
-            let header = SMBHeader::from_bytes(&self.carryover)?;
+            let header = SMBSyncHeader::from_bytes(&self.carryover)?;
             return Some(SMBMessage { header, body: SMBBody::None });
         }
         match self.connection.stream.read(&mut buffer) {

@@ -1,6 +1,7 @@
 use crate::header::Header;
 
 mod body;
+mod negotiate;
 
 pub type SMBBody = body::SMBBody;
 
