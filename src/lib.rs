@@ -1,12 +1,14 @@
 pub mod header;
 pub mod parameters;
 pub mod data;
+pub mod message;
 mod byte_helper;
 
+use std::intrinsics::likely;
 use std::io::Read;
-use std::iter;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use crate::header::SMBHeader;
+use crate::message::SMBMessage;
 
 #[derive(Debug)]
 pub struct SMBServer {
@@ -23,7 +25,9 @@ pub struct SMBConnectionIterator<'a> {
 }
 
 pub struct SMBMessageIterator<'a> {
-    connection: &'a mut SMBConnection
+    connection: &'a mut SMBConnection,
+    carryover: [u8; 128],
+    carryover_len: usize
 }
 
 impl SMBServer {
@@ -41,7 +45,11 @@ impl SMBServer {
 
 impl SMBConnection {
     pub fn messages(&mut self) -> SMBMessageIterator {
-        SMBMessageIterator { connection: self }
+        SMBMessageIterator {
+            connection: self,
+            carryover: [0; 128],
+            carryover_len: 0
+        }
     }
 }
 
@@ -59,19 +67,28 @@ impl Iterator for SMBConnectionIterator<'_> {
 }
 
 impl Iterator for SMBMessageIterator<'_> {
-    type Item = SMBHeader;
+    type Item = SMBMessage;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut buffer = [0_u8; 128];
-        let mut carryover = [0_u8; 128];
+        println!("In next: {} W carryover: {:?}", self.carryover_len, self.carryover);
+        if self.carryover_len >= 32 && self.carryover.starts_with(b"SMB") {
+            let header = SMBHeader::from_bytes(&self.carryover)?;
+            return Some(SMBMessage { header, parameters: Vec::new(), data: Vec::new() });
+        }
         match self.connection.stream.read(&mut buffer) {
             Ok(read) => {
                 println!("buffer: {:?}", buffer);
                 if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
                     if buffer[pos..].starts_with(b"SMB") {
                         println!("GOT SMB: {}", pos);
-
-                        return SMBHeader::from_bytes(&buffer[(pos + 3)..read])
+                        let carryover_slice = &buffer[(pos + 32)..read];
+                        for (idx, byte) in carryover_slice.iter().enumerate() {
+                            self.carryover[self.carryover_len + idx] = *byte;
+                        }
+                        self.carryover_len += carryover_slice.len();
+                        let header = SMBHeader::from_bytes(&buffer[(pos + 3)..(pos + 32)])?;
+                        return Some(SMBMessage { header, parameters: Vec::new(), data: Vec::new() });
                     }
                 }
                 None
