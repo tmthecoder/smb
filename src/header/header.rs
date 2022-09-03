@@ -4,7 +4,7 @@ use crate::byte_helper::bytes_to_u16;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBHeader {
-    command: SMBCommandCode,
+    pub(crate) command: SMBCommandCode,
     status: SMBStatus,
     flags: SMBFlags,
     flags2: SMBFlags2,

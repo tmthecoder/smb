@@ -4,7 +4,6 @@ pub mod data;
 pub mod message;
 mod byte_helper;
 
-use std::intrinsics::likely;
 use std::io::Read;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use crate::header::SMBHeader;
@@ -81,14 +80,12 @@ impl Iterator for SMBMessageIterator<'_> {
                 println!("buffer: {:?}", buffer);
                 if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
                     if buffer[pos..].starts_with(b"SMB") {
-                        println!("GOT SMB: {}", pos);
-                        let carryover_slice = &buffer[(pos + 32)..read];
-                        for (idx, byte) in carryover_slice.iter().enumerate() {
+                        let (message, carryover) = SMBMessage::from_bytes(&buffer[(pos + 3)..read])?;
+                        for (idx, byte) in carryover.iter().enumerate() {
                             self.carryover[self.carryover_len + idx] = *byte;
                         }
-                        self.carryover_len += carryover_slice.len();
-                        let header = SMBHeader::from_bytes(&buffer[(pos + 3)..(pos + 32)])?;
-                        return Some(SMBMessage { header, parameters: Vec::new(), data: Vec::new() });
+                        self.carryover_len += carryover.len();
+                        return Some(message);
                     }
                 }
                 None
