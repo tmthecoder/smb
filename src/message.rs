@@ -21,11 +21,16 @@ impl SMBMessage {
                 let count = bytes[0] as usize;
                 let sliver = &bytes[1..=count];
                 println!("{:?}", sliver);
-                let protocol_strs: Vec<String> = sliver.split(|num| *num == 0x02).map(|mut protocol| {
-                    if *protocol.last().unwrap() == 0 {
-                        protocol = &protocol[0..(protocol.len() - 1)];
+                let protocol_strs: Vec<String> = sliver.split(|num| *num == 0x02).filter_map(|mut protocol| {
+                    if let Some(x) = protocol.last() {
+                        if *x == 0 {
+                            protocol = &protocol[0..(protocol.len() - 1)];
+                        }
+                        if protocol.is_empty() { return None; }
+                        Some(str::from_utf8(protocol).ok()?.to_owned())
+                    } else {
+                        None
                     }
-                    return str::from_utf8(protocol).unwrap().to_owned();
                 }).collect();
                 let body = SMBBody::Negotiate(protocol_strs);
                 (body, &bytes[(count + 1)..])
