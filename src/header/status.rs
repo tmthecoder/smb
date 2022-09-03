@@ -16,7 +16,7 @@ pub struct NTStatusCode {
 }
 
 #[repr(u8)]
-#[derive(Serialize, Deserialize, TryFromPrimitive, PartialEq, Debug, Copy)]
+#[derive(Serialize, Deserialize, TryFromPrimitive, PartialEq, Debug, Copy, Clone)]
 pub enum NTStatusLevel {
     Success = 0x0,
     Information,
@@ -43,7 +43,11 @@ impl SMBStatus {
 impl SMBStatus {
     pub(crate) fn as_bytes(&self) -> Vec<u8> {
         match self {
-            SMBStatus::NTStatus(x) => vec![*x as u8 >> 4_u8],
+            SMBStatus::NTStatus(x) => [
+                &[((x.level as u8) << 4_u8) + x.facility[0]][0..],
+                &[x.facility[1]][0..],
+                &u16_to_bytes(x.error_code)[0..]
+            ].concat(),
             SMBStatus::DosError(c1, c2, code) => [
                 &[*c1 as u8][0..],
                 &[*c2 as u8][0..],
