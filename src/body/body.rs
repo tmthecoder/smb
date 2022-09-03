@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub enum SMBParameters {
+pub enum SMBBody {
+    None,
     Negotiate(Vec<String>)
 }

@@ -1,11 +1,13 @@
 pub mod header;
 pub mod parameters;
 pub mod data;
+pub mod body;
 pub mod message;
 mod byte_helper;
 
 use std::io::Read;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use crate::body::SMBBody;
 use crate::header::SMBHeader;
 use crate::message::SMBMessage;
 
@@ -73,7 +75,7 @@ impl Iterator for SMBMessageIterator<'_> {
         println!("In next: {} W carryover: {:?}", self.carryover_len, self.carryover);
         if self.carryover_len >= 32 && self.carryover.starts_with(b"SMB") {
             let header = SMBHeader::from_bytes(&self.carryover)?;
-            return Some(SMBMessage { header, parameters: Vec::new(), data: Vec::new() });
+            return Some(SMBMessage { header, body: SMBBody::None });
         }
         match self.connection.stream.read(&mut buffer) {
             Ok(read) => {
