@@ -4,6 +4,30 @@ use serde::{Serialize, Deserialize};
 #[repr(u8)]
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
 pub enum SMBCommandCode {
+    Negotiate = 0x0,
+    SessionSetup,
+    LogOff,
+    TreeConnect,
+    TreeDisconnect,
+    Create,
+    Close,
+    Flush,
+    Read,
+    Write,
+    Lock,
+    IOCTL,
+    Cancel,
+    Echo,
+    QueryDirectory,
+    ChangeNotify,
+    QueryInfo,
+    SetInfo,
+    OplockBreak,
+}
+
+#[repr(u8)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
+pub enum LegacySMBCommandCode {
     CreateDirectory,
     DeleteDirectory,
     Open,

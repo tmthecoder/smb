@@ -3,7 +3,7 @@ use serde::{Serialize, Deserialize};
 
 bitflags! {
     #[derive(Default, Serialize, Deserialize)]
-    pub struct SMBFlags2: u16 {
+    pub struct LegacySMBFlags2: u16 {
         const UNICODE_STRINGS    = 0b1000000000000000;
         const ERROR_CODE_STATUS  = 0b100000000000000; // 32_BIT_STATUS
         const READ_IF_EXECUTE    = 0b10000000000000;
@@ -22,7 +22,7 @@ bitflags! {
     }
 }
 
-impl SMBFlags2 {
+impl LegacySMBFlags2 {
     pub fn clear(&mut self) {
         self.bits = 0;
     }

@@ -7,8 +7,8 @@ mod byte_helper;
 
 use std::io::Read;
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
-use crate::body::SMBBody;
-use crate::header::SMBHeader;
+use crate::body::{LegacySMBBody, SMBBody};
+use crate::header::{Header, SMBHeader};
 use crate::message::SMBMessage;
 
 #[derive(Debug)]
@@ -68,7 +68,7 @@ impl Iterator for SMBConnectionIterator<'_> {
 }
 
 impl Iterator for SMBMessageIterator<'_> {
-    type Item = SMBMessage;
+    type Item = SMBMessage<SMBHeader, SMBBody>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut buffer = [0_u8; 128];
@@ -82,6 +82,7 @@ impl Iterator for SMBMessageIterator<'_> {
                 println!("buffer: {:?}", buffer);
                 if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
                     if buffer[pos..].starts_with(b"SMB") {
+                        println!("GPT SMB");
                         let (message, carryover) = SMBMessage::from_bytes(&buffer[(pos + 3)..read])?;
                         for (idx, byte) in carryover.iter().enumerate() {
                             self.carryover[self.carryover_len + idx] = *byte;
