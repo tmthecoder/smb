@@ -35,16 +35,17 @@ impl Header for SMBSyncHeader {
             return None;
         }
         let mut signature = [0_u8; 16];
-        for (idx, byte) in bytes[49..].iter().enumerate() {
+        for (idx, byte) in bytes[40..].iter().enumerate() {
             signature[idx] = *byte;
         }
+        println!("status: {}, reserved: {:?}", bytes_to_u32(&bytes[0..4]), &bytes[24..28]);
         Some(SMBSyncHeader {
-            command: (bytes_to_u16(& bytes[13..15]) as u8).try_into().ok()?,
-            flags: SMBFlags::from_bits_truncate(bytes_to_u32(&bytes[17..21])),
-            next_command: bytes_to_u32(&bytes[21..25]),
-            message_id: bytes_to_u64(&bytes[25..33]),
-            tree_id: bytes_to_u32(&bytes[37..41]),
-            session_id: bytes_to_u64(&bytes[41..49]),
+            command: (bytes_to_u16(& bytes[4..6]) as u8).try_into().ok()?,
+            flags: SMBFlags::from_bits_truncate(bytes_to_u32(&bytes[8..12])),
+            next_command: bytes_to_u32(&bytes[12..16]),
+            message_id: bytes_to_u64(&bytes[16..24]),
+            tree_id: bytes_to_u32(&bytes[28..32]),
+            session_id: bytes_to_u64(&bytes[32..40]),
             signature,
         })
     }
