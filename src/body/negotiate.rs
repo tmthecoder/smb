@@ -5,6 +5,7 @@ use crate::byte_helper::bytes_to_u16;
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBNegotiationBody {
     dialects: Vec<SMBDialect>,
+    // negotiate_contexts: Vec
 }
 
 impl SMBNegotiationBody {
@@ -31,4 +32,16 @@ pub enum SMBDialect {
     V3_0_0 = 0x300,
     V3_0_2 = 0x302,
     V3_1_1 = 0x311
+}
+
+#[repr(u16)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
+pub enum NegotiateContext {
+    PreAuthIntegrityCapabilities = 0x01,
+    EncryptionCapabilities,
+    CompressionCapabilities,
+    NetnameNegotiateContextID = 0x05,
+    TransportCapabilities,
+    RDMATransformCapabilities,
+    SigningCapabilities
 }

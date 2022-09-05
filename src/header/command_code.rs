@@ -23,6 +23,7 @@ pub enum SMBCommandCode {
     QueryInfo,
     SetInfo,
     OplockBreak,
+    LegacyNegotiate
 }
 
 #[repr(u8)]

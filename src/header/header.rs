@@ -79,4 +79,21 @@ impl Header for LegacySMBHeader {
     }
 }
 
-
+impl SMBSyncHeader {
+    pub fn from_legacy_header(legacy_header: LegacySMBHeader) -> Option<Self> {
+        match legacy_header.command {
+            LegacySMBCommandCode::Negotiate => {
+                Some(Self {
+                    command: SMBCommandCode::Negotiate,
+                    flags: SMBFlags::empty(),
+                    next_command: 0,
+                    message_id: legacy_header.mid as u64,
+                    tree_id: legacy_header.tid as u32,
+                    session_id: legacy_header.uid as u64,
+                    signature: [0; 16]
+                })
+            },
+            _ => None
+        }
+    }
+}
