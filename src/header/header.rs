@@ -1,6 +1,6 @@
 use crate::header::{Header, SMBCommandCode, LegacySMBCommandCode, SMBExtra, SMBFlags, SMBStatus, LegacySMBFlags, LegacySMBFlags2};
 use serde::{Serialize, Deserialize};
-use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes};
+use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes, u32_to_bytes, u64_to_bytes};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBSyncHeader {
@@ -50,7 +50,22 @@ impl Header for SMBSyncHeader {
         })
     }
     fn as_bytes(&self) -> Vec<u8> {
-        todo!()
+        [
+            &[0xFE_u8],
+            &b"SMB"[0..],
+            &[0, 64], // Structure size,
+            &[0; 2], // Credit
+            &[0; 4], // Reserved/Status/TODO
+            &[0, self.command as u8],
+            &[0; 2], // CreditResponse,
+            &u32_to_bytes(self.flags.bits()),
+            &[0; 4], // Next Command,
+            &u64_to_bytes(self.message_id),
+            &[0; 4], // Reserved
+            &u32_to_bytes(self.tree_id),
+            &u64_to_bytes(self.session_id),
+            &self.signature
+        ].concat()
     }
 }
 

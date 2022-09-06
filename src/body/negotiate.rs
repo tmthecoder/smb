@@ -1,14 +1,15 @@
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
+use crate::body::{Capabilities, FileTime, SecurityMode};
 use crate::byte_helper::bytes_to_u16;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct SMBNegotiationBody {
+pub struct SMBNegotiationRequestBody {
     dialects: Vec<SMBDialect>,
     // negotiate_contexts: Vec
 }
 
-impl SMBNegotiationBody {
+impl SMBNegotiationRequestBody {
     pub fn from_bytes(bytes: &[u8]) -> (Self, &[u8]) {
         let dialect_count = bytes_to_u16(&bytes[2..4]) as usize;
         let mut dialects = Vec::new();
@@ -22,6 +23,20 @@ impl SMBNegotiationBody {
         }
         (Self { dialects }, &bytes[dialect_idx..])
     }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct SMBNegotiationResponseBody {
+    security_mode: SecurityMode,
+    dialect: SMBDialect,
+    guid: [u8; 16],
+    capabilities: Capabilities,
+    max_transact_size: u32,
+    max_read_size: u32,
+    max_write_size: u32,
+    system_time: FileTime,
+    server_start_time: FileTime,
+    buffer: Vec<u8>
 }
 
 #[repr(u16)]
