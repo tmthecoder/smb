@@ -20,5 +20,5 @@ pub trait Header {
     type Item;
 
     fn from_bytes(bytes: &[u8]) -> Option<Self::Item>;
-    fn to_bytes(&self) -> Vec<u8>;
+    fn as_bytes(&self) -> Vec<u8>;
 }

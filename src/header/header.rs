@@ -49,7 +49,7 @@ impl Header for SMBSyncHeader {
             signature,
         })
     }
-    fn to_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<u8> {
         todo!()
     }
 }
@@ -74,7 +74,7 @@ impl Header for LegacySMBHeader {
         })
     }
 
-    fn to_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<u8> {
         todo!()
     }
 }

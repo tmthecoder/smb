@@ -4,7 +4,6 @@ use crate::header::{LegacySMBCommandCode, LegacySMBHeader, SMBCommandCode};
 use crate::SMBSyncHeader;
 use std::str;
 use crate::body::negotiate::SMBNegotiationBody;
-use crate::byte_helper::bytes_to_u16;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum SMBBody {
@@ -24,6 +23,10 @@ impl Body<SMBSyncHeader> for SMBBody {
             },
             _ => (SMBBody::None, bytes)
         }
+    }
+
+    fn as_bytes(&self) -> Vec<u8> {
+        todo!()
     }
 }
 
@@ -58,5 +61,9 @@ impl Body<LegacySMBHeader> for LegacySMBBody {
             },
             _ => (LegacySMBBody::None, bytes)
         }
+    }
+
+    fn as_bytes(&self) -> Vec<u8> {
+        todo!()
     }
 }

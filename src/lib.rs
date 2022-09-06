@@ -52,6 +52,14 @@ impl SMBConnection {
             carryover_len: 0
         }
     }
+
+    pub fn try_clone(&self) -> std::io::Result<Self> {
+        Ok(SMBConnection {
+            stream: self.stream.try_clone()?
+        })
+    }
+    
+    pub fn send_message
 }
 
 impl Iterator for SMBConnectionIterator<'_> {
