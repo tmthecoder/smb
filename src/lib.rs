@@ -5,11 +5,11 @@ pub mod body;
 pub mod message;
 mod byte_helper;
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use crate::body::{LegacySMBBody, SMBBody};
 use crate::header::{Header, LegacySMBHeader, SMBSyncHeader};
-use crate::message::SMBMessage;
+use crate::message::{Message, SMBMessage};
 
 #[derive(Debug)]
 pub struct SMBServer {
@@ -58,8 +58,10 @@ impl SMBConnection {
             stream: self.stream.try_clone()?
         })
     }
-    
-    pub fn send_message
+
+    pub fn send_message<T: Message>(&mut self, message: T) -> std::io::Result<usize> {
+        self.stream.write(&*message.as_bytes())
+    }
 }
 
 impl Iterator for SMBConnectionIterator<'_> {

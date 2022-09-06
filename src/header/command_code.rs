@@ -2,7 +2,7 @@ use num_enum::TryFromPrimitive;
 use serde::{Serialize, Deserialize};
 
 #[repr(u8)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy)]
 pub enum SMBCommandCode {
     Negotiate = 0x0,
     SessionSetup,
@@ -27,7 +27,7 @@ pub enum SMBCommandCode {
 }
 
 #[repr(u8)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy)]
 pub enum LegacySMBCommandCode {
     CreateDirectory,
     DeleteDirectory,

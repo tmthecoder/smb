@@ -1,6 +1,6 @@
 use crate::header::{Header, SMBCommandCode, LegacySMBCommandCode, SMBExtra, SMBFlags, SMBStatus, LegacySMBFlags, LegacySMBFlags2};
 use serde::{Serialize, Deserialize};
-use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64};
+use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBSyncHeader {
@@ -75,7 +75,19 @@ impl Header for LegacySMBHeader {
     }
 
     fn as_bytes(&self) -> Vec<u8> {
-        todo!()
+        [
+            &[0xFF_u8],
+            &b"SMB"[0..],
+            &[self.command as u8],
+            &*self.status.as_bytes(),
+            &[self.flags.bits()],
+            &u16_to_bytes(self.flags2.bits()),
+            &*self.extra.as_bytes(),
+            &u16_to_bytes(self.tid),
+            &u16_to_bytes(self.pid),
+            &u16_to_bytes(self.uid),
+            &u16_to_bytes(self.mid)
+        ].concat()
     }
 }
 
@@ -84,7 +96,7 @@ impl SMBSyncHeader {
         match legacy_header.command {
             LegacySMBCommandCode::Negotiate => {
                 Some(Self {
-                    command: SMBCommandCode::Negotiate,
+                    command: SMBCommandCode::LegacyNegotiate,
                     flags: SMBFlags::empty(),
                     next_command: 0,
                     message_id: legacy_header.mid as u64,
