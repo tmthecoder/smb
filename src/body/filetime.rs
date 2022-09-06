@@ -26,9 +26,13 @@ impl FileTime {
     }
 
     pub fn to_unix(&self) -> u64 {
+        let bytes = self.as_bytes();
+        bytes_to_u64(&*bytes)
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
         let low_bytes = u32_to_bytes(self.low_date_time);
         let high_bytes = u32_to_bytes(self.high_date_time);
-        let merged = [low_bytes, high_bytes].concat();
-        bytes_to_u64(&*merged)
+        [low_bytes, high_bytes].concat()
     }
 }

@@ -1,7 +1,7 @@
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 use crate::body::{Capabilities, FileTime, SecurityMode};
-use crate::byte_helper::bytes_to_u16;
+use crate::byte_helper::{bytes_to_u16, u16_to_bytes, u32_to_bytes};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBNegotiationRequestBody {
@@ -39,8 +39,30 @@ pub struct SMBNegotiationResponseBody {
     buffer: Vec<u8>
 }
 
+impl SMBNegotiationResponseBody {
+    pub fn as_bytes(&self) -> Vec<u8> {
+        [
+            &[0, 65][0..], // Structure Size
+            &[0, self.security_mode.bits()],
+            &u16_to_bytes(self.dialect as u16),
+            &self.guid,
+            &u32_to_bytes(self.capabilities.bits() as u32),
+            &u32_to_bytes(self.max_transact_size),
+            &u32_to_bytes(self.max_read_size),
+            &u32_to_bytes(self.max_write_size),
+            &*self.system_time.as_bytes(),
+            &*self.server_start_time.as_bytes(),
+            &[0, 64], // Security Buffer Offset
+            &u16_to_bytes(self.buffer.len() as u16),
+            &[0; 4], // NegotiateContextOffset/Reserved/TODO
+            &*self.buffer
+            // TODO padding & NegotiateContextList
+        ].concat()
+    }
+}
+
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone)]
 pub enum SMBDialect {
     V2_0_2 = 0x202,
     V2_1_0 = 0x210,
