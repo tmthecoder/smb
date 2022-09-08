@@ -1,3 +1,4 @@
+use std::fs::File;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 use crate::body::{Capabilities, FileTime, SecurityMode};
@@ -37,6 +38,23 @@ pub struct SMBNegotiationResponseBody {
     system_time: FileTime,
     server_start_time: FileTime,
     buffer: Vec<u8>
+}
+
+impl SMBNegotiationResponseBody {
+    pub fn new(security_mode: SecurityMode, dialect: SMBDialect, capabilities: Capabilities, max_transact_size: u32, max_read_size: u32, max_write_size: u32, server_start_time: FileTime, buffer: Vec<u8>) -> Self {
+        Self {
+            security_mode,
+            dialect,
+            guid: [0; 16],
+            capabilities,
+            max_transact_size,
+            max_read_size,
+            max_write_size,
+            system_time: FileTime::now(),
+            server_start_time,
+            buffer
+        }
+    }
 }
 
 impl SMBNegotiationResponseBody {

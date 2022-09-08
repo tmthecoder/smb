@@ -4,7 +4,7 @@ use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes,
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBSyncHeader {
-    pub(crate) command: SMBCommandCode,
+    pub command: SMBCommandCode,
     flags: SMBFlags,
     next_command: u32,
     message_id: u64,
@@ -107,6 +107,18 @@ impl Header for LegacySMBHeader {
 }
 
 impl SMBSyncHeader {
+    pub fn new(command: SMBCommandCode, flags: SMBFlags, next_command: u32, message_id: u64, tree_id: u32, session_id: u64, signature: [u8; 16]) -> Self {
+        SMBSyncHeader {
+            command,
+            flags,
+            next_command,
+            message_id,
+            tree_id,
+            session_id,
+            signature
+        }
+    }
+
     pub fn from_legacy_header(legacy_header: LegacySMBHeader) -> Option<Self> {
         match legacy_header.command {
             LegacySMBCommandCode::Negotiate => {

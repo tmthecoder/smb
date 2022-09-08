@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::body::Body;
+use crate::body::{Body, SMBNegotiationResponse};
 use crate::header::{LegacySMBCommandCode, LegacySMBHeader, SMBCommandCode};
 use crate::SMBSyncHeader;
 use std::str;
@@ -9,7 +9,7 @@ use crate::body::negotiate::SMBNegotiationRequestBody;
 pub enum SMBBody {
     None,
     NegotiateRequest(SMBNegotiationRequestBody),
-    NegotiateResponse(),
+    NegotiateResponse(SMBNegotiationResponse),
     LegacyCommand(LegacySMBBody)
 }
 
@@ -27,7 +27,12 @@ impl Body<SMBSyncHeader> for SMBBody {
     }
 
     fn as_bytes(&self) -> Vec<u8> {
-        todo!()
+        match self {
+            SMBBody::NegotiateResponse(x) => {
+                x.as_bytes()
+            },
+            _ => Vec::new()
+        }
     }
 }
 

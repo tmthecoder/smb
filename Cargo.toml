@@ -8,9 +8,11 @@ edition = "2021"
 name = "spin_server_up"
 edition = "2021"
 path = "src/main.rs"
+required-features = ["anyhow"]
 
 [dependencies]
 bincode = "1.3.3"
 bitflags = "1.3.2"
 num_enum = "0.5.7"
 serde = { version = "1.0.144", features = ["derive"] }
+anyhow = { version = "1.0.62", optional = true }

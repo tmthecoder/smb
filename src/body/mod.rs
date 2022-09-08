@@ -14,6 +14,10 @@ pub type Capabilities = capabilities::Capabilities;
 pub type FileTime = filetime::FileTime;
 pub type SecurityMode = security_mode::SecurityMode;
 
+pub type SMBDialect = negotiate::SMBDialect;
+pub type SMBNegotiationRequest = negotiate::SMBNegotiationRequestBody;
+pub type SMBNegotiationResponse = negotiate::SMBNegotiationResponseBody;
+
 pub trait Body<S: Header> {
     type Item;
 

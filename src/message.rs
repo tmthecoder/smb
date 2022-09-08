@@ -5,8 +5,17 @@ use crate::body::{Body, LegacySMBBody, SMBBody};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBMessage<S: Header, T: Body<S>> {
-    pub(crate) header: S,
-    pub(crate) body: T,
+    pub header: S,
+    pub body: T,
+}
+
+impl<S: Header, T: Body<S>> SMBMessage<S, T> {
+    pub fn new(header: S, body: T) -> Self {
+        SMBMessage {
+            header,
+            body
+        }
+    }
 }
 
 pub trait Message {
@@ -20,7 +29,7 @@ impl SMBMessage<SMBSyncHeader, SMBBody> {
     pub fn from_legacy(legacy_message: SMBMessage<LegacySMBHeader, LegacySMBBody>) -> Option<Self> {
         let header = SMBSyncHeader::from_legacy_header(legacy_message.header)?;
         let body = SMBBody::LegacyCommand(legacy_message.body);
-        return Some(Self { header, body })
+        Some(Self { header, body })
     }
 }
 
