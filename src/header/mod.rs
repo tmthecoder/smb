@@ -19,6 +19,6 @@ pub type LegacySMBFlags2 = flags2::LegacySMBFlags2;
 pub trait Header {
     type Item;
 
-    fn from_bytes(bytes: &[u8]) -> Option<Self::Item>;
+    fn from_bytes(bytes: &[u8]) -> Option<(Self::Item, &[u8])>;
     fn as_bytes(&self) -> Vec<u8>;
 }

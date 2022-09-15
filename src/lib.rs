@@ -59,8 +59,8 @@ impl SMBConnection {
         })
     }
 
-    pub fn send_message<T: Message>(&mut self, message: T) -> std::io::Result<usize> {
-        self.stream.write(&*message.as_bytes())
+    pub fn send_message<T: Message>(&mut self, message: T) -> std::io::Result<()> {
+        self.stream.write_all(&*message.as_bytes())
     }
 }
 
@@ -84,7 +84,7 @@ impl Iterator for SMBMessageIterator<'_> {
         let mut buffer = [0_u8; 128];
         println!("In next: {} W carryover: {:?}", self.carryover_len, self.carryover);
         if self.carryover_len >= 32 && self.carryover.starts_with(b"SMB") {
-            let header = SMBSyncHeader::from_bytes(&self.carryover)?;
+            let (header, _) = SMBSyncHeader::from_bytes(&self.carryover)?;
             return Some(SMBMessage { header, body: SMBBody::None });
         }
         match self.connection.stream.read(&mut buffer) {
@@ -92,13 +92,14 @@ impl Iterator for SMBMessageIterator<'_> {
                 println!("buffer: {:?}", buffer);
                 if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
                     if buffer[pos..].starts_with(b"SMB") {
-                        let mut carryover;
-                        let mut message;
-                        if let Some((m, c)) = SMBMessage::<SMBSyncHeader, SMBBody>::from_bytes(&buffer[(pos + 3)..read]) {
+                        let carryover;
+                        let message;
+                        if let Some((m, c)) = SMBMessage::<SMBSyncHeader, SMBBody>::from_bytes_assert_body(&buffer[(pos + 3)..read]) {
                             carryover = c;
                             message = m;
                         } else {
-                            let (legacy, c) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::from_bytes(&buffer[(pos + 3)..read])?;
+                            println!("Legacy neg");
+                            let (legacy, c) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::from_bytes_assert_body(&buffer[(pos + 3)..read])?;
                             carryover = c;
                             let m = SMBMessage::<SMBSyncHeader, SMBBody>::from_legacy(legacy)?;
                             message = m;

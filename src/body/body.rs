@@ -16,11 +16,21 @@ pub enum SMBBody {
 impl Body<SMBSyncHeader> for SMBBody {
     type Item = SMBBody;
 
+    fn from_bytes_and_header_exists<'a>(bytes: &'a [u8], header: &SMBSyncHeader) -> Option<(Self::Item, &'a [u8])> {
+        let body = Self::from_bytes_and_header(bytes, header);
+        if body.0 == SMBBody::None {
+            return None;
+        }
+        Some(body)
+    }
+
     fn from_bytes_and_header<'a>(bytes: &'a [u8], header: &SMBSyncHeader) -> (Self::Item, &'a [u8]) {
         match header.command {
             SMBCommandCode::Negotiate => {
-                let (negotiation_body, carryover) = SMBNegotiationRequestBody::from_bytes(bytes);
-                (SMBBody::NegotiateRequest(negotiation_body), carryover)
+                if let Some((negotiation_body, carryover)) = SMBNegotiationRequestBody::from_bytes(bytes) {
+                    return (SMBBody::NegotiateRequest(negotiation_body), carryover)
+                }
+                (SMBBody::None, bytes)
             },
             _ => (SMBBody::None, bytes)
         }
@@ -44,6 +54,14 @@ pub enum LegacySMBBody {
 
 impl Body<LegacySMBHeader> for LegacySMBBody {
     type Item = LegacySMBBody;
+
+    fn from_bytes_and_header_exists<'a>(bytes: &'a [u8], header: &LegacySMBHeader) -> Option<(Self::Item, &'a [u8])> {
+        let body = Self::from_bytes_and_header(bytes, header);
+        if body.0 == LegacySMBBody::None {
+            return None;
+        }
+        Some(body)
+    }
 
     fn from_bytes_and_header<'a>(bytes: &'a [u8], header: &LegacySMBHeader) -> (Self::Item, &'a [u8]) {
         return match header.command {

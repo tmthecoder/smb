@@ -29,31 +29,31 @@ pub struct LegacySMBHeader {
 impl Header for SMBSyncHeader {
     type Item = SMBSyncHeader;
 
-    fn from_bytes(bytes: &[u8]) -> Option<Self::Item> {
+    fn from_bytes(bytes: &[u8]) -> Option<(Self::Item, &[u8])> {
         println!("parse 2: {:?}", bytes);
-        if bytes.len() < 56 {
+        if bytes.len() < 60 {
             return None;
         }
         let mut signature = [0_u8; 16];
-        for (idx, byte) in bytes[40..].iter().enumerate() {
+        for (idx, byte) in bytes[44..60].iter().enumerate() {
             signature[idx] = *byte;
         }
-        println!("status: {}, reserved: {:?}", bytes_to_u32(&bytes[0..4]), &bytes[24..28]);
-        Some(SMBSyncHeader {
-            command: (bytes_to_u16(& bytes[4..6]) as u8).try_into().ok()?,
-            flags: SMBFlags::from_bits_truncate(bytes_to_u32(&bytes[8..12])),
-            next_command: bytes_to_u32(&bytes[12..16]),
-            message_id: bytes_to_u64(&bytes[16..24]),
-            tree_id: bytes_to_u32(&bytes[28..32]),
-            session_id: bytes_to_u64(&bytes[32..40]),
+        println!("status: {}, reserved: {:?}", bytes_to_u32(&bytes[4..8]), &bytes[28..32]);
+        Some((SMBSyncHeader {
+            command: (bytes_to_u16(& bytes[8..10]) as u8).try_into().ok()?,
+            flags: SMBFlags::from_bits_truncate(bytes_to_u32(&bytes[12..16])),
+            next_command: bytes_to_u32(&bytes[16..20]),
+            message_id: bytes_to_u64(&bytes[20..28]),
+            tree_id: bytes_to_u32(&bytes[32..36]),
+            session_id: bytes_to_u64(&bytes[36..44]),
             signature,
-        })
+        }, &bytes[60..]))
     }
     fn as_bytes(&self) -> Vec<u8> {
         [
             &[0xFE_u8],
             &b"SMB"[0..],
-            &[0, 64], // Structure size,
+            &[64, 0], // Structure size,
             &[0; 2], // Credit
             &[0; 4], // Reserved/Status/TODO
             &[0, self.command as u8],
@@ -61,7 +61,7 @@ impl Header for SMBSyncHeader {
             &u32_to_bytes(self.flags.bits()),
             &[0; 4], // Next Command,
             &u64_to_bytes(self.message_id),
-            &[0; 4], // Reserved
+            &[0, 0, 0xFE, 0xFF], // Reserved
             &u32_to_bytes(self.tree_id),
             &u64_to_bytes(self.session_id),
             &self.signature
@@ -72,11 +72,11 @@ impl Header for SMBSyncHeader {
 impl Header for LegacySMBHeader {
     type Item = LegacySMBHeader;
 
-    fn from_bytes(bytes: &[u8]) -> Option<Self::Item> {
+    fn from_bytes(bytes: &[u8]) -> Option<(Self::Item, &[u8])> {
         if bytes.len() < 28 {
             return None;
         }
-        Some(LegacySMBHeader {
+        Some((LegacySMBHeader {
             command: bytes[0].try_into().ok()?,
             status: SMBStatus::from_bytes(&bytes[1..5])?,
             flags: LegacySMBFlags::from_bits_truncate(bytes[5]),
@@ -86,7 +86,7 @@ impl Header for LegacySMBHeader {
             pid: bytes_to_u16(&bytes[22..24]),
             uid: bytes_to_u16(&bytes[24..26]),
             mid: bytes_to_u16(&bytes[26..28]),
-        })
+        }, &bytes[28..]))
     }
 
     fn as_bytes(&self) -> Vec<u8> {
