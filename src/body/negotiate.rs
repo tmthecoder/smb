@@ -1,4 +1,5 @@
 use std::io::Bytes;
+use std::ops::Neg;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -23,6 +24,7 @@ impl SMBNegotiationRequestBody {
         let client_uuid = Uuid::from_slice(&bytes[12..28]).ok()?;
         let mut dialects = Vec::new();
         let mut dialect_idx = 36;
+        let mut carryover = bytes;
         while dialects.len() < dialect_count {
             let dialect_code = bytes_to_u16(&bytes[dialect_idx..(dialect_idx+2)]);
             if let Ok(dialect) = SMBDialect::try_from(dialect_code) {
@@ -30,12 +32,37 @@ impl SMBNegotiationRequestBody {
             }
             dialect_idx += 2;
         }
+        carryover = &bytes[dialect_idx..];
         if dialects.contains(&SMBDialect::V3_1_1) {
-            let negotiate_ctx_idx = bytes_to_u32(&bytes[28..32]);
+            let negotiate_ctx_idx = bytes_to_u32(&bytes[28..32]) - 64;
             let negotiate_ctx_cnt = bytes_to_u16(&bytes[32..34]);
+            println!("Negotiate idx: {}, cnt: {}", negotiate_ctx_idx, negotiate_ctx_cnt);
+            let mut added_ctxs = 0;
+            let mut start = negotiate_ctx_idx as usize;
+            println!("All bytes: {:?}", bytes);
+            while added_ctxs < negotiate_ctx_cnt {
+                println!("CTX Bytes: {:?}", &bytes[start..]);
+                println!("Context type num: {}", bytes_to_u16(&bytes[start..(start+2)]));
+                let context_type = NegotiateContext::from_bytes(&bytes[start..])?;
+                println!("Context: {:?}", context_type);
+                let context_len = bytes_to_u16(&bytes[(start+2)..(start+4)]);
+                println!("context type: {:?}, len: {}", context_type, context_len);
+                added_ctxs += 1;
+                start += context_len as usize;
+                start += 8;
+                if added_ctxs != negotiate_ctx_cnt {
+                    start += 8 - (start % 8);
+                    println!("new start: {}", start);
+                }
+            }
+            if start < bytes.len() {
+                carryover = &bytes[start..];
+            } else {
+                carryover = &[];
+            }
             // TODO add negotiate ctx parsing
         }
-        Some((Self { security_mode, capabilities, client_uuid, dialects }, &bytes[dialect_idx..]))
+        Some((Self { security_mode, capabilities, client_uuid, dialects }, carryover))
     }
 }
 
@@ -103,14 +130,57 @@ pub enum SMBDialect {
     V2_X_X = 0x2FF
 }
 
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct PreAuthIntegrityCapabilitiesBody {
+    hash_algorithms: Vec<HashAlgorithm>,
+    salt: Vec<u8>,
+}
+
 #[repr(u16)]
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
+enum HashAlgorithm {
+    SHA512 = 0x01
+}
+
+impl PreAuthIntegrityCapabilitiesBody {
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let algorithm_cnt = bytes_to_u16(&bytes[0..2]);
+        let salt_len = bytes_to_u16(&bytes[2..4]) as usize;
+        let mut bytes_ptr = 4_usize;
+        let mut hash_algorithms = Vec::new();
+        while hash_algorithms.len() < algorithm_cnt as usize {
+            hash_algorithms.push(HashAlgorithm::try_from(bytes_to_u16(&bytes[bytes_ptr..(bytes_ptr+2)])).ok()?);
+            bytes_ptr += 2;
+        }
+        let salt = Vec::from(&bytes[bytes_ptr..(bytes_ptr + salt_len)]);
+        Some(Self { hash_algorithms, salt })
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum NegotiateContext {
-    PreAuthIntegrityCapabilities = 0x01,
-    EncryptionCapabilities,
-    CompressionCapabilities,
-    NetnameNegotiateContextID = 0x05,
-    TransportCapabilities,
-    RDMATransformCapabilities,
-    SigningCapabilities
+    PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilitiesBody),
+    EncryptionCapabilities(),
+    CompressionCapabilities(),
+    NetnameNegotiateContextID(),
+    TransportCapabilities(),
+    RDMATransformCapabilities(),
+    SigningCapabilities()
+}
+
+impl NegotiateContext {
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let ctx_type_num = bytes_to_u16(&bytes[0..2]);
+        println!("Num: {}", ctx_type_num);
+        match ctx_type_num {
+            0x01 => Some(Self::PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilitiesBody::from_bytes(&bytes[8..])?)),
+            0x02 => Some(Self::EncryptionCapabilities()),
+            0x03 => Some(Self::CompressionCapabilities()),
+            0x05 => Some(Self::NetnameNegotiateContextID()),
+            0x06 => Some(Self::TransportCapabilities()),
+            0x07 => Some(Self::RDMATransformCapabilities()),
+            0x08 => Some(Self::SigningCapabilities()),
+            _ => None
+        }
+    }
 }

@@ -27,7 +27,7 @@ pub struct SMBConnectionIterator<'a> {
 
 pub struct SMBMessageIterator<'a> {
     connection: &'a mut SMBConnection,
-    carryover: [u8; 128],
+    carryover: [u8; 512],
     carryover_len: usize
 }
 
@@ -48,7 +48,7 @@ impl SMBConnection {
     pub fn messages(&mut self) -> SMBMessageIterator {
         SMBMessageIterator {
             connection: self,
-            carryover: [0; 128],
+            carryover: [0; 512],
             carryover_len: 0
         }
     }
@@ -81,7 +81,7 @@ impl Iterator for SMBMessageIterator<'_> {
     type Item = SMBMessage<SMBSyncHeader, SMBBody>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut buffer = [0_u8; 128];
+        let mut buffer = [0_u8; 512];
         println!("In next: {} W carryover: {:?}", self.carryover_len, self.carryover);
         if self.carryover_len >= 32 && self.carryover.starts_with(b"SMB") {
             let (header, _) = SMBSyncHeader::from_bytes(&self.carryover)?;
@@ -98,7 +98,6 @@ impl Iterator for SMBMessageIterator<'_> {
                             carryover = c;
                             message = m;
                         } else {
-                            println!("Legacy neg");
                             let (legacy, c) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::from_bytes_assert_body(&buffer[(pos + 3)..read])?;
                             carryover = c;
                             let m = SMBMessage::<SMBSyncHeader, SMBBody>::from_legacy(legacy)?;

@@ -23,7 +23,7 @@ fn main() -> anyhow::Result<()> {
                continue;
            }
            let resp_body = SMBBody::NegotiateResponse(SMBNegotiationResponse::new(SecurityMode::NEGOTIATE_SIGNING_ENABLED, SMBDialect::V2_0_2, Capabilities::empty(), 100, 100, 100, start_time.clone(), Vec::new()));
-           let resp_header = SMBSyncHeader::new(SMBCommandCode::Negotiate, SMBFlags::empty(), 0, 0, 0, 0, [0; 16]);
+           let resp_header = SMBSyncHeader::new(SMBCommandCode::Negotiate, SMBFlags::SERVER_TO_REDIR, 0, 0, 0, 0, [1; 16]);
            let resp_msg = SMBMessage::new(resp_header, resp_body);
            println!("resp: {:?} bytes: {:?}", resp_msg, resp_msg.as_bytes());
            cloned_connection.send_message(resp_msg)?;
