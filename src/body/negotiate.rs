@@ -10,7 +10,7 @@ pub struct SMBNegotiationRequestBody {
     capabilities: Capabilities,
     client_uuid: Uuid,
     dialects: Vec<SMBDialect>,
-    // negotiate_contexts: Vec
+    negotiate_contexts: Vec<NegotiateContext>
 }
 
 impl SMBNegotiationRequestBody {
@@ -31,26 +31,20 @@ impl SMBNegotiationRequestBody {
             dialect_idx += 2;
         }
         carryover = &bytes[dialect_idx..];
+        let mut negotiate_contexts = Vec::new();
         if dialects.contains(&SMBDialect::V3_1_1) {
             let negotiate_ctx_idx = bytes_to_u32(&bytes[28..32]) - 64;
-            let negotiate_ctx_cnt = bytes_to_u16(&bytes[32..34]);
+            let negotiate_ctx_cnt = bytes_to_u16(&bytes[32..34]) as usize;
             println!("Negotiate idx: {}, cnt: {}", negotiate_ctx_idx, negotiate_ctx_cnt);
-            let mut added_ctxs = 0;
             let mut start = negotiate_ctx_idx as usize;
-            println!("All bytes: {:?}", bytes);
-            while added_ctxs < negotiate_ctx_cnt {
-                println!("CTX Bytes: {:?}", &bytes[start..]);
-                println!("Context type num: {}", bytes_to_u16(&bytes[start..(start+2)]));
-                let context_type = NegotiateContext::from_bytes(&bytes[start..])?;
-                println!("Context: {:?}", context_type);
+            while negotiate_contexts.len() < negotiate_ctx_cnt {
+                let context = NegotiateContext::from_bytes(&bytes[start..])?;
                 let context_len = bytes_to_u16(&bytes[(start+2)..(start+4)]);
-                println!("context type: {:?}, len: {}", context_type, context_len);
-                added_ctxs += 1;
+                negotiate_contexts.push(context);
                 start += context_len as usize;
                 start += 8;
-                if added_ctxs != negotiate_ctx_cnt {
+                if negotiate_contexts.len() != negotiate_ctx_cnt {
                     start += 8 - (start % 8);
-                    println!("new start: {}", start);
                 }
             }
             if start < bytes.len() {
@@ -60,7 +54,7 @@ impl SMBNegotiationRequestBody {
             }
             // TODO add negotiate ctx parsing
         }
-        Some((Self { security_mode, capabilities, client_uuid, dialects }, carryover))
+        Some((Self { security_mode, capabilities, client_uuid, dialects, negotiate_contexts }, carryover))
     }
 }
 

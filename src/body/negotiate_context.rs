@@ -10,8 +10,8 @@ pub enum NegotiateContext {
     CompressionCapabilities(CompressionCapabilitiesBody),
     NetnameNegotiateContextID(NetnameNegotiateContextIDBody),
     TransportCapabilities(TransportCapabilitiesBody),
-    RDMATransformCapabilities(),
-    SigningCapabilities()
+    RDMATransformCapabilities(RDMATransformCapabilitiesBody),
+    SigningCapabilities(SigningCapabilitiesBody)
 }
 
 impl NegotiateContext {
@@ -25,8 +25,8 @@ impl NegotiateContext {
             0x03 => Some(Self::CompressionCapabilities(CompressionCapabilitiesBody::from_bytes(data_bytes)?)),
             0x05 => Some(Self::NetnameNegotiateContextID(NetnameNegotiateContextIDBody::from_bytes(&bytes[2..])?)),
             0x06 => Some(Self::TransportCapabilities(TransportCapabilitiesBody::from_bytes(data_bytes)?)),
-            0x07 => Some(Self::RDMATransformCapabilities()),
-            0x08 => Some(Self::SigningCapabilities()),
+            0x07 => Some(Self::RDMATransformCapabilities(RDMATransformCapabilitiesBody::from_bytes(data_bytes)?)),
+            0x08 => Some(Self::SigningCapabilities(SigningCapabilitiesBody::from_bytes(data_bytes)?)),
             _ => None
         }
     }
@@ -161,7 +161,7 @@ impl TransportCapabilitiesBody {
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct RDMATransportCapabilities {
+pub struct RDMATransformCapabilitiesBody {
     transform_ids: Vec<RDMATransformID>
 }
 
@@ -173,7 +173,7 @@ pub enum RDMATransformID {
     Signing
 }
 
-impl RDMATransportCapabilities {
+impl RDMATransformCapabilitiesBody {
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let transform_count = bytes_to_u16(&bytes[0..2]) as usize;
         let mut transform_ids = Vec::new();
