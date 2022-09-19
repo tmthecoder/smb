@@ -1,9 +1,7 @@
-use std::io::Bytes;
-use std::ops::Neg;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::body::{Capabilities, FileTime, SecurityMode};
+use crate::body::{Capabilities, FileTime, NegotiateContext, SecurityMode};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -128,59 +126,4 @@ pub enum SMBDialect {
     V3_0_2 = 0x302,
     V3_1_1 = 0x311,
     V2_X_X = 0x2FF
-}
-
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct PreAuthIntegrityCapabilitiesBody {
-    hash_algorithms: Vec<HashAlgorithm>,
-    salt: Vec<u8>,
-}
-
-#[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
-enum HashAlgorithm {
-    SHA512 = 0x01
-}
-
-impl PreAuthIntegrityCapabilitiesBody {
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let algorithm_cnt = bytes_to_u16(&bytes[0..2]);
-        let salt_len = bytes_to_u16(&bytes[2..4]) as usize;
-        let mut bytes_ptr = 4_usize;
-        let mut hash_algorithms = Vec::new();
-        while hash_algorithms.len() < algorithm_cnt as usize {
-            hash_algorithms.push(HashAlgorithm::try_from(bytes_to_u16(&bytes[bytes_ptr..(bytes_ptr+2)])).ok()?);
-            bytes_ptr += 2;
-        }
-        let salt = Vec::from(&bytes[bytes_ptr..(bytes_ptr + salt_len)]);
-        Some(Self { hash_algorithms, salt })
-    }
-}
-
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum NegotiateContext {
-    PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilitiesBody),
-    EncryptionCapabilities(),
-    CompressionCapabilities(),
-    NetnameNegotiateContextID(),
-    TransportCapabilities(),
-    RDMATransformCapabilities(),
-    SigningCapabilities()
-}
-
-impl NegotiateContext {
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let ctx_type_num = bytes_to_u16(&bytes[0..2]);
-        println!("Num: {}", ctx_type_num);
-        match ctx_type_num {
-            0x01 => Some(Self::PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilitiesBody::from_bytes(&bytes[8..])?)),
-            0x02 => Some(Self::EncryptionCapabilities()),
-            0x03 => Some(Self::CompressionCapabilities()),
-            0x05 => Some(Self::NetnameNegotiateContextID()),
-            0x06 => Some(Self::TransportCapabilities()),
-            0x07 => Some(Self::RDMATransformCapabilities()),
-            0x08 => Some(Self::SigningCapabilities()),
-            _ => None
-        }
-    }
 }

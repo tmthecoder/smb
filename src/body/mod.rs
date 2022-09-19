@@ -4,6 +4,7 @@ mod body;
 mod capabilities;
 mod filetime;
 mod negotiate;
+mod negotiate_context;
 mod security_mode;
 
 pub type SMBBody = body::SMBBody;
@@ -17,6 +18,7 @@ pub type SecurityMode = security_mode::SecurityMode;
 pub type SMBDialect = negotiate::SMBDialect;
 pub type SMBNegotiationRequest = negotiate::SMBNegotiationRequestBody;
 pub type SMBNegotiationResponse = negotiate::SMBNegotiationResponseBody;
+pub type NegotiateContext = negotiate_context::NegotiateContext;
 
 pub trait Body<S: Header> {
     type Item;

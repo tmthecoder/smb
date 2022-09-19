@@ -1,3 +1,5 @@
+extern crate core;
+
 pub mod header;
 pub mod parameters;
 pub mod data;
