@@ -35,7 +35,6 @@ impl SMBNegotiationRequestBody {
         if dialects.contains(&SMBDialect::V3_1_1) {
             let negotiate_ctx_idx = bytes_to_u32(&bytes[28..32]) - 64;
             let negotiate_ctx_cnt = bytes_to_u16(&bytes[32..34]) as usize;
-            println!("Negotiate idx: {}, cnt: {}", negotiate_ctx_idx, negotiate_ctx_cnt);
             let mut start = negotiate_ctx_idx as usize;
             while negotiate_contexts.len() < negotiate_ctx_cnt {
                 let context = NegotiateContext::from_bytes(&bytes[start..])?;

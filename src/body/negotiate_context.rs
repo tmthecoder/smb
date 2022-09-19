@@ -17,7 +17,6 @@ pub enum NegotiateContext {
 impl NegotiateContext {
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let ctx_type_num = bytes_to_u16(&bytes[0..2]);
-        println!("Num: {}", ctx_type_num);
         let data_bytes = &bytes[8..];
         match ctx_type_num {
             0x01 => Some(Self::PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilitiesBody::from_bytes(data_bytes)?)),
