@@ -1,12 +1,12 @@
 use bitflags::bitflags;
 use num_enum::TryFromPrimitive;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
 
 macro_rules! ctx_to_bytes {
     ($body: expr) => ({
         let bytes = $body.as_bytes();
-        println!("code: {}", $body.byte_code());
         [
             &u16_to_bytes($body.byte_code())[0..],
             &u16_to_bytes(bytes.len() as u16),
@@ -14,6 +14,21 @@ macro_rules! ctx_to_bytes {
             &*bytes
         ].concat()
     });
+}
+
+macro_rules! vector_with_only_last {
+    ($vector: expr) => ({
+        $vector.sort();
+        vec![*$vector.last()?]
+    })
+}
+
+macro_rules! enum_iter_to_bytes {
+    ($iter: expr) => ({
+        $iter
+            .flat_map(|item| u16_to_bytes(*item as u16))
+            .collect::<Vec<u8>>()
+    })
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -54,6 +69,38 @@ impl NegotiateContext {
             NegotiateContext::SigningCapabilities(body) => ctx_to_bytes!(body)
         }
     }
+
+    pub fn response_from_existing(&self) -> Option<Self> {
+        match self {
+            NegotiateContext::PreAuthIntegrityCapabilities(body) => {
+                let hash_algorithms = vector_with_only_last!(body.hash_algorithms.clone());
+                let mut salt = vec![0_u8; 32];
+                rand::rngs::ThreadRng::default().fill_bytes(&mut *salt);
+                Some(NegotiateContext::PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilitiesBody { hash_algorithms, salt }))
+            }
+            NegotiateContext::EncryptionCapabilities(body) => {
+                let ciphers = vector_with_only_last!(body.ciphers.clone());
+                Some(NegotiateContext::EncryptionCapabilities(EncryptionCapabilitiesBody { ciphers }))
+            }
+            NegotiateContext::CompressionCapabilities(body) => {
+                let compression_algorithms = vector_with_only_last!(body.compression_algorithms.clone());
+                Some(NegotiateContext::CompressionCapabilities(CompressionCapabilitiesBody { compression_algorithms, flags: body.flags }))
+            }
+            NegotiateContext::NetnameNegotiateContextID(_) => {
+                Some(NegotiateContext::NetnameNegotiateContextID(NetnameNegotiateContextIDBody { netname: "fakeserver".into() }))
+            }
+            NegotiateContext::TransportCapabilities(_) => {
+                Some(NegotiateContext::TransportCapabilities(TransportCapabilitiesBody { flags: TransportCapabilitiesFlags::empty() }))
+            }
+            NegotiateContext::RDMATransformCapabilities(_) => {
+                Some(NegotiateContext::RDMATransformCapabilities(RDMATransformCapabilitiesBody { transform_ids: vec![RDMATransformID::None] }))
+            }
+            NegotiateContext::SigningCapabilities(body) => {
+                let signing_algorithms = vector_with_only_last!(body.signing_algorithms.clone());
+                Some(NegotiateContext::SigningCapabilities(SigningCapabilitiesBody { signing_algorithms }))
+            }
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
@@ -88,10 +135,7 @@ impl PreAuthIntegrityCapabilitiesBody {
         [
             &u16_to_bytes(self.hash_algorithms.len() as u16),
             &u16_to_bytes(self.salt.len() as u16),
-            &*self.hash_algorithms
-                .iter()
-                .flat_map(|alg| u16_to_bytes(*alg as u16))
-                .collect::<Vec<u8>>(),
+            &*enum_iter_to_bytes!(self.hash_algorithms.iter()),
             &*self.salt
         ].concat()
     }
@@ -129,10 +173,7 @@ impl EncryptionCapabilitiesBody {
     pub fn as_bytes(&self) -> Vec<u8> {
         [
             &u16_to_bytes(self.ciphers.len() as u16)[0..],
-            &*self.ciphers
-                .iter()
-                .flat_map(|cipher| u16_to_bytes(*cipher as u16))
-                .collect::<Vec<u8>>()
+            &*enum_iter_to_bytes!(self.ciphers.iter())
         ].concat()
     }
 }
@@ -181,10 +222,7 @@ impl CompressionCapabilitiesBody {
             &u16_to_bytes(self.compression_algorithms.len() as u16)[0..],
             &[0, 0],
             &u32_to_bytes(self.flags as u32),
-            &*self.compression_algorithms
-                .iter()
-                .flat_map(|comp_alg| u16_to_bytes(*comp_alg as u16))
-                .collect::<Vec<u8>>()
+            &*enum_iter_to_bytes!(self.compression_algorithms.iter())
         ].concat()
     }
 }
@@ -269,10 +307,7 @@ impl RDMATransformCapabilitiesBody {
         [
             &u16_to_bytes(self.transform_ids.len() as u16)[0..],
             &[0; 6],
-            &*self.transform_ids
-                .iter()
-                .flat_map(|tid| u16_to_bytes(*tid as u16))
-                .collect::<Vec<u8>>()
+            &*enum_iter_to_bytes!(self.transform_ids.iter())
         ].concat()
     }
 }
@@ -308,10 +343,7 @@ impl SigningCapabilitiesBody {
     pub fn as_bytes(&self) -> Vec<u8> {
         [
             &u16_to_bytes(self.signing_algorithms.len() as u16)[0..],
-            &*self.signing_algorithms
-                .iter()
-                .flat_map(|signing_alg| u16_to_bytes(*signing_alg as u16))
-                .collect::<Vec<u8>>()
+            &*enum_iter_to_bytes!(self.signing_algorithms.iter())
         ].concat()
     }
 }

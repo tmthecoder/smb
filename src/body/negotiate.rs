@@ -98,39 +98,7 @@ impl SMBNegotiationResponseBody {
         dialects.sort();
         let mut negotiate_contexts = Vec::new();
         for neg_ctx in request.negotiate_contexts {
-            match neg_ctx {
-                NegotiateContext::PreAuthIntegrityCapabilities(mut body) => {
-                    body.hash_algorithms.sort();
-                    let hash_algorithms = vec![*body.hash_algorithms.last()?];
-                    let mut salt = [0_u8; 32];
-                    rand::rngs::ThreadRng::default().fill_bytes(&mut salt);
-                    negotiate_contexts.push(NegotiateContext::PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilitiesBody { hash_algorithms, salt: salt.into() }));
-                }
-                NegotiateContext::EncryptionCapabilities(mut body) => {
-                    body.ciphers.sort();
-                    let ciphers = vec![*body.ciphers.last()?];
-                    negotiate_contexts.push(NegotiateContext::EncryptionCapabilities(EncryptionCapabilitiesBody { ciphers }));
-                }
-                NegotiateContext::CompressionCapabilities(mut body) => {
-                    body.compression_algorithms.sort();
-                    let compression_algorithms = vec![*body.compression_algorithms.last()?];
-                    negotiate_contexts.push(NegotiateContext::CompressionCapabilities(CompressionCapabilitiesBody { compression_algorithms, flags: body.flags }))
-                }
-                NegotiateContext::NetnameNegotiateContextID(_) => {
-                   negotiate_contexts.push(NegotiateContext::NetnameNegotiateContextID(NetnameNegotiateContextIDBody { netname: "fakeserver".into() }))
-                }
-                NegotiateContext::TransportCapabilities(_) => {
-                    negotiate_contexts.push(NegotiateContext::TransportCapabilities(TransportCapabilitiesBody { flags: TransportCapabilitiesFlags::empty() }))
-                }
-                NegotiateContext::RDMATransformCapabilities(_) => {
-                    negotiate_contexts.push(NegotiateContext::RDMATransformCapabilities(RDMATransformCapabilitiesBody { transform_ids: vec![RDMATransformID::None] }))
-                }
-                NegotiateContext::SigningCapabilities(mut body) => {
-                    body.signing_algorithms.sort();
-                    let signing_algorithms = vec![*body.signing_algorithms.last()?];
-                    negotiate_contexts.push(NegotiateContext::SigningCapabilities(SigningCapabilitiesBody { signing_algorithms }))
-                }
-            }
+            negotiate_contexts.push(neg_ctx.response_from_existing()?);
         }
 
         Some(Self {
