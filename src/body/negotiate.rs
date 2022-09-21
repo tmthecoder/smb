@@ -1,7 +1,9 @@
 use num_enum::TryFromPrimitive;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use crate::body::{Capabilities, FileTime, NegotiateContext, SecurityMode};
+use crate::body::negotiate_context::{CompressionCapabilitiesBody, EncryptionCapabilitiesBody, NetnameNegotiateContextIDBody, PreAuthIntegrityCapabilitiesBody, RDMATransformCapabilitiesBody, RDMATransformID, SigningCapabilitiesBody, TransportCapabilitiesBody, TransportCapabilitiesFlags};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -37,9 +39,11 @@ impl SMBNegotiationRequestBody {
             let negotiate_ctx_cnt = bytes_to_u16(&bytes[32..34]) as usize;
             let mut start = negotiate_ctx_idx as usize;
             while negotiate_contexts.len() < negotiate_ctx_cnt {
-                let context = NegotiateContext::from_bytes(&bytes[start..])?;
+                let context = NegotiateContext::from_bytes(&bytes[start..]);
+                if let Some(context) = context {
+                    negotiate_contexts.push(context);
+                }
                 let context_len = bytes_to_u16(&bytes[(start+2)..(start+4)]);
-                negotiate_contexts.push(context);
                 start += context_len as usize;
                 start += 8;
                 if negotiate_contexts.len() != negotiate_ctx_cnt {
@@ -68,7 +72,8 @@ pub struct SMBNegotiationResponseBody {
     max_write_size: u32,
     system_time: FileTime,
     server_start_time: FileTime,
-    buffer: Vec<u8>
+    buffer: Vec<u8>,
+    negotiate_contexts: Vec<NegotiateContext>
 }
 
 impl SMBNegotiationResponseBody {
@@ -83,17 +88,92 @@ impl SMBNegotiationResponseBody {
             max_write_size,
             system_time: FileTime::now(),
             server_start_time,
-            buffer
+            buffer,
+            negotiate_contexts: Vec::new()
         }
+    }
+
+    pub fn from_request(request: SMBNegotiationRequestBody) -> Option<Self> {
+        let mut dialects = request.dialects.clone();
+        dialects.sort();
+        let mut negotiate_contexts = Vec::new();
+        for neg_ctx in request.negotiate_contexts {
+            match neg_ctx {
+                NegotiateContext::PreAuthIntegrityCapabilities(mut body) => {
+                    body.hash_algorithms.sort();
+                    let hash_algorithms = vec![*body.hash_algorithms.last()?];
+                    let mut salt = [0_u8; 32];
+                    rand::rngs::ThreadRng::default().fill_bytes(&mut salt);
+                    negotiate_contexts.push(NegotiateContext::PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilitiesBody { hash_algorithms, salt: salt.into() }));
+                }
+                NegotiateContext::EncryptionCapabilities(mut body) => {
+                    body.ciphers.sort();
+                    let ciphers = vec![*body.ciphers.last()?];
+                    negotiate_contexts.push(NegotiateContext::EncryptionCapabilities(EncryptionCapabilitiesBody { ciphers }));
+                }
+                NegotiateContext::CompressionCapabilities(mut body) => {
+                    body.compression_algorithms.sort();
+                    let compression_algorithms = vec![*body.compression_algorithms.last()?];
+                    negotiate_contexts.push(NegotiateContext::CompressionCapabilities(CompressionCapabilitiesBody { compression_algorithms, flags: body.flags }))
+                }
+                NegotiateContext::NetnameNegotiateContextID(_) => {
+                   negotiate_contexts.push(NegotiateContext::NetnameNegotiateContextID(NetnameNegotiateContextIDBody { netname: "fakeserver".into() }))
+                }
+                NegotiateContext::TransportCapabilities(_) => {
+                    negotiate_contexts.push(NegotiateContext::TransportCapabilities(TransportCapabilitiesBody { flags: TransportCapabilitiesFlags::empty() }))
+                }
+                NegotiateContext::RDMATransformCapabilities(_) => {
+                    negotiate_contexts.push(NegotiateContext::RDMATransformCapabilities(RDMATransformCapabilitiesBody { transform_ids: vec![RDMATransformID::None] }))
+                }
+                NegotiateContext::SigningCapabilities(mut body) => {
+                    body.signing_algorithms.sort();
+                    let signing_algorithms = vec![*body.signing_algorithms.last()?];
+                    negotiate_contexts.push(NegotiateContext::SigningCapabilities(SigningCapabilitiesBody { signing_algorithms }))
+                }
+            }
+        }
+
+        Some(Self {
+            security_mode: request.security_mode | SecurityMode::NEGOTIATE_SIGNING_REQUIRED,
+            dialect: *dialects.last()?,
+            guid: Uuid::new_v4(),
+            capabilities: request.capabilities,
+            max_transact_size: 65535,
+            max_read_size: 65535,
+            max_write_size: 65535,
+            system_time: FileTime::now(),
+            server_start_time: FileTime::from_unix(0),
+            buffer: vec![0; 12],
+            negotiate_contexts
+        })
     }
 }
 
 impl SMBNegotiationResponseBody {
     pub fn as_bytes(&self) -> Vec<u8> {
+        let len_w_buffer = 128 + self.buffer.len();
+        let padding_len = 8 - (len_w_buffer % 8);
+        let padding = vec![0; padding_len];
+        let mut negotiate_offset = 0;
+        let mut negotiate_ctx_vec = Vec::new();
+        if self.dialect == SMBDialect::V3_1_1 {
+            negotiate_offset = len_w_buffer + padding_len;
+            for (idx, ctx) in self.negotiate_contexts.iter().enumerate() {
+                let mut bytes = ctx.as_bytes();
+                if idx != self.negotiate_contexts.len() - 1 {
+                    let needed_extra = 8 - (bytes.len() % 8);
+                    bytes.append(&mut vec![0_u8; needed_extra]);
+                }
+                println!("{:?} len {}", &bytes, bytes.len());
+                negotiate_ctx_vec.append(&mut bytes);
+                println!("{:?} len {}", negotiate_ctx_vec, negotiate_ctx_vec.len());
+            }
+        }
         [
             &[65, 0][0..], // Structure Size
             &[self.security_mode.bits(), 0],
             &u16_to_bytes(self.dialect as u16),
+            &u16_to_bytes(self.negotiate_contexts.len() as u16),
             &*self.guid.as_bytes(),
             &u32_to_bytes(self.capabilities.bits() as u32),
             &u32_to_bytes(self.max_transact_size),
@@ -101,17 +181,20 @@ impl SMBNegotiationResponseBody {
             &u32_to_bytes(self.max_write_size),
             &*self.system_time.as_bytes(),
             &*self.server_start_time.as_bytes(),
-            &[64, 0], // Security Buffer Offset
+            &[128, 0], // Security Buffer Offset
             &u16_to_bytes(self.buffer.len() as u16),
-            &[0; 4], // NegotiateContextOffset/Reserved/TODO
-            &*self.buffer
-            // TODO padding & NegotiateContextList
+            &u32_to_bytes(negotiate_offset as u32),
+            // &u16_to_bytes(0),
+            &*self.buffer,
+            &*padding,
+            &*negotiate_ctx_vec
+            // TODO NegotiateContextList
         ].concat()
     }
 }
 
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd)]
 pub enum SMBDialect {
     V2_0_2 = 0x202,
     V2_1_0 = 0x210,

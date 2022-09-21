@@ -1,7 +1,20 @@
 use bitflags::bitflags;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
-use crate::byte_helper::{bytes_to_u16, bytes_to_u32};
+use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
+
+macro_rules! ctx_to_bytes {
+    ($body: expr) => ({
+        let bytes = $body.as_bytes();
+        println!("code: {}", $body.byte_code());
+        [
+            &u16_to_bytes($body.byte_code())[0..],
+            &u16_to_bytes(bytes.len() as u16),
+            &[0; 4],
+            &*bytes
+        ].concat()
+    });
+}
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum NegotiateContext {
@@ -29,21 +42,35 @@ impl NegotiateContext {
             _ => None
         }
     }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        match self {
+            NegotiateContext::PreAuthIntegrityCapabilities(body) => ctx_to_bytes!(body),
+            NegotiateContext::EncryptionCapabilities(body) => ctx_to_bytes!(body),
+            NegotiateContext::CompressionCapabilities(body) => ctx_to_bytes!(body),
+            NegotiateContext::NetnameNegotiateContextID(body) => ctx_to_bytes!(body),
+            NegotiateContext::TransportCapabilities(body) => ctx_to_bytes!(body),
+            NegotiateContext::RDMATransformCapabilities(body) => ctx_to_bytes!(body),
+            NegotiateContext::SigningCapabilities(body) => ctx_to_bytes!(body)
+        }
+    }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub struct PreAuthIntegrityCapabilitiesBody {
-    hash_algorithms: Vec<HashAlgorithm>,
-    salt: Vec<u8>,
+    pub(crate) hash_algorithms: Vec<HashAlgorithm>,
+    pub(crate) salt: Vec<u8>,
 }
 
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
-enum HashAlgorithm {
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd)]
+pub enum HashAlgorithm {
     SHA512 = 0x01
 }
 
 impl PreAuthIntegrityCapabilitiesBody {
+    fn byte_code(&self) -> u16 { 0x01 }
+
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let algorithm_cnt = bytes_to_u16(&bytes[0..2]);
         let salt_len = bytes_to_u16(&bytes[2..4]) as usize;
@@ -56,15 +83,27 @@ impl PreAuthIntegrityCapabilitiesBody {
         let salt = Vec::from(&bytes[bytes_ptr..(bytes_ptr + salt_len)]);
         Some(Self { hash_algorithms, salt })
     }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        [
+            &u16_to_bytes(self.hash_algorithms.len() as u16),
+            &u16_to_bytes(self.salt.len() as u16),
+            &*self.hash_algorithms
+                .iter()
+                .flat_map(|alg| u16_to_bytes(*alg as u16))
+                .collect::<Vec<u8>>(),
+            &*self.salt
+        ].concat()
+    }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub struct EncryptionCapabilitiesBody {
-    ciphers: Vec<EncryptionCipher>
+    pub(crate) ciphers: Vec<EncryptionCipher>
 }
 
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy)]
 pub enum EncryptionCipher {
     AES128GCM = 0x01,
     AES128CCM,
@@ -73,6 +112,8 @@ pub enum EncryptionCipher {
 }
 
 impl EncryptionCapabilitiesBody {
+    fn byte_code(&self) -> u16 { 0x02 }
+
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let cipher_cnt = bytes_to_u16(&bytes[0..2]) as usize;
         let mut ciphers = Vec::new();
@@ -84,23 +125,33 @@ impl EncryptionCapabilitiesBody {
         }
         Some(Self { ciphers })
     }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        [
+            &u16_to_bytes(self.ciphers.len() as u16)[0..],
+            &*self.ciphers
+                .iter()
+                .flat_map(|cipher| u16_to_bytes(*cipher as u16))
+                .collect::<Vec<u8>>()
+        ].concat()
+    }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub struct CompressionCapabilitiesBody {
-    flags: CompressionCapabilitiesFlags,
-    compression_algorithms: Vec<CompressionAlgorithm>
+    pub(crate) flags: CompressionCapabilitiesFlags,
+    pub(crate) compression_algorithms: Vec<CompressionAlgorithm>
 }
 
-#[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
+#[repr(u32)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy)]
 pub enum CompressionCapabilitiesFlags {
     None = 0x0,
     Chained
 }
 
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy)]
 pub enum CompressionAlgorithm {
     None = 0x0,
     Lznt1,
@@ -110,9 +161,11 @@ pub enum CompressionAlgorithm {
 }
 
 impl CompressionCapabilitiesBody {
+    fn byte_code(&self) -> u16 { 0x03 }
+
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let algorithm_cnt = bytes_to_u16(&bytes[0..2]) as usize;
-        let flags = CompressionCapabilitiesFlags::try_from(bytes_to_u16(&bytes[2..4])).ok()?;
+        let flags = CompressionCapabilitiesFlags::try_from(bytes_to_u32(&bytes[4..8])).ok()?;
         let mut compression_algorithms = Vec::new();
         let mut algorithm_ptr = 8_usize;
         while compression_algorithms.len() < algorithm_cnt {
@@ -122,14 +175,28 @@ impl CompressionCapabilitiesBody {
         }
         Some(Self { flags, compression_algorithms })
     }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        [
+            &u16_to_bytes(self.compression_algorithms.len() as u16)[0..],
+            &[0, 0],
+            &u32_to_bytes(self.flags as u32),
+            &*self.compression_algorithms
+                .iter()
+                .flat_map(|comp_alg| u16_to_bytes(*comp_alg as u16))
+                .collect::<Vec<u8>>()
+        ].concat()
+    }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub struct NetnameNegotiateContextIDBody {
-    netname: String
+    pub(crate) netname: String
 }
 
 impl NetnameNegotiateContextIDBody {
+    fn byte_code(&self) -> u16 { 0x05 }
+
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let name_len = bytes_to_u16(&bytes[0..2]) as usize;
         let mut unicode_vec = Vec::from(&bytes[6..(6 + name_len)]);
@@ -137,11 +204,15 @@ impl NetnameNegotiateContextIDBody {
         let netname = String::from_utf8(unicode_vec).ok()?;
         Some(Self { netname })
     }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        self.netname.bytes().collect::<Vec<u8>>()
+    }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub struct TransportCapabilitiesBody {
-    flags: TransportCapabilitiesFlags
+    pub(crate) flags: TransportCapabilitiesFlags
 }
 
 bitflags! {
@@ -152,20 +223,26 @@ bitflags! {
 }
 
 impl TransportCapabilitiesBody {
+    fn byte_code(&self) -> u16 { 0x06 }
+
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let flags_num = bytes_to_u32(&bytes[0..4]);
         let flags = TransportCapabilitiesFlags::from_bits_truncate(flags_num);
         Some(Self { flags })
     }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        u32_to_bytes(self.flags.bits).into()
+    }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub struct RDMATransformCapabilitiesBody {
-    transform_ids: Vec<RDMATransformID>
+    pub(crate) transform_ids: Vec<RDMATransformID>
 }
 
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy)]
 pub enum RDMATransformID {
     None = 0x0,
     Encryption,
@@ -173,6 +250,8 @@ pub enum RDMATransformID {
 }
 
 impl RDMATransformCapabilitiesBody {
+    fn byte_code(&self) -> u16 { 0x07 }
+
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let transform_count = bytes_to_u16(&bytes[0..2]) as usize;
         let mut transform_ids = Vec::new();
@@ -185,15 +264,26 @@ impl RDMATransformCapabilitiesBody {
         }
         Some(Self { transform_ids })
     }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        [
+            &u16_to_bytes(self.transform_ids.len() as u16)[0..],
+            &[0; 6],
+            &*self.transform_ids
+                .iter()
+                .flat_map(|tid| u16_to_bytes(*tid as u16))
+                .collect::<Vec<u8>>()
+        ].concat()
+    }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub struct SigningCapabilitiesBody {
-    signing_algorithms: Vec<SigningAlgorithm>
+    pub(crate) signing_algorithms: Vec<SigningAlgorithm>
 }
 
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy)]
 pub enum SigningAlgorithm {
     HmacSha256 = 0x0,
     AesCmac,
@@ -201,6 +291,8 @@ pub enum SigningAlgorithm {
 }
 
 impl SigningCapabilitiesBody {
+    fn byte_code(&self) -> u16 { 0x08 }
+
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let singing_alg_cnt = bytes_to_u16(&bytes[0..2]) as usize;
         let mut signing_algorithms = Vec::new();
@@ -211,5 +303,15 @@ impl SigningCapabilitiesBody {
             signing_alg_ptr += 2;
         }
         Some(Self { signing_algorithms })
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        [
+            &u16_to_bytes(self.signing_algorithms.len() as u16)[0..],
+            &*self.signing_algorithms
+                .iter()
+                .flat_map(|signing_alg| u16_to_bytes(*signing_alg as u16))
+                .collect::<Vec<u8>>()
+        ].concat()
     }
 }
