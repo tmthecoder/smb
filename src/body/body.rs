@@ -4,7 +4,7 @@ use crate::header::{LegacySMBCommandCode, LegacySMBHeader, SMBCommandCode};
 use crate::SMBSyncHeader;
 use std::str;
 use crate::body::negotiate::SMBNegotiationRequestBody;
-use crate::body::session_setup::SMBSessionSetupRequestBody;
+use crate::body::session_setup::{SMBSessionSetupRequestBody, SMBSessionSetupResponseBody};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum SMBBody {
@@ -12,6 +12,7 @@ pub enum SMBBody {
     NegotiateRequest(SMBNegotiationRequestBody),
     NegotiateResponse(SMBNegotiationResponse),
     SessionSetupRequest(SMBSessionSetupRequestBody),
+    SessionSetupResponse(SMBSessionSetupResponseBody),
     LegacyCommand(LegacySMBBody)
 }
 

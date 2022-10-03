@@ -19,6 +19,8 @@ pub type SecurityMode = security_mode::SecurityMode;
 pub type SMBDialect = negotiate::SMBDialect;
 pub type SMBNegotiationRequest = negotiate::SMBNegotiationRequestBody;
 pub type SMBNegotiationResponse = negotiate::SMBNegotiationResponseBody;
+pub type SMBSessionSetupRequest = session_setup::SMBSessionSetupRequestBody;
+pub type SMBSessionSetupResponse = session_setup::SMBSessionSetupResponseBody;
 pub type NegotiateContext = negotiate_context::NegotiateContext;
 
 pub trait Body<S: Header> {

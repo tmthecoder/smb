@@ -1,7 +1,7 @@
 use crate::body::{Capabilities, SecurityMode};
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
-use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64};
+use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBSessionSetupRequestBody {
@@ -27,9 +27,60 @@ impl SMBSessionSetupRequestBody {
     }
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct SMBSessionSetupResponseBody {
+    session_flags: SMBSessionFlags,
+    buffer: Vec<u8>
+}
+
+impl SMBSessionSetupResponseBody {
+    pub fn new(session_flags: SMBSessionFlags, buffer: Vec<u8>) -> Self {
+        Self { session_flags, buffer }
+    }
+
+    pub fn from_request(request: SMBSessionSetupRequestBody) -> Option<Self> {
+        Some(Self {
+            session_flags: SMBSessionFlags::IS_GUEST | SMBSessionFlags::ENCRYPT_DATA,
+            buffer: vec![0; 12]
+        })
+    }
+}
+
+impl SMBSessionSetupResponseBody {
+    pub fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
+        if bytes.len() < 9 { return None; }
+        let security_buffer_offset = (bytes_to_u16(&bytes[4..6]) - 64) as usize;
+        let security_buffer_len = bytes_to_u16(&bytes[6..8]) as usize;
+        if bytes.len() < 9 + (security_buffer_len as usize) { return None }
+        let session_flags = SMBSessionFlags::from_bits_truncate(bytes_to_u16(&bytes[2..4]));
+        let buffer = Vec::from(&bytes[security_buffer_offset..(security_buffer_offset + security_buffer_len)]);
+        Some((Self { session_flags, buffer }, &bytes[(security_buffer_offset + security_buffer_len)..]))
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        let security_offset = 88_u16;
+        [
+            &[9, 0][0..],
+            &u16_to_bytes(self.session_flags.bits),
+            &u16_to_bytes(security_offset),
+            &u16_to_bytes(self.buffer.len() as u16),
+            &*self.buffer
+        ].concat()
+    }
+}
+
 bitflags! {
     #[derive(Serialize, Deserialize)]
     pub struct SMBSessionSetupFlags: u8 {
         const SMB2_SESSION_FLAG_BINDING = 0x01;
+    }
+}
+
+bitflags! {
+    #[derive(Serialize, Deserialize)]
+    pub struct SMBSessionFlags: u16 {
+        const IS_GUEST = 0x01;
+        const IS_NULL = 0x02;
+        const ENCRYPT_DATA = 0x04;
     }
 }
