@@ -41,7 +41,7 @@ impl SMBSessionSetupResponseBody {
     pub fn from_request(request: SMBSessionSetupRequestBody) -> Option<Self> {
         Some(Self {
             session_flags: SMBSessionFlags::IS_GUEST | SMBSessionFlags::ENCRYPT_DATA,
-            buffer: vec![0; 12]
+            buffer: request.buffer
         })
     }
 }
@@ -58,7 +58,7 @@ impl SMBSessionSetupResponseBody {
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
-        let security_offset = 88_u16;
+        let security_offset = 72_u16;
         [
             &[9, 0][0..],
             &u16_to_bytes(self.session_flags.bits),

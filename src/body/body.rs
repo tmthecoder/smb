@@ -50,6 +50,9 @@ impl Body<SMBSyncHeader> for SMBBody {
             SMBBody::NegotiateResponse(x) => {
                 x.as_bytes()
             },
+            SMBBody::SessionSetupResponse(x) => {
+                x.as_bytes()
+            }
             _ => Vec::new()
         }
     }

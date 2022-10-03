@@ -31,6 +31,8 @@ fn main() -> anyhow::Result<()> {
                        let resp_body = SMBBody::SessionSetupResponse(SMBSessionSetupResponse::from_request(request).unwrap());
                        let resp_header = message.header.create_response_header();
                        let resp_msg = SMBMessage::new(resp_header, resp_body);
+                       println!("MSG: {:?}", resp_msg);
+                       println!("BYTES: {:?}", resp_msg.as_bytes());
                        cloned_connection.send_message(resp_msg)?;                   }
                }
                _ => {}

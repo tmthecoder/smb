@@ -56,7 +56,7 @@ impl Header for SMBSyncHeader {
             &[64, 0], // Structure size,
             &[0; 2], // Credit
             &[0; 4], // Reserved/Status/TODO
-            &[0, self.command as u8],
+            &u16_to_bytes(self.command as u16),
             &[0; 2], // CreditResponse,
             &u32_to_bytes(self.flags.bits()),
             &[0; 4], // Next Command,
