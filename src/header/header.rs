@@ -135,4 +135,16 @@ impl SMBSyncHeader {
             _ => None
         }
     }
+
+    pub fn create_response_header(&self) -> Self {
+        Self {
+            command: self.command,
+            flags: SMBFlags::SERVER_TO_REDIR,
+            next_command: 0,
+            message_id: self.message_id,
+            tree_id: self.tree_id,
+            session_id: self.session_id,
+            signature: [1; 16]
+        }
+    }
 }

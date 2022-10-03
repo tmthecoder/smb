@@ -24,13 +24,10 @@ fn main() -> anyhow::Result<()> {
            }
            if let SMBBody::NegotiateRequest(request) = message.body {
                let resp_body = SMBBody::NegotiateResponse(SMBNegotiationResponse::from_request(request).unwrap());
-               let resp_header = SMBSyncHeader::new(SMBCommandCode::Negotiate, SMBFlags::SERVER_TO_REDIR, 0, 0, 0, 0, [1; 16]);
+               let resp_header = message.header.create_response_header();
                let resp_msg = SMBMessage::new(resp_header, resp_body);
-               println!("resp: {:?} bytes: {:?}", resp_msg, resp_msg.as_bytes());
                cloned_connection.send_message(resp_msg)?;
-               println!("sent");
            }
-           //let resp_body = SMBBody::NegotiateResponse(SMBNegotiationResponse::new(SecurityMode::NEGOTIATE_SIGNING_ENABLED, SMBDialect::V2_0_2, Capabilities::empty(), 100, 100, 100, start_time.clone(), Vec::new()));
        }
     }
     Ok(())

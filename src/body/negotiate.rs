@@ -130,11 +130,9 @@ impl SMBNegotiationResponseBody {
                 let mut bytes = ctx.as_bytes();
                 if idx != self.negotiate_contexts.len() - 1 {
                     let needed_extra = 8 - (bytes.len() % 8);
-                    bytes.append(&mut vec![0_u8; needed_extra]);
+                    bytes.append(&mut vec![0; needed_extra]);
                 }
-                println!("{:?} len {}", &bytes, bytes.len());
                 negotiate_ctx_vec.append(&mut bytes);
-                println!("{:?} len {}", negotiate_ctx_vec, negotiate_ctx_vec.len());
             }
         }
         [
@@ -152,11 +150,9 @@ impl SMBNegotiationResponseBody {
             &[128, 0], // Security Buffer Offset
             &u16_to_bytes(self.buffer.len() as u16),
             &u32_to_bytes(negotiate_offset as u32),
-            // &u16_to_bytes(0),
             &*self.buffer,
             &*padding,
             &*negotiate_ctx_vec
-            // TODO NegotiateContextList
         ].concat()
     }
 }
