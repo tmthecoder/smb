@@ -4,12 +4,14 @@ use crate::header::{LegacySMBCommandCode, LegacySMBHeader, SMBCommandCode};
 use crate::SMBSyncHeader;
 use std::str;
 use crate::body::negotiate::SMBNegotiationRequestBody;
+use crate::body::session_setup::SMBSessionSetupRequestBody;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum SMBBody {
     None,
     NegotiateRequest(SMBNegotiationRequestBody),
     NegotiateResponse(SMBNegotiationResponse),
+    SessionSetupRequest(SMBSessionSetupRequestBody),
     LegacyCommand(LegacySMBBody)
 }
 
@@ -32,6 +34,12 @@ impl Body<SMBSyncHeader> for SMBBody {
                 }
                 (SMBBody::None, bytes)
             },
+            SMBCommandCode::SessionSetup => {
+                if let Some((session_setup_body, carryover)) = SMBSessionSetupRequestBody::from_bytes(bytes) {
+                    return (SMBBody::SessionSetupRequest(session_setup_body), carryover)
+                }
+                (SMBBody::None, bytes)
+            }
             _ => (SMBBody::None, bytes)
         }
     }

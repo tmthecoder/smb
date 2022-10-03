@@ -6,6 +6,7 @@ mod filetime;
 mod negotiate;
 mod negotiate_context;
 mod security_mode;
+mod session_setup;
 
 pub type SMBBody = body::SMBBody;
 
