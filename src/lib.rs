@@ -6,6 +6,7 @@ pub mod data;
 pub mod body;
 pub mod message;
 mod byte_helper;
+mod gss_helper;
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};

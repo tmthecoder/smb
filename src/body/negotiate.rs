@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::body::{Capabilities, FileTime, NegotiateContext, SecurityMode};
 use crate::body::negotiate_context::{CompressionCapabilitiesBody, EncryptionCapabilitiesBody, NetnameNegotiateContextIDBody, PreAuthIntegrityCapabilitiesBody, RDMATransformCapabilitiesBody, RDMATransformID, SigningCapabilitiesBody, TransportCapabilitiesBody, TransportCapabilitiesFlags};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
+use crate::gss_helper::send_negprot_resp;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBNegotiationRequestBody {
@@ -100,7 +101,7 @@ impl SMBNegotiationResponseBody {
         for neg_ctx in request.negotiate_contexts {
             negotiate_contexts.push(neg_ctx.response_from_existing()?);
         }
-
+        send_negprot_resp();
         Some(Self {
             security_mode: request.security_mode | SecurityMode::NEGOTIATE_SIGNING_REQUIRED,
             dialect: *dialects.last()?,
