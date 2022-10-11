@@ -1,11 +1,10 @@
+use libgssapi::context::ServerCtx;
 use num_enum::TryFromPrimitive;
-use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use crate::body::{Capabilities, FileTime, NegotiateContext, SecurityMode};
 use crate::body::negotiate_context::{CompressionCapabilitiesBody, EncryptionCapabilitiesBody, NetnameNegotiateContextIDBody, PreAuthIntegrityCapabilitiesBody, RDMATransformCapabilitiesBody, RDMATransformID, SigningCapabilitiesBody, TransportCapabilitiesBody, TransportCapabilitiesFlags};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
-use crate::gss_helper::send_negprot_resp;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBNegotiationRequestBody {
@@ -94,14 +93,13 @@ impl SMBNegotiationResponseBody {
         }
     }
 
-    pub fn from_request(request: SMBNegotiationRequestBody) -> Option<Self> {
+    pub fn from_request(request: SMBNegotiationRequestBody, server_ctx: &mut ServerCtx) -> Option<Self> {
         let mut dialects = request.dialects.clone();
         dialects.sort();
         let mut negotiate_contexts = Vec::new();
         for neg_ctx in request.negotiate_contexts {
             negotiate_contexts.push(neg_ctx.response_from_existing()?);
         }
-        send_negprot_resp();
         Some(Self {
             security_mode: request.security_mode | SecurityMode::NEGOTIATE_SIGNING_REQUIRED,
             dialect: *dialects.last()?,
@@ -112,7 +110,7 @@ impl SMBNegotiationResponseBody {
             max_write_size: 65535,
             system_time: FileTime::now(),
             server_start_time: FileTime::from_unix(0),
-            buffer: vec![0; 12],
+            buffer: Vec::new(),
             negotiate_contexts
         })
     }
@@ -136,6 +134,12 @@ impl SMBNegotiationResponseBody {
                 negotiate_ctx_vec.append(&mut bytes);
             }
         }
+        let security_offset;
+        if self.buffer.len() == 0 {
+            security_offset = [0, 0];
+        } else {
+            security_offset = [128, 0];
+        }
         [
             &[65, 0][0..], // Structure Size
             &[self.security_mode.bits(), 0],
@@ -148,7 +152,7 @@ impl SMBNegotiationResponseBody {
             &u32_to_bytes(self.max_write_size),
             &*self.system_time.as_bytes(),
             &*self.server_start_time.as_bytes(),
-            &[128, 0], // Security Buffer Offset
+            &security_offset, // Security Buffer Offset
             &u16_to_bytes(self.buffer.len() as u16),
             &u32_to_bytes(negotiate_offset as u32),
             &*self.buffer,

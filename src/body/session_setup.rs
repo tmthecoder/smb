@@ -1,7 +1,9 @@
 use crate::body::{Capabilities, SecurityMode};
 use bitflags::bitflags;
+use libgssapi::context::ServerCtx;
 use serde::{Deserialize, Serialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes};
+use crate::gss_helper::get_resp_buffer;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBSessionSetupRequestBody {
@@ -38,10 +40,10 @@ impl SMBSessionSetupResponseBody {
         Self { session_flags, buffer }
     }
 
-    pub fn from_request(request: SMBSessionSetupRequestBody) -> Option<Self> {
+    pub fn from_request(request: SMBSessionSetupRequestBody, server_ctx: &mut ServerCtx) -> Option<Self> {
         Some(Self {
-            session_flags: SMBSessionFlags::IS_GUEST | SMBSessionFlags::ENCRYPT_DATA,
-            buffer: request.buffer
+            session_flags: SMBSessionFlags::empty(),
+            buffer: get_resp_buffer(server_ctx, &*request.buffer)?
         })
     }
 }

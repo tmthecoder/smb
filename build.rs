@@ -1,3 +1,3 @@
 fn main() {
-    println!("cargo:rustc-link-lib=framework=GSS");
+    // println!("cargo:rustc-link-lib=framework=GSS");
 }
