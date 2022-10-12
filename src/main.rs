@@ -5,10 +5,10 @@ use libgssapi::oid::{GSS_MECH_IAKERB, GSS_MECH_KRB5, GSS_NT_HOSTBASED_SERVICE, O
 use smb_reader::body::{Capabilities, FileTime, SecurityMode, SMBBody, SMBDialect, SMBNegotiationResponse, SMBSessionSetupResponse};
 use smb_reader::header::{SMBCommandCode, SMBFlags, SMBSyncHeader};
 use smb_reader::message::{Message, SMBMessage};
-use smb_reader::SMBServer;
+use smb_reader::SMBListener;
 
 fn main() -> anyhow::Result<()> {
-    let server = SMBServer::new("127.0.0.1:50122");
+    let server = SMBListener::new("127.0.0.1:50122");
     let start_time = FileTime::now();
     for mut connection in server.unwrap().connections() {
         let mut cloned_connection = connection.try_clone()?;
@@ -47,7 +47,7 @@ fn main() -> anyhow::Result<()> {
                        let resp_msg = SMBMessage::new(resp_header, resp_body);
                        println!("MSG: {:?}", resp_msg);
                        println!("BYTES: {:?}", resp_msg.as_bytes());
-                       cloned_connection.send_message(resp_msg)?;                   
+                       cloned_connection.send_message(resp_msg)?;
                    }
                }
                _ => {}

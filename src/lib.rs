@@ -16,39 +16,39 @@ use crate::header::{Header, LegacySMBHeader, SMBSyncHeader};
 use crate::message::{Message, SMBMessage};
 
 #[derive(Debug)]
-pub struct SMBServer {
+pub struct SMBListener {
     socket: TcpListener
 }
 
 #[derive(Debug)]
-pub struct SMBConnection {
+pub struct SMBMessageStream {
     stream: TcpStream
 }
 
-pub struct SMBConnectionIterator<'a> {
-    server: &'a SMBServer
+pub struct SMBMessageStreamIterator<'a> {
+    server: &'a SMBListener
 }
 
 pub struct SMBMessageIterator<'a> {
-    connection: &'a mut SMBConnection,
+    connection: &'a mut SMBMessageStream,
     carryover: [u8; 512],
     carryover_len: usize
 }
 
-impl SMBServer {
+impl SMBListener {
     pub fn new<A: ToSocketAddrs>(addr: A) -> std::io::Result<Self> {
         let socket = TcpListener::bind(addr)?;
-        Ok(SMBServer { socket })
+        Ok(SMBListener { socket })
     }
 }
 
-impl SMBServer {
-    pub fn connections(&self) -> SMBConnectionIterator {
-        SMBConnectionIterator { server: self }
+impl SMBListener {
+    pub fn connections(&self) -> SMBMessageStreamIterator {
+        SMBMessageStreamIterator { server: self }
     }
 }
 
-impl SMBConnection {
+impl SMBMessageStream {
     pub fn messages(&mut self) -> SMBMessageIterator {
         SMBMessageIterator {
             connection: self,
@@ -58,7 +58,7 @@ impl SMBConnection {
     }
 
     pub fn try_clone(&self) -> std::io::Result<Self> {
-        Ok(SMBConnection {
+        Ok(SMBMessageStream {
             stream: self.stream.try_clone()?
         })
     }
@@ -68,13 +68,13 @@ impl SMBConnection {
     }
 }
 
-impl Iterator for SMBConnectionIterator<'_> {
-    type Item = SMBConnection;
+impl Iterator for SMBMessageStreamIterator<'_> {
+    type Item = SMBMessageStream;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.server.socket.accept() {
             Ok((stream, _)) => {
-                Some(SMBConnection { stream })
+                Some(SMBMessageStream { stream })
             },
             _ => None,
         }
