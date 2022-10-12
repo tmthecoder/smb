@@ -18,3 +18,4 @@ pub type SMBOpen = open::SMBOpen;
 pub type SMBSession = session::SMBSession;
 pub type SMBServer = server::SMBServer;
 pub type SMBShare = share::SMBShare;
+pub type SMBTreeConnect = tree_connect::SMBTreeConnect;

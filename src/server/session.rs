@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::server::SMBOpen;
+use crate::server::{SMBConnection, SMBOpen, SMBTreeConnect};
 
 pub struct SMBSession {
     session_id: u64,

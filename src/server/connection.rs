@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use uuid::Uuid;
-use crate::body::{Capabilities, FileTime, SecurityMode, SMBDialect};
+use crate::body::{Capabilities, FileTime, SecurityMode, SMBDialect, SMBNegotiationRequest};
 use crate::server::session::SMBSession;
 
 pub struct SMBConnection {
@@ -8,7 +8,7 @@ pub struct SMBConnection {
     request_list: HashMap<u64, SMBRequest>,
     client_capabilities: Capabilities,
     negotiate_dialect: SMBDialect, // TODO
-    async_command_list: Vec<AsyncSMBRequest>,
+    async_command_list: Vec<SMBNegotiationRequest>,
     dialect: SMBDialect,
     should_sign: bool,
     client_name: String,

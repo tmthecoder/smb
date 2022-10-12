@@ -1,3 +1,5 @@
+use crate::server::{SMBConnection, SMBLease, SMBSession, SMBTreeConnect};
+
 pub struct SMBOpen {
     file_id: u32,
     file_global_id: u32,
