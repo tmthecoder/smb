@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use uuid::Uuid;
 use crate::body::{FileTime, SMBDialect};
-use crate::server::{SMBConnection, SMBOpen, SMBSession, SMBShare};
+use crate::server::{SMBClient, SMBConnection, SMBLeaseTable, SMBOpen, SMBSession, SMBShare};
 
 pub struct SMBServer {
     statistics: ServerDiagnostics,
