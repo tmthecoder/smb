@@ -1,10 +1,12 @@
 use crate::header::{Header, SMBCommandCode, LegacySMBCommandCode, SMBExtra, SMBFlags, SMBStatus, LegacySMBFlags, LegacySMBFlags2};
 use serde::{Serialize, Deserialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes, u32_to_bytes, u64_to_bytes};
+use crate::header::status::NTStatusCode;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBSyncHeader {
     pub command: SMBCommandCode,
+    status: u32,
     flags: SMBFlags,
     next_command: u32,
     message_id: u64,
@@ -42,6 +44,7 @@ impl Header for SMBSyncHeader {
         Some((SMBSyncHeader {
             command: (bytes_to_u16(& bytes[8..10]) as u8).try_into().ok()?,
             flags: SMBFlags::from_bits_truncate(bytes_to_u32(&bytes[12..16])),
+            status: 0,
             next_command: bytes_to_u32(&bytes[16..20]),
             message_id: bytes_to_u64(&bytes[20..28]),
             tree_id: bytes_to_u32(&bytes[32..36]),
@@ -55,7 +58,7 @@ impl Header for SMBSyncHeader {
             &b"SMB"[0..],
             &[64, 0], // Structure size,
             &[0; 2], // Credit
-            &[0; 4], // Reserved/Status/TODO
+            &u32_to_bytes(self.status), // Reserved/Status/TODO
             &u16_to_bytes(self.command as u16),
             &[0; 2], // CreditResponse,
             &u32_to_bytes(self.flags.bits()),
@@ -110,6 +113,7 @@ impl SMBSyncHeader {
     pub fn new(command: SMBCommandCode, flags: SMBFlags, next_command: u32, message_id: u64, tree_id: u32, session_id: u64, signature: [u8; 16]) -> Self {
         SMBSyncHeader {
             command,
+            status: 0,
             flags,
             next_command,
             message_id,
@@ -125,6 +129,7 @@ impl SMBSyncHeader {
                 Some(Self {
                     command: SMBCommandCode::LegacyNegotiate,
                     flags: SMBFlags::empty(),
+                    status: 0,
                     next_command: 0,
                     message_id: legacy_header.mid as u64,
                     tree_id: legacy_header.tid as u32,
@@ -136,10 +141,11 @@ impl SMBSyncHeader {
         }
     }
 
-    pub fn create_response_header(&self) -> Self {
+    pub fn create_response_header(&self, status: u32) -> Self {
         Self {
             command: self.command,
             flags: SMBFlags::SERVER_TO_REDIR,
+            status,
             next_command: 0,
             message_id: self.message_id,
             tree_id: self.tree_id,

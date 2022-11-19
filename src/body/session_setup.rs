@@ -1,6 +1,7 @@
+use std::net::TcpStream;
 use crate::body::{Capabilities, SecurityMode};
 use bitflags::bitflags;
-use libgssapi::context::ServerCtx;
+use cross_krb5::{PendingServerCtx, ServerCtx};
 use serde::{Deserialize, Serialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes};
 use crate::gss_helper::get_resp_buffer;
@@ -25,7 +26,12 @@ impl SMBSessionSetupRequestBody {
         let capabilities = Capabilities::from_bits_truncate(bytes_to_u32(&bytes[4..8]) as u8);
         let previous_session_id = bytes_to_u64(&bytes[16..24]);
         let buffer = Vec::from(&bytes[security_buffer_offset..(security_buffer_offset + security_buffer_len)]);
+        println!("Buffer: {:?}", buffer);
         Some((Self { flags, security_mode, capabilities, previous_session_id, buffer }, &bytes[(security_buffer_offset + security_buffer_len)..]))
+    }
+    
+    pub fn get_buffer_copy(&self) -> Vec<u8> {
+        self.buffer.clone()
     }
 }
 
@@ -40,10 +46,10 @@ impl SMBSessionSetupResponseBody {
         Self { session_flags, buffer }
     }
 
-    pub fn from_request(request: SMBSessionSetupRequestBody, server_ctx: &mut ServerCtx) -> Option<Self> {
+    pub fn from_request(request: SMBSessionSetupRequestBody, token: Vec<u8>) -> Option<Self> {
         Some(Self {
             session_flags: SMBSessionFlags::empty(),
-            buffer: get_resp_buffer(server_ctx, &*request.buffer)?
+            buffer: token
         })
     }
 }

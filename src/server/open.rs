@@ -9,12 +9,12 @@ pub struct SMBOpen {
     connection: Option<SMBConnection>,
     local_open;
     granted_access;
-    oplock_level;
-    oplock_state;
-    oplock_timeout;
+    oplock_level: SMBOplockLevel,
+    oplock_state: SMBOplockState,
+    oplock_timeout: u64,
     is_durable: bool,
-    durable_open_timeout;
-    durable_open_scavenger_timeout;
+    durable_open_timeout: u64,
+    durable_open_scavenger_timeout: u64,
     durable_owner;
     current_ea_index: u32,
     current_quota_index: u32,
@@ -22,7 +22,7 @@ pub struct SMBOpen {
     path_name: String,
     resume_key: u32,
     file_name: String,
-    create_options;
+    create_options: SMBCreateOptions,
     file_attributes;
     client_guid: Vec<u8>,
     lease: Option<SMBLease>,
@@ -39,4 +39,18 @@ pub struct SMBOpen {
     is_shared_vhdx: bool,
     application_instance_version_high: u64,
     application_instance_version_low: u64,
+}
+
+pub enum SMBOplockLevel {
+    None,
+    II,
+    Exclusive,
+    Batch,
+    Lease
+}
+
+pub enum SMBOplockState {
+    Held,
+    Breaking,
+    None
 }

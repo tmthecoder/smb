@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use uuid::Uuid;
-use crate::body::{Capabilities, FileTime, SecurityMode, SMBDialect, SMBNegotiationRequest};
-use crate::server::session::SMBSession;
+use crate::body::{Capabilities, CompressionAlgorithm, FileTime, RDMATransformID, SecurityMode, SMBDialect, SMBNegotiationRequest};
+use crate::server::{SMBPreauthSession, SMBRequest, SMBSession};
 
 pub struct SMBConnection {
     command_sequence_window: Vec<u8>, // TODO
@@ -19,7 +19,7 @@ pub struct SMBConnection {
     transport_name: String,
     session_table: HashMap<u64, SMBSession>,
     creation_time: FileTime,
-    preauth_session_table: HashMap<u64, ??>, // TODO
+    preauth_session_table: HashMap<u64, SMBPreauthSession>, // TODO
     clint_guid: Uuid,
     server_capabilites: Capabilities,
     client_security_mode: SecurityMode,
@@ -29,9 +29,9 @@ pub struct SMBConnection {
     preauth_integrity_hash_value: Vec<u8>, // TODO
     cipher_id: u64,
     client_dialects: Vec<SMBDialect>,
-    compression_ids: Vec<CompressionId>, // TODO ??
+    compression_ids: Vec<CompressionAlgorithm>, // TODO ??
     supports_chained_compression: bool,
-    rdma_transform_ids: Vec<RDMATransformIDs>, // TODO ??
+    rdma_transform_ids: Vec<RDMATransformID>, // TODO ??
     signing_algorithm_id: u64,
     accept_transport_security: bool,
 }

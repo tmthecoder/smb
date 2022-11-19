@@ -19,4 +19,5 @@ serde = { version = "1.0.144", features = ["derive"] }
 anyhow = { version = "1.0.62", optional = true }
 libgssapi = { version = "0.6.3", default-features = false }
 libgssapi-sys = { version = "0.2.4", default-features = false }
+cross-krb5 = { verson = "0.3.0", default-features = false }
 uuid = { version = "1.1.2", features = ["v4", "fast-rng", "macro-diagnostics", "serde"] }

@@ -1,10 +1,11 @@
 use std::collections::HashMap;
-use crate::server::{SMBConnection, SMBOpen, SMBTreeConnect};
+use libgssapi::context::SecurityContext;
+use crate::server::{SMBChannel, SMBConnection, SMBOpen, SMBTreeConnect};
 
 pub struct SMBSession {
     session_id: u64,
     state: SessionState,
-    security_context;
+    security_context: Box<dyn SecurityContext>, // TODO >>
     is_anonymous: bool,
     is_guest: bool,
     session_key: [u8; 16],
@@ -23,7 +24,7 @@ pub struct SMBSession {
     decryption_key: Vec<u8>,
     signing_key: Vec<u8>,
     application_key: Vec<u8>,
-    pre_auth_integrity_hash_value;
+    pre_auth_integrity_hash_value: Vec<u8>,
     full_session_key: Vec<u8>
 }
 

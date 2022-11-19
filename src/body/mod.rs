@@ -23,6 +23,10 @@ pub type SMBSessionSetupRequest = session_setup::SMBSessionSetupRequestBody;
 pub type SMBSessionSetupResponse = session_setup::SMBSessionSetupResponseBody;
 pub type NegotiateContext = negotiate_context::NegotiateContext;
 
+// Negotiate Ctx Specific
+pub type CompressionAlgorithm = negotiate_context::CompressionAlgorithm;
+pub type RDMATransformID = negotiate_context::RDMATransformID;
+
 pub trait Body<S: Header> {
     type Item;
 

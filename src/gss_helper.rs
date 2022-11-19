@@ -1,7 +1,9 @@
-use std::cmp::min;
-use std::os::raw::c_uint;
+
+use std::io::{BufWriter, Read, Write};
+use std::net::TcpStream;
+
 use std::ptr::{null, null_mut};
-use libgssapi::context::{SecurityContext, ServerCtx};
+use cross_krb5::{PendingServerCtx, ServerCtx, Step};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -74,8 +76,24 @@ pub struct GSSOIDSetDesc {
 //     pub(crate) fn gss_acquire_cred(minor_status: *mut c_uint, desired_name: *mut GSSName, time_req: c_uint, desired_mechs: *mut GSSOIDSetDesc, cred_usage: i32, output_cred_handle: *mut *mut GSSCredID, actual_mechs: *mut *mut GSSOIDSetDesc, time_rec: *mut c_uint) -> c_uint;
 // }
 
-pub(crate) fn get_resp_buffer(ctx: &mut ServerCtx, tkn: &[u8]) -> Option<Vec<u8>> {
-    let buf = ctx.step(tkn).unwrap();
-    println!("Comp: {}", ctx.is_complete());
-    Some(buf?.to_vec())
+//    ctx.write_all(&(tkn.len() as u32).to_be_bytes()).unwrap();
+//     println!("Len: {} Be: {:?}", tkn.len(), tkn.len().to_be_bytes());
+//     ctx.write_all(tkn).unwrap();
+//     let mut len_buf = [0_u8; 4];
+//     ctx.read_exact(&mut len_buf).unwrap();
+//     let len = u32::from_be_bytes(len_buf);
+//     let mut buffer = vec![0; len as usize];
+//     ctx.read_exact(&mut buffer).unwrap();
+
+pub(crate) fn get_resp_buffer(ctx: PendingServerCtx, tkn: &[u8]) -> Option<(Vec<u8>, PendingServerCtx)> {
+    match ctx.step(tkn).unwrap() {
+        Step::Finished((ctx, token)) => {
+            return None;
+        },
+        Step::Continue((ctx, token)) => {
+            return Some((token.to_vec(), ctx));
+        }
+    }
+    // println!("Comp: {}", ctx.);
+    // Some(buf?.to_vec())
 }

@@ -1,10 +1,12 @@
-use libgssapi::context::ServerCtx;
+use std::net::TcpStream;
+use cross_krb5::{PendingServerCtx, ServerCtx};
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use crate::body::{Capabilities, FileTime, NegotiateContext, SecurityMode};
 use crate::body::negotiate_context::{CompressionCapabilitiesBody, EncryptionCapabilitiesBody, NetnameNegotiateContextIDBody, PreAuthIntegrityCapabilitiesBody, RDMATransformCapabilitiesBody, RDMATransformID, SigningCapabilitiesBody, TransportCapabilitiesBody, TransportCapabilitiesFlags};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
+use crate::gss_helper::get_resp_buffer;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBNegotiationRequestBody {
@@ -93,12 +95,15 @@ impl SMBNegotiationResponseBody {
         }
     }
 
-    pub fn from_request(request: SMBNegotiationRequestBody, server_ctx: &mut ServerCtx) -> Option<Self> {
+    pub fn from_request(request: SMBNegotiationRequestBody, token: Vec<u8>) -> Option<Self> {
         let mut dialects = request.dialects.clone();
         dialects.sort();
         let mut negotiate_contexts = Vec::new();
-        for neg_ctx in request.negotiate_contexts {
-            negotiate_contexts.push(neg_ctx.response_from_existing()?);
+        let dialect = *dialects.last()?;
+        if dialect == SMBDialect::V3_1_1 {
+            for neg_ctx in request.negotiate_contexts {
+                negotiate_contexts.push(neg_ctx.response_from_existing()?);
+            }
         }
         Some(Self {
             security_mode: request.security_mode | SecurityMode::NEGOTIATE_SIGNING_REQUIRED,
@@ -110,7 +115,7 @@ impl SMBNegotiationResponseBody {
             max_write_size: 65535,
             system_time: FileTime::now(),
             server_start_time: FileTime::from_unix(0),
-            buffer: Vec::new(),
+            buffer: token,
             negotiate_contexts
         })
     }

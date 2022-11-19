@@ -10,7 +10,7 @@ pub struct SMBLeaseTable {
 
 pub struct SMBLease {
     lease_key: u128,
-    clent_lease_id: u64,
+    client_lease_id: u64,
     file_name: String,
     lease_state: SMBLeaseState,
     break_to_lease_state: SMBLeaseState,
@@ -18,11 +18,19 @@ pub struct SMBLease {
     lease_opens: Vec<SMBOpen>,
     breaking: bool,
     held: bool,
-    break_notification: ??, // TODO ??
+    break_notification: SMBLeaseBreakNotification,
     file_delete_on_close: bool,
     epoch: u64,
     parent_lease_key: u128,
     version: u8
+}
+
+pub struct SMBLeaseBreakNotification {
+    new_epoch: u16,
+    flags: SMBLeaseBreakNotificationFlags,
+    lease_key: [u8; 16],
+    current_lease_state: SMBLeaseState,
+    new_lease_state: SMBLeaseState,
 }
 
 bitflags! {
@@ -30,5 +38,11 @@ bitflags! {
         const READ_CACHING = 0x1;
         const WRITE_CACHING = 0x2;
         const HANDLE_CACHING = 0x4;
+    }
+}
+
+bitflags! {
+    pub struct SMBLeaseBreakNotificationFlags: u32 {
+        const NOTIFY_BREAK_LEASE_FLAG_ACK_REQUIRED = 0x01;
     }
 }

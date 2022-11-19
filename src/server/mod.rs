@@ -10,11 +10,14 @@ mod session;
 mod share;
 mod tree_connect;
 
+pub type SMBChannel = channel::SMBChannel;
 pub type SMBClient = client::SMBClient;
 pub type SMBConnection = connection::SMBConnection;
 pub type SMBLease = lease::SMBLease;
 pub type SMBLeaseTable = lease::SMBLeaseTable;
 pub type SMBOpen = open::SMBOpen;
+pub type SMBPreauthSession = preauth_session::SMBPreauthSession;
+pub type SMBRequest = request::SMBRequest;
 pub type SMBSession = session::SMBSession;
 pub type SMBServer = server::SMBServer;
 pub type SMBShare = share::SMBShare;
