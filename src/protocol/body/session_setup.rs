@@ -1,10 +1,9 @@
 use std::net::TcpStream;
-use crate::body::{Capabilities, SecurityMode};
 use bitflags::bitflags;
 use cross_krb5::{PendingServerCtx, ServerCtx};
 use serde::{Deserialize, Serialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes};
-use crate::gss_helper::get_resp_buffer;
+use crate::protocol::body::{Capabilities, SecurityMode};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBSessionSetupRequestBody {

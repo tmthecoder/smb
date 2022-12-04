@@ -1,16 +1,15 @@
 use serde::{Deserialize, Serialize};
-use crate::body::{Body, SMBNegotiationResponse};
-use crate::header::{LegacySMBCommandCode, LegacySMBHeader, SMBCommandCode};
-use crate::SMBSyncHeader;
 use std::str;
-use crate::body::negotiate::SMBNegotiationRequestBody;
-use crate::body::session_setup::{SMBSessionSetupRequestBody, SMBSessionSetupResponseBody};
+use crate::protocol::body::Body;
+use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
+use crate::protocol::body::session_setup::{SMBSessionSetupRequestBody, SMBSessionSetupResponseBody};
+use crate::protocol::header::{LegacySMBCommandCode, LegacySMBHeader, SMBCommandCode, SMBSyncHeader};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum SMBBody {
     None,
-    NegotiateRequest(SMBNegotiationRequestBody),
-    NegotiateResponse(SMBNegotiationResponse),
+    NegotiateRequest(SMBNegotiateRequest),
+    NegotiateResponse(SMBNegotiateResponse),
     SessionSetupRequest(SMBSessionSetupRequestBody),
     SessionSetupResponse(SMBSessionSetupResponseBody),
     LegacyCommand(LegacySMBBody)
@@ -30,7 +29,7 @@ impl Body<SMBSyncHeader> for SMBBody {
     fn from_bytes_and_header<'a>(bytes: &'a [u8], header: &SMBSyncHeader) -> (Self::Item, &'a [u8]) {
         match header.command {
             SMBCommandCode::Negotiate => {
-                if let Some((negotiation_body, carryover)) = SMBNegotiationRequestBody::from_bytes(bytes) {
+                if let Some((negotiation_body, carryover)) = SMBNegotiateRequest::from_bytes(bytes) {
                     return (SMBBody::NegotiateRequest(negotiation_body), carryover)
                 }
                 (SMBBody::None, bytes)

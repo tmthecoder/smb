@@ -1,7 +1,6 @@
-use crate::header::{Header, SMBCommandCode, LegacySMBCommandCode, SMBExtra, SMBFlags, SMBStatus, LegacySMBFlags, LegacySMBFlags2};
 use serde::{Serialize, Deserialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes, u32_to_bytes, u64_to_bytes};
-use crate::header::status::NTStatusCode;
+use crate::protocol::header::{Header, LegacySMBCommandCode, LegacySMBFlags, LegacySMBFlags2, SMBCommandCode, SMBExtra, SMBFlags, SMBStatus};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBSyncHeader {

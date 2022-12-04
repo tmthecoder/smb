@@ -6,9 +6,10 @@ use cross_krb5::{AcceptFlags, ServerCtx, Step};
 use libgssapi::credential::{Cred, CredUsage};
 use libgssapi::name::Name;
 use libgssapi::oid::{GSS_MA_NEGOEX_AND_SPNEGO, GSS_MECH_IAKERB, GSS_MECH_KRB5, GSS_NT_HOSTBASED_SERVICE, GSS_NT_USER_NAME, Oid, OidSet};
-use smb_reader::body::{Capabilities, FileTime, SecurityMode, SMBBody, SMBDialect, SMBNegotiationResponse, SMBSessionSetupResponse};
-use smb_reader::header::{SMBCommandCode, SMBFlags, SMBSyncHeader};
 use smb_reader::message::{Message, SMBMessage};
+use smb_reader::protocol::body::{Capabilities, FileTime, SecurityMode, SMBBody, SMBDialect, SMBSessionSetupResponse};
+use smb_reader::protocol::body::negotiate::SMBNegotiateResponse;
+use smb_reader::protocol::header::{SMBCommandCode, SMBFlags, SMBSyncHeader};
 use smb_reader::SMBListener;
 
 pub static SPNEGO_MECH: Oid = Oid::from_slice(b"\x2b\x06\x01\x05\x05\x02");
@@ -41,7 +42,7 @@ fn main() -> anyhow::Result<()> {
        for message in connection.messages() {
            match message.header.command {
                SMBCommandCode::LegacyNegotiate => {
-                   let resp_body = SMBBody::NegotiateResponse(SMBNegotiationResponse::new(SecurityMode::empty(), SMBDialect::V2_X_X, Capabilities::empty(), 100, 100, 100, start_time.clone(), Vec::new()));
+                   let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::new(SecurityMode::empty(), SMBDialect::V2_X_X, Capabilities::empty(), 100, 100, 100, start_time.clone(), Vec::new()));
                    let resp_header = SMBSyncHeader::new(SMBCommandCode::Negotiate, SMBFlags::SERVER_TO_REDIR, 0, 0, 65535, 65535, [0; 16]);
                    let resp_msg = SMBMessage::new(resp_header, resp_body);
                    cloned_connection.send_message(resp_msg)?;
@@ -60,7 +61,7 @@ fn main() -> anyhow::Result<()> {
                                break;
                            }
                        }
-                       let resp_body = SMBBody::NegotiateResponse(SMBNegotiationResponse::from_request(request, token).unwrap());
+                       let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::from_request(request, token).unwrap());
                        let resp_header = message.header.create_response_header(0x0);
                        let resp_msg = SMBMessage::new(resp_header, resp_body);
                        cloned_connection.send_message(resp_msg)?;

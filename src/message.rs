@@ -1,8 +1,8 @@
-use crate::header::{SMBSyncHeader, Header, LegacySMBHeader};
 use serde::{Deserialize, Serialize};
 use std::str;
-use crate::body::{Body, LegacySMBBody, SMBBody};
 use crate::byte_helper::u16_to_bytes;
+use crate::protocol::body::{Body, LegacySMBBody, SMBBody};
+use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBMessage<S: Header, T: Body<S>> {

@@ -3,13 +3,13 @@ use cross_krb5::{PendingServerCtx, ServerCtx};
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::body::{Capabilities, FileTime, NegotiateContext, SecurityMode};
-use crate::body::negotiate_context::{CompressionCapabilitiesBody, EncryptionCapabilitiesBody, NetnameNegotiateContextIDBody, PreAuthIntegrityCapabilitiesBody, RDMATransformCapabilitiesBody, RDMATransformID, SigningCapabilitiesBody, TransportCapabilitiesBody, TransportCapabilitiesFlags};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
 use crate::gss_helper::get_resp_buffer;
+use crate::protocol::body::{Capabilities, FileTime, SecurityMode, SMBDialect};
+use crate::protocol::body::negotiate::NegotiateContext;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct SMBNegotiationRequestBody {
+pub struct SMBNegotiateRequestBody {
     security_mode: SecurityMode,
     capabilities: Capabilities,
     client_uuid: Uuid,
@@ -17,7 +17,7 @@ pub struct SMBNegotiationRequestBody {
     negotiate_contexts: Vec<NegotiateContext>
 }
 
-impl SMBNegotiationRequestBody {
+impl SMBNegotiateRequestBody {
     pub fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
         if bytes.len() < 37 { return None }
         let dialect_count = bytes_to_u16(&bytes[2..4]) as usize;
@@ -64,7 +64,7 @@ impl SMBNegotiationRequestBody {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct SMBNegotiationResponseBody {
+pub struct SMBNegotiateResponseBody {
     security_mode: SecurityMode,
     dialect: SMBDialect,
     guid: Uuid,
@@ -78,7 +78,7 @@ pub struct SMBNegotiationResponseBody {
     negotiate_contexts: Vec<NegotiateContext>
 }
 
-impl SMBNegotiationResponseBody {
+impl SMBNegotiateResponseBody {
     pub fn new(security_mode: SecurityMode, dialect: SMBDialect, capabilities: Capabilities, max_transact_size: u32, max_read_size: u32, max_write_size: u32, server_start_time: FileTime, buffer: Vec<u8>) -> Self {
         Self {
             security_mode,
@@ -95,7 +95,7 @@ impl SMBNegotiationResponseBody {
         }
     }
 
-    pub fn from_request(request: SMBNegotiationRequestBody, token: Vec<u8>) -> Option<Self> {
+    pub fn from_request(request: SMBNegotiateRequestBody, token: Vec<u8>) -> Option<Self> {
         let mut dialects = request.dialects.clone();
         dialects.sort();
         let mut negotiate_contexts = Vec::new();
@@ -121,7 +121,7 @@ impl SMBNegotiationResponseBody {
     }
 }
 
-impl SMBNegotiationResponseBody {
+impl SMBNegotiateResponseBody {
     pub fn as_bytes(&self) -> Vec<u8> {
         let len_w_buffer = 128 + self.buffer.len();
         let padding_len = 8 - (len_w_buffer % 8);
@@ -165,15 +165,4 @@ impl SMBNegotiationResponseBody {
             &*negotiate_ctx_vec
         ].concat()
     }
-}
-
-#[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd)]
-pub enum SMBDialect {
-    V2_0_2 = 0x202,
-    V2_1_0 = 0x210,
-    V3_0_0 = 0x300,
-    V3_0_2 = 0x302,
-    V3_1_1 = 0x311,
-    V2_X_X = 0x2FF
 }
