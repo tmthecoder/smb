@@ -6,6 +6,11 @@ use smb_reader::protocol::body::{Capabilities, FileTime, SecurityMode, SMBBody, 
 use smb_reader::protocol::body::negotiate::SMBNegotiateResponse;
 use smb_reader::protocol::header::{SMBCommandCode, SMBFlags, SMBSyncHeader};
 use smb_reader::SMBListener;
+use smb_reader::util::auth::ntlm::{NTLMAuthProvider, NTLMMessage};
+use smb_reader::util::auth::{AuthProvider, User};
+
+const NTLM_ID: [u8; 10] = [0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x02, 0x0a];
+const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
 
 fn main() -> anyhow::Result<()> {
     let server = SMBListener::new("127.0.0.1:50122");
@@ -27,7 +32,8 @@ fn main() -> anyhow::Result<()> {
                }
                SMBCommandCode::Negotiate => {
                    if let SMBBody::NegotiateRequest(request) = message.body {
-                       let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::from_request(request, Vec::new()).unwrap());
+                       println!("buffer {:?}", spnego_init_buffer(true));
+                       let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::from_request(request, spnego_init_buffer(true)).unwrap());
                        let resp_header = message.header.create_response_header(0x0);
                        let resp_msg = SMBMessage::new(resp_header, resp_body);
                        cloned_connection.send_message(resp_msg)?;
@@ -35,12 +41,15 @@ fn main() -> anyhow::Result<()> {
                }
                SMBCommandCode::SessionSetup => {
                    if let SMBBody::SessionSetupRequest(request) = message.body {
-                       let resp = SMBSessionSetupResponse::from_request(request, Vec::new()).unwrap();
+                       let ndtlm_msg = NTLMMessage::from_bytes(&request.get_buffer_copy()[34..]).unwrap();
+                       println!("Session Setup {:?}", ndtlm_msg);
+                       let helper = NTLMAuthProvider::new(vec![User::new("tejas".into(), "test".into())]);
+                       let mut output = NTLMMessage::Dummy;
+                       helper.accept_security_context(&ndtlm_msg, &mut output);
+                       let resp = SMBSessionSetupResponse::from_request(request, spnego_resp_buffer(&output.as_bytes())).unwrap();
                        let resp_body = SMBBody::SessionSetupResponse(resp);
                        let resp_header = message.header.create_response_header(0);
                        let resp_msg = SMBMessage::new(resp_header, resp_body);
-                       println!("MSG: {:?}", resp_msg);
-                       println!("BYTES: {:?}", resp_msg.as_bytes());
                        cloned_connection.send_message(resp_msg)?;
                    }
                }
@@ -53,4 +62,105 @@ fn main() -> anyhow::Result<()> {
        }
     }
     Ok(())
+}
+
+fn spnego_init_buffer(header: bool) -> Vec<u8> {
+    let oid_size = get_field_size(NTLM_ID.len()) + 1 + NTLM_ID.len();
+    let field_size = get_field_size(oid_size);
+    let const_len = 1 + oid_size + field_size;
+    let const_field_size = get_field_size(const_len);
+    let sequence_length = 1 + const_field_size + 1 + field_size + oid_size;
+
+    // after sequence_length
+    let seq_length_size = get_field_size(sequence_length);
+    let construction_length = 1 + seq_length_size + sequence_length;
+    let header_vec = if header {
+        let size = spnego_init_buffer(false).len();
+        get_header(size)
+    } else {
+        Vec::new()
+    };
+
+    [
+        &*header_vec,
+        &[160][0..],
+        &*get_length(construction_length),
+        &[48],
+        &*get_length(sequence_length),
+        &[160],
+        &*get_length(const_len),
+        &[48],
+        &*get_length(oid_size),
+        &[6],
+        &*get_length(NTLM_ID.len()),
+        &NTLM_ID
+    ].concat()
+}
+
+fn spnego_resp_buffer(response: &Vec<u8>) -> Vec<u8> {
+    let nego_status_len = 5;
+    let token_field_len = get_field_size(response.len());
+    let token_construction_len = 1 + token_field_len + response.len();
+    let token_construction_field_size = get_field_size(token_construction_len);
+    let sequence_len = 1 + token_construction_field_size + 1 + token_field_len + response.len() + nego_status_len;
+
+    let seq_field_size = get_field_size(sequence_len);
+    let construction_len = 1 + seq_field_size + sequence_len;
+
+    [
+        &[161][0..],
+        &*get_length(construction_len),
+        &[48],
+        &*get_length(sequence_len),
+        &[160],
+        &*get_length(3),
+        &[10],
+        &*get_length(1),
+        &[0x01],
+        &[162],
+        &*get_length(1 + token_field_len + response.len()),
+        &[4],
+        &*get_length(response.len()),
+        response
+    ].concat()
+}
+
+fn get_field_size(len: usize) -> usize {
+    if len <= 0x80 {
+        return 1;
+    }
+    let mut adder = 1;
+    let mut len = len;
+    while len > 0 {
+        len /= 256;
+        adder+=1;
+    }
+    1 + adder + len
+}
+
+fn get_header(size: usize) -> Vec<u8> {
+    let oid_field_size = get_field_size(SPNEGO_ID.len());
+    let token_len = 1 + oid_field_size + SPNEGO_ID.len() + size;
+    [
+        &[96][0..],
+        &*get_length(token_len),
+        &[6][0..],
+        &*get_length(SPNEGO_ID.len()),
+        &SPNEGO_ID,
+    ].concat()
+}
+
+fn get_length(length: usize) -> Vec<u8> {
+    if length <= 0x80 {
+        return vec![length as u8];
+    }
+    let mut len = length;
+    let mut len_bytes = Vec::new();
+    while len > 0 {
+        let byte = len % 256;
+        len_bytes.push(byte as u8);
+        len /= 256;
+    }
+    len_bytes.reverse();
+    [&[(0x80 | len_bytes.len()) as u8][0..], &*len_bytes].concat()
 }

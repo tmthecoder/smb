@@ -2,6 +2,7 @@ extern crate core;
 
 pub mod protocol;
 pub mod message;
+pub mod util;
 // pub mod server;
 mod byte_helper;
 mod gss_helper;
@@ -61,7 +62,7 @@ impl SMBMessageStream {
     }
 
     pub fn send_message<T: Message>(&mut self, message: T) -> std::io::Result<()> {
-        self.stream.write_all(&*message.as_bytes())
+        self.stream.write_all(&message.as_bytes())
     }
 }
 
