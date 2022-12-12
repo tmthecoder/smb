@@ -41,11 +41,11 @@ fn main() -> anyhow::Result<()> {
                }
                SMBCommandCode::SessionSetup => {
                    if let SMBBody::SessionSetupRequest(request) = message.body {
-                       let ndtlm_msg = NTLMMessage::from_bytes(&request.get_buffer_copy()[34..]).unwrap();
-                       println!("Session Setup {:?}", ndtlm_msg);
+                       let ntlm_msg = NTLMMessage::from_bytes(&request.get_buffer_copy()[34..]).unwrap();
+                       println!("Session Setup {:?}", ntlm_msg);
                        let helper = NTLMAuthProvider::new(vec![User::new("tejas".into(), "test".into())]);
                        let mut output = NTLMMessage::Dummy;
-                       helper.accept_security_context(&ndtlm_msg, &mut output);
+                       helper.accept_security_context(&ntlm_msg, &mut output);
                        let resp = SMBSessionSetupResponse::from_request(request, spnego_resp_buffer(&output.as_bytes())).unwrap();
                        let resp_body = SMBBody::SessionSetupResponse(resp);
                        let resp_header = message.header.create_response_header(0);
@@ -100,13 +100,18 @@ fn spnego_init_buffer(header: bool) -> Vec<u8> {
 fn spnego_resp_buffer(response: &Vec<u8>) -> Vec<u8> {
     let nego_status_len = 5;
     let token_field_len = get_field_size(response.len());
+    let mechanism_len = get_field_size(NTLM_ID.len());
+
+    let mechanism_construction_len = 1 + mechanism_len + NTLM_ID.len();
     let token_construction_len = 1 + token_field_len + response.len();
+
+    let mechanism_construction_field_size = get_field_size(mechanism_construction_len);
     let token_construction_field_size = get_field_size(token_construction_len);
-    let sequence_len = 1 + token_construction_field_size + 1 + token_field_len + response.len() + nego_status_len;
+    let sequence_len = 1 + token_construction_field_size + 1 + token_field_len + response.len() + nego_status_len + 1 + mechanism_construction_field_size + 1 + mechanism_len + NTLM_ID.len();
 
     let seq_field_size = get_field_size(sequence_len);
     let construction_len = 1 + seq_field_size + sequence_len;
-
+    println!("len {}", 1 + token_field_len + response.len());
     [
         &[161][0..],
         &*get_length(construction_len),
@@ -117,6 +122,11 @@ fn spnego_resp_buffer(response: &Vec<u8>) -> Vec<u8> {
         &[10],
         &*get_length(1),
         &[0x01],
+        &[161],
+        &*get_length( 1 + mechanism_len + NTLM_ID.len()),
+        &[6],
+        &*get_length(NTLM_ID.len()),
+        &NTLM_ID,
         &[162],
         &*get_length(1 + token_field_len + response.len()),
         &[4],
@@ -126,7 +136,7 @@ fn spnego_resp_buffer(response: &Vec<u8>) -> Vec<u8> {
 }
 
 fn get_field_size(len: usize) -> usize {
-    if len <= 0x80 {
+    if len < 0x80 {
         return 1;
     }
     let mut adder = 1;
@@ -135,7 +145,7 @@ fn get_field_size(len: usize) -> usize {
         len /= 256;
         adder+=1;
     }
-    1 + adder + len
+    adder
 }
 
 fn get_header(size: usize) -> Vec<u8> {
@@ -151,7 +161,7 @@ fn get_header(size: usize) -> Vec<u8> {
 }
 
 fn get_length(length: usize) -> Vec<u8> {
-    if length <= 0x80 {
+    if length < 0x80 {
         return vec![length as u8];
     }
     let mut len = length;

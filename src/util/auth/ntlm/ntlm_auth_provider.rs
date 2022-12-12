@@ -61,7 +61,7 @@ impl AuthProvider<NTLMMessage> for NTLMAuthProvider {
         }
         add_if_present(&mut negotiate_flags, &msg.negotiate_flags, NTLMNegotiateFlags::KEY_EXCHANGE);
 
-        let target_name = "\0\0\0\0\0\0\0\0";
+        let target_name = "fakeserver";
 
         *output_token = NTLMMessage::Challenge(NTLMChallengeMessageBody::new(target_name.into(), negotiate_flags));
 

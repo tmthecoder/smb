@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 use rand::RngCore;
 use rand::rngs::ThreadRng;
-use crate::byte_helper::{bytes_to_u32, u32_to_bytes};
+use crate::byte_helper::{bytes_to_u32, u16_to_bytes, u32_to_bytes};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -15,9 +15,10 @@ pub enum NTLMMessage {
 impl NTLMMessage {
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() < 24 { return None;}
+        println!("Neg Token Bytes: {:?}", bytes);
         match bytes_to_u32(&bytes[8..12]) {
-            0x01 => Some(NTLMMessage::Negotiate(NTLMNegotiateMessageBody::from_bytes(&bytes)?)),
-            0x02 => Some(NTLMMessage::Challenge(NTLMChallengeMessageBody::from_bytes(&bytes)?)),
+            0x01 => Some(NTLMMessage::Negotiate(NTLMNegotiateMessageBody::from_bytes(bytes)?)),
+            0x02 => Some(NTLMMessage::Challenge(NTLMChallengeMessageBody::from_bytes(bytes)?)),
             0x03 => Some(NTLMMessage::Authenticate),
             _ => None,
         }
@@ -89,15 +90,34 @@ impl NTLMChallengeMessageBody {
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
+        let mut name = Vec::new();
+        let fakeserver: Vec<u16> = str::encode_utf16("fakeserver").collect();
+        for i in fakeserver.iter() {
+            let bytes = u16_to_bytes(*i);
+            name.push(bytes[0]);
+            name.push(bytes[1]);
+        }
         [
             self.signature.as_bytes(), // 0 - 8
             &u32_to_bytes(0x02), // 8 - 12
-            &[0; 4], // 12 - 16
-            &u32_to_bytes(48), // 16 - 20
+            &u16_to_bytes(20), &u16_to_bytes(20), // 12 - 16
+            &u32_to_bytes(56), // 16 - 20
             &u32_to_bytes(self.negotiate_flags.bits), // 20 - 24
             &self.server_challenge, // 24 - 32
-            &[0; 12], // 32 - 44
-            &u32_to_bytes(48), // 44 - 48
+            &[0; 8], // 32 - 40
+            &u16_to_bytes(52), &u16_to_bytes(52), // 40-44
+            &u32_to_bytes(76), // 44 - 48
+            &[5, 2], // NTLM major minor
+            &u16_to_bytes(3790), // NTLM build
+            &[0, 0, 0, 15], // NTLM current revision
+            &name,
+            &u16_to_bytes(1),
+            &u16_to_bytes(20),
+            &*name,
+            &u16_to_bytes(2),
+            &u16_to_bytes(20),
+            &name,
+            &[0; 4],
         ].concat()
     }
 }
