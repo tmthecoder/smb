@@ -1,4 +1,5 @@
 pub mod ntlm;
+pub mod gss;
 mod user;
 
 pub type User = user::User;

@@ -15,7 +15,7 @@ pub enum NTLMMessage {
 impl NTLMMessage {
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() < 24 { return None;}
-        println!("Neg Token Bytes: {:?}", bytes);
+        println!("Neg Token Bytes: {:?}", &bytes[8..12]);
         match bytes_to_u32(&bytes[8..12]) {
             0x01 => Some(NTLMMessage::Negotiate(NTLMNegotiateMessageBody::from_bytes(bytes)?)),
             0x02 => Some(NTLMMessage::Challenge(NTLMChallengeMessageBody::from_bytes(bytes)?)),
@@ -48,6 +48,11 @@ pub struct NTLMChallengeMessageBody {
     target_name: String,
     negotiate_flags: NTLMNegotiateFlags,
     server_challenge: [u8; 8],
+}
+
+pub struct NTLMAuthenticateMessageBody {
+    signature: String,
+    target_name: String,
 }
 
 impl NTLMNegotiateMessageBody {

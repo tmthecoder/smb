@@ -8,6 +8,7 @@ use smb_reader::protocol::header::{SMBCommandCode, SMBFlags, SMBSyncHeader};
 use smb_reader::SMBListener;
 use smb_reader::util::auth::ntlm::{NTLMAuthProvider, NTLMMessage};
 use smb_reader::util::auth::{AuthProvider, User};
+use smb_reader::util::auth::gss::SPNEGOToken;
 
 const NTLM_ID: [u8; 10] = [0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x02, 0x0a];
 const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
@@ -32,7 +33,6 @@ fn main() -> anyhow::Result<()> {
                }
                SMBCommandCode::Negotiate => {
                    if let SMBBody::NegotiateRequest(request) = message.body {
-                       println!("buffer {:?}", spnego_init_buffer(true));
                        let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::from_request(request, spnego_init_buffer(true)).unwrap());
                        let resp_header = message.header.create_response_header(0x0);
                        let resp_msg = SMBMessage::new(resp_header, resp_body);
@@ -41,6 +41,10 @@ fn main() -> anyhow::Result<()> {
                }
                SMBCommandCode::SessionSetup => {
                    if let SMBBody::SessionSetupRequest(request) = message.body {
+                       let mut offset = 0;
+                       println!("Buffer: {:?}", request.get_buffer_copy());
+                       let spnego_init_buffer = SPNEGOToken::from_bytes(&request.get_buffer_copy(), &mut offset).unwrap();
+                       println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
                        let ntlm_msg = NTLMMessage::from_bytes(&request.get_buffer_copy()[34..]).unwrap();
                        println!("Session Setup {:?}", ntlm_msg);
                        let helper = NTLMAuthProvider::new(vec![User::new("tejas".into(), "test".into())]);
