@@ -42,19 +42,22 @@ fn main() -> anyhow::Result<()> {
                SMBCommandCode::SessionSetup => {
                    if let SMBBody::SessionSetupRequest(request) = message.body {
                        let mut offset = 0;
-                       println!("Buffer: {:?}", request.get_buffer_copy());
                        let spnego_init_buffer = SPNEGOToken::from_bytes(&request.get_buffer_copy(), &mut offset).unwrap();
                        println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
-                       let ntlm_msg = NTLMMessage::from_bytes(&request.get_buffer_copy()[34..]).unwrap();
-                       println!("Session Setup {:?}", ntlm_msg);
-                       let helper = NTLMAuthProvider::new(vec![User::new("tejas".into(), "test".into())]);
-                       let mut output = NTLMMessage::Dummy;
-                       helper.accept_security_context(&ntlm_msg, &mut output);
-                       let resp = SMBSessionSetupResponse::from_request(request, spnego_resp_buffer(&output.as_bytes())).unwrap();
-                       let resp_body = SMBBody::SessionSetupResponse(resp);
-                       let resp_header = message.header.create_response_header(0);
-                       let resp_msg = SMBMessage::new(resp_header, resp_body);
-                       cloned_connection.send_message(resp_msg)?;
+                       match spnego_init_buffer {
+                           SPNEGOToken::Init(init_msg) => {
+                               let ntlm_msg = NTLMMessage::from_bytes(&*init_msg.mech_token.unwrap()).unwrap();
+                               let helper = NTLMAuthProvider::new(vec![User::new("tejas".into(), "test".into())]);
+                               let mut output = NTLMMessage::Dummy;
+                               helper.accept_security_context(&ntlm_msg, &mut output);
+                               let resp = SMBSessionSetupResponse::from_request(request, spnego_resp_buffer(&output.as_bytes())).unwrap();
+                               let resp_body = SMBBody::SessionSetupResponse(resp);
+                               let resp_header = message.header.create_response_header(0);
+                               let resp_msg = SMBMessage::new(resp_header, resp_body);
+                               cloned_connection.send_message(resp_msg)?;
+                           }
+                           _ => {}
+                       }
                    }
                }
                _ => {}

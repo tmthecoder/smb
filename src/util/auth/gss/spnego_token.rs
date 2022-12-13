@@ -29,26 +29,31 @@ pub enum SPNEGOToken {
 
 impl SPNEGOToken {
     pub fn from_bytes(bytes: &[u8], offset: &mut usize) -> Option<Self> {
-        if bytes[*offset] == APPLICATION_TAG {
-            *offset += 1;
-            if bytes[*offset + 1] == DER_ENCODING_OID_TAG {
-                *offset += 2;
-                let oid_length = read_length(bytes, offset);
-                let oid = &bytes[*offset..(*offset + oid_length)];
-                *offset += oid_length;
-                if oid.len() == SPNEGO_ID.len() && *oid == SPNEGO_ID {
-                    let tag = bytes[*offset];
-                    println!("OID: {:?}", tag);
-                    *offset += 1;
-                    return match tag {
-                        NEG_TOKEN_INIT_TAG => Some(SPNEGOToken::Init(SPNEGOTokenInitBody::from_bytes(bytes, offset)?)),
-                        NEG_TOKEN_RESP_TAG => Some(SPNEGOToken::Response(SPNEGOTokenResponseBody::from_bytes(bytes, offset)?)),
-                        _ => None,
+        println!("off: {}, Bytesss: {:?}", offset, bytes);
+        match bytes[*offset] {
+            APPLICATION_TAG => {
+                *offset += 1;
+                if bytes[*offset + 1] == DER_ENCODING_OID_TAG {
+                    *offset += 2;
+                    let oid_length = read_length(bytes, offset);
+                    let oid = &bytes[*offset..(*offset + oid_length)];
+                    *offset += oid_length;
+                    if oid.len() == SPNEGO_ID.len() && *oid == SPNEGO_ID {
+                        let tag = bytes[*offset];
+                        println!("OID: {:?}", tag);
+                        *offset += 1;
+                        return match tag {
+                            NEG_TOKEN_INIT_TAG => Some(SPNEGOToken::Init(SPNEGOTokenInitBody::from_bytes(bytes, offset)?)),
+                            NEG_TOKEN_RESP_TAG => Some(SPNEGOToken::Response(SPNEGOTokenResponseBody::from_bytes(bytes, offset)?)),
+                            _ => None,
+                        }
                     }
                 }
-            }
+                None
+            },
+            NEG_TOKEN_RESP_TAG => Some(SPNEGOToken::Response(SPNEGOTokenResponseBody::from_bytes(bytes, offset)?)),
+            _ => None,
         }
-        None
     }
 
     pub fn as_bytes(&self, header: bool) -> Vec<u8> {
@@ -77,7 +82,7 @@ impl SPNEGOToken {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SPNEGOTokenInitBody {
     mech_type_list: Option<Vec<Vec<u8>>>,
-    mech_token: Option<Vec<u8>>,
+    pub mech_token: Option<Vec<u8>>,
     mech_list_mic: Option<Vec<u8>>
 }
 
@@ -101,10 +106,8 @@ impl SPNEGOTokenInitBody {
         if slice[1] != DER_ENCODING_SEQUENCE_TAG { return None;}
         let mut local_offset: usize = 2;
         let seq_len = read_length(slice, &mut local_offset);
-        println!("seq len : {} acc len : {}", seq_len, slice.len());
         if slice.len() < local_offset + seq_len { return None; }
         let sequence = &slice[local_offset..(local_offset + seq_len)];
-        println!("sequence: {:?}", sequence);
         let mut ptr = 0;
         let mut mech_type_list = None;
         let mut mech_token = None;
@@ -112,7 +115,6 @@ impl SPNEGOTokenInitBody {
         while ptr < sequence.len() {
             let tag = sequence[ptr];
             ptr += 1;
-            println!("tag {}", tag);
             match tag {
                 MECH_TYPE_LIST_TAG => {
                     mech_type_list = Self::read_mech_type_list(sequence, &mut ptr);
@@ -168,6 +170,7 @@ impl SPNEGOTokenResponseBody {
     fn as_bytes(&self) -> Vec<u8> {Vec::new()}
 
     fn from_bytes(bytes: &[u8], offset: &mut usize) -> Option<Self> {
+        println!("Response!");
         None
     }
 }
