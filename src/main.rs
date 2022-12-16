@@ -8,7 +8,7 @@ use smb_reader::protocol::header::{SMBCommandCode, SMBFlags, SMBSyncHeader};
 use smb_reader::SMBListener;
 use smb_reader::util::auth::ntlm::{NTLMAuthProvider, NTLMMessage};
 use smb_reader::util::auth::{AuthProvider, User};
-use smb_reader::util::auth::gss::SPNEGOToken;
+use smb_reader::util::auth::spnego::SPNEGOToken;
 
 const NTLM_ID: [u8; 10] = [0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x02, 0x0a];
 const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
@@ -42,11 +42,11 @@ fn main() -> anyhow::Result<()> {
                SMBCommandCode::SessionSetup => {
                    if let SMBBody::SessionSetupRequest(request) = message.body {
                        let mut offset = 0;
-                       let spnego_init_buffer = SPNEGOToken::from_bytes(&request.get_buffer_copy(), &mut offset).unwrap();
+                       let spnego_init_buffer: SPNEGOToken<NTLMAuthProvider> = SPNEGOToken::from_bytes(&request.get_buffer_copy(), &mut offset).unwrap();
                        println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
                        match spnego_init_buffer {
                            SPNEGOToken::Init(init_msg) => {
-                               let ntlm_msg = NTLMMessage::from_bytes(&*init_msg.mech_token.unwrap()).unwrap();
+                               let ntlm_msg = NTLMMessage::from_bytes(&init_msg.mech_token.unwrap()).unwrap();
                                let helper = NTLMAuthProvider::new(vec![User::new("tejas".into(), "test".into())]);
                                let mut output = NTLMMessage::Dummy;
                                helper.accept_security_context(&ntlm_msg, &mut output);
@@ -55,6 +55,9 @@ fn main() -> anyhow::Result<()> {
                                let resp_header = message.header.create_response_header(0);
                                let resp_msg = SMBMessage::new(resp_header, resp_body);
                                cloned_connection.send_message(resp_msg)?;
+                           },
+                           SPNEGOToken::Response(resp_msg) => {
+                               println!("SPNEGOToken: {:?}", resp_msg);
                            }
                            _ => {}
                        }

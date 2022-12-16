@@ -1,114 +1,27 @@
+use crate::util::auth::AuthProvider;
 use serde::{Deserialize, Serialize};
-
-const NEG_TOKEN_INIT_TAG: u8 = 0xA0;
-const NEG_TOKEN_RESP_TAG: u8 = 0xA1;
-
-const NEG_STATE_TAG: u8 = 0xA0;
-
-const MECH_TYPE_LIST_TAG: u8 = 0xA0;
-const MECH_TOKEN_TAG: u8 = 0xA2;
-const MECH_LIST_MIC_TAG: u8 = 0xA3;
-
-const REQUIRED_FLAGS_TAG: u8 = 0xA1;
-const APPLICATION_TAG: u8 = 0x60;
-const RESPONSE_TOKEN_TAG: u8 = 0xA2;
-const SUPPORTED_MECH_TAG: u8 = 0xA1;
-
-const DER_ENCODING_SEQUENCE_TAG: u8 = 0x30;
-const DER_ENCODING_OID_TAG: u8 = 0x06;
-const DER_ENCODING_BYTE_ARRAY_TAG: u8 = 0x04;
-
-const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
+use crate::util::auth::spnego::util::{DER_ENCODING_BYTE_ARRAY_TAG, DER_ENCODING_OID_TAG, DER_ENCODING_SEQUENCE_TAG, get_field_size, get_length, MECH_LIST_MIC_TAG, MECH_TOKEN_TAG, MECH_TYPE_LIST_TAG, NEG_TOKEN_INIT_TAG, read_der_byte_array, read_der_multibyte, read_der_oid, read_length, REQUIRED_FLAGS_TAG};
 
 #[derive(Debug, Deserialize, Serialize)]
-pub enum SPNEGOToken {
-    Init(SPNEGOTokenInitBody),
-    Init2(SPNEGOTokenInit2Body),
-    Response(SPNEGOTokenResponseBody),
-}
-
-impl SPNEGOToken {
-    pub fn from_bytes(bytes: &[u8], offset: &mut usize) -> Option<Self> {
-        println!("off: {}, Bytesss: {:?}", offset, bytes);
-        match bytes[*offset] {
-            APPLICATION_TAG => {
-                *offset += 1;
-                if bytes[*offset + 1] == DER_ENCODING_OID_TAG {
-                    *offset += 2;
-                    let oid_length = read_length(bytes, offset);
-                    let oid = &bytes[*offset..(*offset + oid_length)];
-                    *offset += oid_length;
-                    if oid.len() == SPNEGO_ID.len() && *oid == SPNEGO_ID {
-                        let tag = bytes[*offset];
-                        println!("OID: {:?}", tag);
-                        *offset += 1;
-                        return match tag {
-                            NEG_TOKEN_INIT_TAG => Some(SPNEGOToken::Init(SPNEGOTokenInitBody::from_bytes(bytes, offset)?)),
-                            NEG_TOKEN_RESP_TAG => Some(SPNEGOToken::Response(SPNEGOTokenResponseBody::from_bytes(bytes, offset)?)),
-                            _ => None,
-                        }
-                    }
-                }
-                None
-            },
-            NEG_TOKEN_RESP_TAG => Some(SPNEGOToken::Response(SPNEGOTokenResponseBody::from_bytes(bytes, offset)?)),
-            _ => None,
-        }
-    }
-
-    pub fn as_bytes(&self, header: bool) -> Vec<u8> {
-        let bytes = match self {
-            SPNEGOToken::Init(x) => x.as_bytes(),
-            SPNEGOToken::Init2(x) => x.as_bytes(),
-            SPNEGOToken::Response(x) => x.as_bytes(),
-        };
-        if header {
-            let oid_size = get_field_size(SPNEGO_ID.len());
-            let token_len = 1 + oid_size + bytes.len();
-            [
-                &[APPLICATION_TAG][0..],
-                &get_length(token_len),
-                &[DER_ENCODING_SEQUENCE_TAG],
-                &get_length(SPNEGO_ID.len()),
-                &SPNEGO_ID,
-                &bytes
-            ].concat()
-        } else {
-            bytes.to_vec()
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct SPNEGOTokenInitBody {
+pub struct SPNEGOTokenInitBody<T: AuthProvider> {
+    mechanism: Option<T>,
     mech_type_list: Option<Vec<Vec<u8>>>,
     pub mech_token: Option<Vec<u8>>,
     mech_list_mic: Option<Vec<u8>>
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct SPNEGOTokenInit2Body {
-
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct SPNEGOTokenResponseBody {
-    state: Option<u8>,
-    supported_mech: Option<Vec<u8>>,
-    response_token: Option<Vec<u8>>,
-    mech_list_mic: Option<Vec<u8>>
-}
-
-impl SPNEGOTokenInitBody {
+impl<T: AuthProvider> SPNEGOTokenInitBody<T> {
 
     pub fn from_bytes(bytes: &[u8], offset: &mut usize) -> Option<Self> {
-        let slice = &bytes[*offset..];
-        if slice[1] != DER_ENCODING_SEQUENCE_TAG { return None;}
-        let mut local_offset: usize = 2;
-        let seq_len = read_length(slice, &mut local_offset);
-        if slice.len() < local_offset + seq_len { return None; }
-        let sequence = &slice[local_offset..(local_offset + seq_len)];
+        let _ = read_length(bytes, offset);
+        if bytes[*offset] != DER_ENCODING_SEQUENCE_TAG { return None;}
+        *offset += 1;
+        let seq_len = read_length(bytes, offset);
+        if bytes.len() < *offset + seq_len { return None; }
+
+        let sequence = &bytes[*offset..(*offset + seq_len)];
         let mut ptr = 0;
+
         let mut mech_type_list = None;
         let mut mech_token = None;
         let mut mech_list_mic = None;
@@ -129,8 +42,8 @@ impl SPNEGOTokenInitBody {
                 _ => return None,
             }
         }
-        *offset = local_offset + seq_len;
-        Some(SPNEGOTokenInitBody { mech_type_list, mech_token, mech_list_mic})
+        *offset += seq_len;
+        Some(SPNEGOTokenInitBody { mechanism: None, mech_type_list, mech_token, mech_list_mic})
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -162,69 +75,35 @@ impl SPNEGOTokenInitBody {
     }
 }
 
-impl SPNEGOTokenInit2Body {
-    fn as_bytes(&self) -> Vec<u8> {Vec::new()}
-}
-
-impl SPNEGOTokenResponseBody {
-    fn as_bytes(&self) -> Vec<u8> {Vec::new()}
-
-    fn from_bytes(bytes: &[u8], offset: &mut usize) -> Option<Self> {
-        println!("Response!");
-        None
-    }
-}
-
 // Private static helper methods (reading methods)
-impl SPNEGOTokenInitBody {
+impl<T: AuthProvider> SPNEGOTokenInitBody<T> {
     fn read_mech_type_list(buffer: &[u8], offset: &mut usize) -> Option<Vec<Vec<u8>>> {
         let mut mech_type_list = Vec::new();
-        if buffer[*offset + 1] != DER_ENCODING_SEQUENCE_TAG {
-            return None;
-        }
-        *offset += 2;
-        println!("CVal : {}", buffer[*offset]);
+        let _ = read_length(buffer, offset);
+        if buffer[*offset] != DER_ENCODING_SEQUENCE_TAG { return None; }
+        *offset += 1;
         let seq_len = read_length(buffer, offset);
         if buffer.len() < *offset + seq_len { return None; }
         let sequence = &buffer[*offset..(*offset + seq_len)];
         let mut ptr = 0;
         while ptr < sequence.len() {
-            let tag = sequence[ptr];
-            ptr += 1;
-            if tag != DER_ENCODING_OID_TAG { return None; }
-            let mech_type_len = read_length(sequence, &mut ptr);
-            let mech_type = &sequence[ptr..(ptr + mech_type_len)];
-            mech_type_list.push(mech_type.to_vec());
-            ptr += mech_type_len;
+            mech_type_list.push(read_der_multibyte(sequence, &mut ptr, DER_ENCODING_OID_TAG)?);
         }
         *offset += seq_len;
         Some(mech_type_list)
     }
 
     fn read_mech_token(buffer: &[u8], offset: &mut usize) -> Option<Vec<u8>> {
-        if buffer[*offset + 1] != DER_ENCODING_BYTE_ARRAY_TAG { return None; }
-        *offset += 2;
-        let seq_len = read_length(buffer, offset);
-        if buffer.len() < *offset + seq_len { return None; }
-        let start = *offset;
-        *offset += seq_len;
-        println!("Size: {}", buffer[start..(start + seq_len)].len());
-        Some(buffer[start..(start + seq_len)].to_vec())
+       read_der_byte_array(buffer, offset)
     }
 
     fn read_mech_list_mic(buffer: &[u8], offset: &mut usize) -> Option<Vec<u8>> {
-        if buffer[*offset + 1]!= DER_ENCODING_BYTE_ARRAY_TAG { return None; }
-        *offset += 2;
-        let seq_len = read_length(buffer, offset);
-        if buffer.len() < *offset + seq_len { return None; }
-        let start = *offset;
-        *offset += seq_len;
-        Some(buffer[start..(start + seq_len)].to_vec())
+       read_der_byte_array(buffer, offset)
     }
 }
 
 // Private helper methods (writing methods)
-impl SPNEGOTokenInitBody {
+impl<T: AuthProvider> SPNEGOTokenInitBody<T> {
     fn mech_list_bytes(&self, mech_type_list: &[Vec<u8>]) -> Vec<u8> {
         let seq_len = self.mech_list_len();
         let seq_len_field_size = get_field_size(seq_len);
@@ -280,7 +159,7 @@ impl SPNEGOTokenInitBody {
 
     fn token_fields_len(&self) -> usize {
         let mut len = 0;
-        if let Some(_) = &self.mech_type_list {
+        if self.mech_type_list.is_some() {
             let list_sequence_len = self.mech_list_len();
             let list_sequence_len_field_size = get_field_size(list_sequence_len);
             let list_construction_len = 1 + list_sequence_len_field_size + list_sequence_len;
@@ -304,51 +183,4 @@ impl SPNEGOTokenInitBody {
         }
         len
     }
-}
-
-
-
-
-
-fn read_length(buffer: &[u8], offset: &mut usize) -> usize {
-    let mut len = buffer[*offset] as usize;
-    *offset += 1;
-    if len >= 0x80 {
-        let field_size = (len & 0x7F);
-        len = 0;
-        for byte in &buffer[*offset..field_size] {
-            len *= 256;
-            len += (*byte) as usize;
-        }
-        *offset += field_size;
-    }
-    len
-}
-
-fn get_field_size(len: usize) -> usize {
-    if len < 0x80 {
-        return 1;
-    }
-    let mut adder = 1;
-    let mut len = len;
-    while len > 0 {
-        len /= 256;
-        adder+=1;
-    }
-    adder
-}
-
-fn get_length(length: usize) -> Vec<u8> {
-    if length < 0x80 {
-        return vec![length as u8];
-    }
-    let mut len = length;
-    let mut len_bytes = Vec::new();
-    while len > 0 {
-        let byte = len % 256;
-        len_bytes.push(byte as u8);
-        len /= 256;
-    }
-    len_bytes.reverse();
-    [&[(0x80 | len_bytes.len()) as u8][0..], &*len_bytes].concat()
 }

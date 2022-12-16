@@ -16,7 +16,13 @@ impl NTLMAuthProvider {
     }
 }
 
-impl AuthProvider<NTLMMessage> for NTLMAuthProvider {
+impl AuthProvider for NTLMAuthProvider {
+    type Item = NTLMMessage;
+
+    fn get_oid() -> Vec<u8> {
+        vec![0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x02, 0x0a]
+    }
+
     fn accept_security_context(&self, input_message: &NTLMMessage, output_token: &mut NTLMMessage) -> u8 {
         let msg = match input_message {
             NTLMMessage::Negotiate(x) => {
