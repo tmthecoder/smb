@@ -17,7 +17,7 @@ pub struct SPNEGOTokenResponseBody<T: AuthProvider> {
     mechanism: Option<T>,
     state: Option<NegotiateState>,
     supported_mech: Option<Vec<u8>>,
-    response_token: Option<Vec<u8>>,
+    pub response_token: Option<Vec<u8>>,
     mech_list_mic: Option<Vec<u8>>
 }
 
