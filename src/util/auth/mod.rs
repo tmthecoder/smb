@@ -9,5 +9,5 @@ pub trait AuthProvider {
 
     fn get_oid() -> Vec<u8>;
 
-    fn accept_security_context(&self, input_token: &Self::Item, output_token: &mut Self::Item) -> u8;
+    fn accept_security_context(&self, input_token: &Self::Item) -> (u8, Self::Item);
 }

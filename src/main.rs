@@ -59,9 +59,10 @@ fn main() -> anyhow::Result<()> {
                            SPNEGOToken::Response(resp_msg) => {
                                println!("SPNEGOToken: {:?}", resp_msg);
                                let ntlm_msg = NTLMMessage::from_bytes(&resp_msg.response_token.unwrap()).unwrap();
+                               println!("NTLM: {:?}", ntlm_msg);
                                let mut output = NTLMMessage::Dummy;
                                helper.accept_security_context(&ntlm_msg, &mut output);
-                               
+
                            }
                            _ => {}
                        }

@@ -1,7 +1,5 @@
 use bitflags::bitflags;
-use rand::RngCore;
-use rand::rngs::ThreadRng;
-use crate::byte_helper::{bytes_to_u32, u16_to_bytes, u32_to_bytes};
+use crate::byte_helper::{bytes_to_u16, bytes_to_u32};
 use serde::{Deserialize, Serialize};
 use crate::util::auth::ntlm::{NTLMAuthenticateMessageBody, NTLMChallengeMessageBody, NTLMNegotiateMessageBody};
 
@@ -60,4 +58,14 @@ bitflags! {
         const KEY_EXCHANGE = 0x40000000;
         const USE_56_BIT_ENCRYPTION = 0x80000000;
     }
+}
+
+pub(crate) fn read_ntlm_buffer_ptr(buffer: &[u8], offset: usize) -> Option<Vec<u8>> {
+    let length = bytes_to_u16(&buffer[offset..(offset+2)]) as usize;
+    let offset = offset + 4;
+    let buffer_offset = bytes_to_u32(&buffer[offset..(offset+4)]) as usize;
+    if buffer.len() < buffer_offset + length {
+        return None;
+    }
+    Some(buffer[buffer_offset..(buffer_offset + length)].to_vec())
 }
