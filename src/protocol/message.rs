@@ -1,8 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::str;
+use nom::IResult;
+use nom::sequence::preceded;
 use crate::byte_helper::u16_to_bytes;
 use crate::protocol::body::{Body, LegacySMBBody, SMBBody};
 use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
+
+pub type SMBSyncMessage = SMBMessage<SMBSyncHeader, SMBBody>;
+pub type SMBLegacyMessage = SMBMessage<LegacySMBHeader, LegacySMBBody>;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBMessage<S: Header, T: Body<S>> {
@@ -25,6 +30,7 @@ pub trait Message {
     fn from_bytes_assert_body(bytes: &[u8]) -> Option<(Self::Item, &[u8])>;
     fn from_bytes(bytes: &[u8]) -> Option<(Self::Item, &[u8])>;
     fn as_bytes(&self) -> Vec<u8>;
+    fn parse(bytes: &[u8]) -> IResult<&[u8], Self::Item>;
 }
 
 impl SMBMessage<SMBSyncHeader, SMBBody> {
@@ -55,5 +61,9 @@ impl<S: Header + Header<Item = S>, T: Body<S> + Body<S, Item = T>> Message for S
         let mut len_bytes = u16_to_bytes(smb2_message.len() as u16);
         len_bytes.reverse();
         [[0, 0].to_vec(), len_bytes.to_vec(), self.header.as_bytes(), self.body.as_bytes()].concat()
+    }
+
+    fn parse(bytes: &[u8]) -> IResult<&[u8], Self::Item> {
+        todo!()
     }
 }

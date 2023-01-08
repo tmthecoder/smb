@@ -1,3 +1,5 @@
+use nom::IResult;
+
 mod header;
 mod command_code;
 mod status;
@@ -20,5 +22,6 @@ pub trait Header {
     type Item;
 
     fn from_bytes(bytes: &[u8]) -> Option<(Self::Item, &[u8])>;
+    fn parse(bytes: &[u8]) -> IResult<&[u8], Self::Item>;
     fn as_bytes(&self) -> Vec<u8>;
 }

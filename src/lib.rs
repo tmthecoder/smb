@@ -1,7 +1,6 @@
 extern crate core;
 
 pub mod protocol;
-pub mod message;
 pub mod util;
 // pub mod server;
 mod byte_helper;
@@ -9,9 +8,11 @@ mod gss_helper;
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
-use crate::message::{Message, SMBMessage};
+use nom::bytes::complete::tag;
+use nom::error::Error;
 use crate::protocol::body::{LegacySMBBody, SMBBody};
 use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
+use crate::protocol::message::{Message, SMBMessage};
 
 #[derive(Debug)]
 pub struct SMBListener {
@@ -92,6 +93,7 @@ impl Iterator for SMBMessageIterator<'_> {
         match self.connection.stream.read(&mut buffer) {
             Ok(read) => {
                 println!("buffer: {:?}", buffer);
+                let res = tag::<_, _, Error<_>>(b"SMB")(&buffer[0..]);
                 if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
                     if buffer[pos..].starts_with(b"SMB") {
                         let carryover;

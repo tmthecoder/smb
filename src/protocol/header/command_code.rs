@@ -1,7 +1,7 @@
 use num_enum::TryFromPrimitive;
 use serde::{Serialize, Deserialize};
 
-#[repr(u8)]
+#[repr(u16)]
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy)]
 pub enum SMBCommandCode {
     Negotiate = 0x0,

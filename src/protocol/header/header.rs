@@ -1,3 +1,9 @@
+use nom::bytes::complete::{tag, take};
+use nom::combinator::{map, map_opt, map_res};
+use nom::IResult;
+use nom::number::complete::be_u8;
+use nom::number::streaming::{be_u16, be_u32, be_u64};
+use nom::sequence::tuple;
 use serde::{Serialize, Deserialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes, u32_to_bytes, u64_to_bytes};
 use crate::protocol::header::{Header, LegacySMBCommandCode, LegacySMBFlags, LegacySMBFlags2, SMBCommandCode, SMBExtra, SMBFlags, SMBStatus};
@@ -41,7 +47,7 @@ impl Header for SMBSyncHeader {
         }
         println!("status: {}, reserved: {:?}", bytes_to_u32(&bytes[4..8]), &bytes[28..32]);
         Some((SMBSyncHeader {
-            command: (bytes_to_u16(& bytes[8..10]) as u8).try_into().ok()?,
+            command: bytes_to_u16(& bytes[8..10]).try_into().ok()?,
             flags: SMBFlags::from_bits_truncate(bytes_to_u32(&bytes[12..16])),
             status: 0,
             next_command: bytes_to_u32(&bytes[16..20]),
@@ -51,6 +57,30 @@ impl Header for SMBSyncHeader {
             signature,
         }, &bytes[60..]))
     }
+
+    fn parse(bytes: &[u8]) -> IResult<&[u8], Self::Item> {
+        map(tuple((
+            take::<_, &[u8], _>(8_usize),
+            map_res(be_u16, SMBCommandCode::try_from),
+            take(2_usize),
+            map(be_u32, SMBFlags::from_bits_truncate),
+            be_u32,
+            be_u64,
+            be_u32,
+            be_u64,
+            map_res(take(16_usize), |arr: &[u8]| <([u8; 16])>::try_from(arr)),
+        )), |(a, command, _, flags, next_command, message_id, tree_id, session_id, signature)| Self {
+            command,
+            status: 0,
+            flags,
+            next_command,
+            message_id,
+            tree_id,
+            session_id,
+            signature
+        })(bytes)
+    }
+
     fn as_bytes(&self) -> Vec<u8> {
         [
             &[0xFE_u8],
@@ -89,6 +119,30 @@ impl Header for LegacySMBHeader {
             uid: bytes_to_u16(&bytes[24..26]),
             mid: bytes_to_u16(&bytes[26..28]),
         }, &bytes[28..]))
+    }
+
+    fn parse(bytes: &[u8]) -> IResult<&[u8], Self::Item> {
+        map(tuple((
+            map_res(be_u8, LegacySMBCommandCode::try_from),
+            map_opt(take(4_usize), SMBStatus::from_bytes),
+            map(be_u8, LegacySMBFlags::from_bits_truncate),
+            map(be_u16, LegacySMBFlags2::from_bits_truncate),
+            map(take(12_usize), SMBExtra::from_bytes),
+            be_u16,
+            be_u16,
+            be_u16,
+            be_u16,
+        )), |(command, status, flags, flags2, extra, tid, pid, uid, mid)| Self {
+            command,
+            status,
+            flags,
+            flags2,
+            extra,
+            tid,
+            pid,
+            uid,
+            mid
+        })(bytes)
     }
 
     fn as_bytes(&self) -> Vec<u8> {

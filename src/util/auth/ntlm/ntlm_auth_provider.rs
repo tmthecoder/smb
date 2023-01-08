@@ -5,13 +5,15 @@ use crate::util::auth::ntlm::{NTLMChallengeMessageBody, NTLMMessage};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct NTLMAuthProvider {
-    accepted_users: Vec<User>
+    accepted_users: Vec<User>,
+    guest_supported: bool
 }
 
 impl NTLMAuthProvider {
-    pub fn new(accepted_users: Vec<User>) -> Self {
+    pub fn new(accepted_users: Vec<User>, guest_supported: bool) -> Self {
         Self {
-            accepted_users
+            accepted_users,
+            guest_supported
         }
     }
 }
@@ -39,4 +41,14 @@ impl AuthProvider for NTLMAuthProvider {
             }
         }
     }
+}
+
+pub struct NTLMAuthContext {
+    pub(crate) domain_name: Option<String>,
+    pub(crate) user_name: Option<String>,
+    pub(crate) work_station: Option<String>,
+    pub(crate) version: Option<String>,
+    pub(crate) guest: Option<bool>,
+    pub(crate) session_key: Vec<u8>,
+    pub(crate) server_challenge: Vec<u8>
 }

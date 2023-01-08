@@ -1,10 +1,10 @@
 use std::io::Read;
 use std::net::TcpStream;
 use std::time::Duration;
-use smb_reader::message::{Message, SMBMessage};
 use smb_reader::protocol::body::{Capabilities, FileTime, SecurityMode, SMBBody, SMBDialect, SMBSessionSetupResponse};
 use smb_reader::protocol::body::negotiate::SMBNegotiateResponse;
 use smb_reader::protocol::header::{SMBCommandCode, SMBFlags, SMBSyncHeader};
+use smb_reader::protocol::message::SMBMessage;
 use smb_reader::SMBListener;
 use smb_reader::util::auth::ntlm::{NTLMAuthProvider, NTLMMessage};
 use smb_reader::util::auth::{AuthProvider, User};
@@ -44,12 +44,11 @@ fn main() -> anyhow::Result<()> {
                        let mut offset = 0;
                        let spnego_init_buffer: SPNEGOToken<NTLMAuthProvider> = SPNEGOToken::from_bytes(&request.get_buffer_copy(), &mut offset).unwrap();
                        println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
-                       let helper = NTLMAuthProvider::new(vec![User::new("tejas".into(), "test".into())]);
+                       let helper = NTLMAuthProvider::new(vec![User::new("tejas".into(), "test".into())], true);
                        match spnego_init_buffer {
                            SPNEGOToken::Init(init_msg) => {
                                let ntlm_msg = NTLMMessage::from_bytes(&init_msg.mech_token.unwrap()).unwrap();
-                               let mut output = NTLMMessage::Dummy;
-                               helper.accept_security_context(&ntlm_msg, &mut output);
+                               let (status, output) = helper.accept_security_context(&ntlm_msg);
                                let resp = SMBSessionSetupResponse::from_request(request, spnego_resp_buffer(&output.as_bytes())).unwrap();
                                let resp_body = SMBBody::SessionSetupResponse(resp);
                                let resp_header = message.header.create_response_header(0);
@@ -60,8 +59,7 @@ fn main() -> anyhow::Result<()> {
                                println!("SPNEGOToken: {:?}", resp_msg);
                                let ntlm_msg = NTLMMessage::from_bytes(&resp_msg.response_token.unwrap()).unwrap();
                                println!("NTLM: {:?}", ntlm_msg);
-                               let mut output = NTLMMessage::Dummy;
-                               helper.accept_security_context(&ntlm_msg, &mut output);
+                               let (status, output) = helper.accept_security_context(&ntlm_msg);
 
                            }
                            _ => {}
