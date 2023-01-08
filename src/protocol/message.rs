@@ -25,12 +25,10 @@ impl<S: Header, T: Body<S>> SMBMessage<S, T> {
 }
 
 pub trait Message {
-    type Item;
-
-    fn from_bytes_assert_body(bytes: &[u8]) -> Option<(Self::Item, &[u8])>;
-    fn from_bytes(bytes: &[u8]) -> Option<(Self::Item, &[u8])>;
+    fn from_bytes_assert_body(bytes: &[u8]) -> Option<(Self, &[u8])> where Self: Sized;
+    fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> where Self: Sized;
     fn as_bytes(&self) -> Vec<u8>;
-    fn parse(bytes: &[u8]) -> IResult<&[u8], Self::Item>;
+    fn parse(bytes: &[u8]) -> IResult<&[u8], Self> where Self: Sized;
 }
 
 impl SMBMessage<SMBSyncHeader, SMBBody> {
@@ -42,15 +40,13 @@ impl SMBMessage<SMBSyncHeader, SMBBody> {
 }
 
 impl<S: Header, T:  Body<S>> Message for SMBMessage<S, T> {
-    type Item = SMBMessage<S, T>;
-
-    fn from_bytes_assert_body(bytes: &[u8]) -> Option<(Self::Item, &[u8])> {
+    fn from_bytes_assert_body(bytes: &[u8]) -> Option<(Self, &[u8])> {
         let (remaining_bytes, header) = S::parse(bytes).ok()?;
         let (body, carryover) = T::from_bytes_and_header_exists(remaining_bytes, &header)?;
         Some((Self { header, body }, carryover))
     }
 
-    fn from_bytes(bytes: &[u8]) -> Option<(Self::Item, &[u8])> {
+    fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
         let (remaining_bytes, header) = S::parse(bytes).ok()?;
         let (body, carryover) = T::from_bytes_and_header(remaining_bytes, &header);
         Some((Self { header, body }, carryover))
@@ -63,7 +59,7 @@ impl<S: Header, T:  Body<S>> Message for SMBMessage<S, T> {
         [[0, 0].to_vec(), len_bytes.to_vec(), self.header.as_bytes(), self.body.as_bytes()].concat()
     }
 
-    fn parse(bytes: &[u8]) -> IResult<&[u8], Self::Item> {
+    fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         todo!()
     }
 }
