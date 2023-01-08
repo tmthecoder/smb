@@ -45,13 +45,13 @@ impl<S: Header + Header<Item = S>, T: Body<S> + Body<S, Item = T>> Message for S
     type Item = SMBMessage<S, T>;
 
     fn from_bytes_assert_body(bytes: &[u8]) -> Option<(Self::Item, &[u8])> {
-        let (header, remaining_bytes) = S::from_bytes(bytes)?;
+        let (remaining_bytes, header) = S::parse(bytes).ok()?;
         let (body, carryover) = T::from_bytes_and_header_exists(remaining_bytes, &header)?;
         Some((Self { header, body }, carryover))
     }
 
     fn from_bytes(bytes: &[u8]) -> Option<(Self::Item, &[u8])> {
-        let (header, remaining_bytes) = S::from_bytes(bytes)?;
+        let (remaining_bytes, header) = S::parse(bytes).ok()?;
         let (body, carryover) = T::from_bytes_and_header(remaining_bytes, &header);
         Some((Self { header, body }, carryover))
     }

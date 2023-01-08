@@ -95,14 +95,14 @@ impl Iterator for SMBMessageIterator<'_> {
                 println!("buffer: {:?}", buffer);
                 let res = tag::<_, _, Error<_>>(b"SMB")(&buffer[0..]);
                 if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
-                    if buffer[pos..].starts_with(b"SMB") {
+                    if buffer[(pos)..].starts_with(b"SMB") {
                         let carryover;
                         let message;
-                        if let Some((m, c)) = SMBMessage::<SMBSyncHeader, SMBBody>::from_bytes_assert_body(&buffer[(pos + 3)..read]) {
+                        if let Some((m, c)) = SMBMessage::<SMBSyncHeader, SMBBody>::from_bytes_assert_body(&buffer[(pos-1)..read]) {
                             carryover = c;
                             message = m;
                         } else {
-                            let (legacy, c) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::from_bytes_assert_body(&buffer[(pos + 3)..read])?;
+                            let (legacy, c) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::from_bytes_assert_body(&buffer[(pos-1)..read])?;
                             carryover = c;
                             let m = SMBMessage::<SMBSyncHeader, SMBBody>::from_legacy(legacy)?;
                             message = m;

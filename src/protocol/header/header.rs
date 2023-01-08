@@ -11,7 +11,7 @@ use crate::protocol::header::{Header, LegacySMBCommandCode, LegacySMBFlags, Lega
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct SMBSyncHeader {
     pub command: SMBCommandCode,
-    status: u32,
+    channel_sequence: u32, // status in smb2
     flags: SMBFlags,
     next_command: u32,
     message_id: u64,
@@ -49,7 +49,7 @@ impl Header for SMBSyncHeader {
         Some((SMBSyncHeader {
             command: bytes_to_u16(& bytes[8..10]).try_into().ok()?,
             flags: SMBFlags::from_bits_truncate(bytes_to_u32(&bytes[12..16])),
-            status: 0,
+            channel_sequence: 0,
             next_command: bytes_to_u32(&bytes[16..20]),
             message_id: bytes_to_u64(&bytes[20..28]),
             tree_id: bytes_to_u32(&bytes[32..36]),
@@ -59,19 +59,25 @@ impl Header for SMBSyncHeader {
     }
 
     fn parse(bytes: &[u8]) -> IResult<&[u8], Self::Item> {
+        println!("BYTES: {:?}", bytes);
         map(tuple((
-            take::<_, &[u8], _>(8_usize),
+            tag([0xFE]),
+            tag(b"SMB"),
+            map(be_u16, |x| x == 64),
+            take(2_usize),
+            be_u32,
             map_res(be_u16, SMBCommandCode::try_from),
             take(2_usize),
             map(be_u32, SMBFlags::from_bits_truncate),
             be_u32,
             be_u64,
+            take(4_usize),
             be_u32,
             be_u64,
-            map_res(take(16_usize), |arr: &[u8]| <([u8; 16])>::try_from(arr)),
-        )), |(a, command, _, flags, next_command, message_id, tree_id, session_id, signature)| Self {
+            map_res(take(16_usize), <([u8; 16])>::try_from),
+        )), |(_, _, _, _, channel_sequence, command, _, flags, next_command, message_id, _, tree_id, session_id, signature)| Self {
             command,
-            status: 0,
+            channel_sequence,
             flags,
             next_command,
             message_id,
@@ -87,7 +93,7 @@ impl Header for SMBSyncHeader {
             &b"SMB"[0..],
             &[64, 0], // Structure size,
             &[0; 2], // Credit
-            &u32_to_bytes(self.status), // Reserved/Status/TODO
+            &u32_to_bytes(self.channel_sequence), // Reserved/Status/TODO
             &u16_to_bytes(self.command as u16),
             &[0; 2], // CreditResponse,
             &u32_to_bytes(self.flags.bits()),
@@ -123,6 +129,8 @@ impl Header for LegacySMBHeader {
 
     fn parse(bytes: &[u8]) -> IResult<&[u8], Self::Item> {
         map(tuple((
+            tag([0xFE]),
+            tag(b"SMB"),
             map_res(be_u8, LegacySMBCommandCode::try_from),
             map_opt(take(4_usize), SMBStatus::from_bytes),
             map(be_u8, LegacySMBFlags::from_bits_truncate),
@@ -132,7 +140,7 @@ impl Header for LegacySMBHeader {
             be_u16,
             be_u16,
             be_u16,
-        )), |(command, status, flags, flags2, extra, tid, pid, uid, mid)| Self {
+        )), |(_, _, command, status, flags, flags2, extra, tid, pid, uid, mid)| Self {
             command,
             status,
             flags,
@@ -166,7 +174,7 @@ impl SMBSyncHeader {
     pub fn new(command: SMBCommandCode, flags: SMBFlags, next_command: u32, message_id: u64, tree_id: u32, session_id: u64, signature: [u8; 16]) -> Self {
         SMBSyncHeader {
             command,
-            status: 0,
+            channel_sequence: 0,
             flags,
             next_command,
             message_id,
@@ -182,7 +190,7 @@ impl SMBSyncHeader {
                 Some(Self {
                     command: SMBCommandCode::LegacyNegotiate,
                     flags: SMBFlags::empty(),
-                    status: 0,
+                    channel_sequence: 0,
                     next_command: 0,
                     message_id: legacy_header.mid as u64,
                     tree_id: legacy_header.tid as u32,
@@ -194,11 +202,11 @@ impl SMBSyncHeader {
         }
     }
 
-    pub fn create_response_header(&self, status: u32) -> Self {
+    pub fn create_response_header(&self, channel_sequence: u32) -> Self {
         Self {
             command: self.command,
             flags: SMBFlags::SERVER_TO_REDIR,
-            status,
+            channel_sequence,
             next_command: 0,
             message_id: self.message_id,
             tree_id: self.tree_id,
