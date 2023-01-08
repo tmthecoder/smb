@@ -41,7 +41,7 @@ impl SMBMessage<SMBSyncHeader, SMBBody> {
     }
 }
 
-impl<S: Header + Header<Item = S>, T: Body<S> + Body<S, Item = T>> Message for SMBMessage<S, T> {
+impl<S: Header, T:  Body<S>> Message for SMBMessage<S, T> {
     type Item = SMBMessage<S, T>;
 
     fn from_bytes_assert_body(bytes: &[u8]) -> Option<(Self::Item, &[u8])> {

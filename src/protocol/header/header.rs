@@ -34,9 +34,9 @@ pub struct LegacySMBHeader {
 }
 
 impl Header for SMBSyncHeader {
-    type Item = SMBSyncHeader;
+    // type Item = SMBSyncHeader;`dd
 
-    fn from_bytes(bytes: &[u8]) -> Option<(Self::Item, &[u8])> {
+    fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
         println!("parse 2: {:?}", bytes);
         if bytes.len() < 60 {
             return None;
@@ -58,8 +58,7 @@ impl Header for SMBSyncHeader {
         }, &bytes[60..]))
     }
 
-    fn parse(bytes: &[u8]) -> IResult<&[u8], Self::Item> {
-        println!("BYTES: {:?}", bytes);
+    fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         map(tuple((
             tag([0xFE]),
             tag(b"SMB"),
@@ -108,9 +107,9 @@ impl Header for SMBSyncHeader {
 }
 
 impl Header for LegacySMBHeader {
-    type Item = LegacySMBHeader;
+    // type Item = LegacySMBHeader;
 
-    fn from_bytes(bytes: &[u8]) -> Option<(Self::Item, &[u8])> {
+    fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
         if bytes.len() < 28 {
             return None;
         }
@@ -127,7 +126,7 @@ impl Header for LegacySMBHeader {
         }, &bytes[28..]))
     }
 
-    fn parse(bytes: &[u8]) -> IResult<&[u8], Self::Item> {
+    fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         map(tuple((
             tag([0xFE]),
             tag(b"SMB"),
