@@ -1,6 +1,7 @@
 use nom::bytes::complete::{tag, take};
 use nom::combinator::{map, map_opt, map_res};
 use nom::IResult;
+use nom::Parser;
 use nom::number::complete::be_u8;
 use nom::number::streaming::{be_u16, be_u32, be_u64};
 use nom::sequence::tuple;
@@ -34,7 +35,6 @@ pub struct LegacySMBHeader {
 }
 
 impl Header for SMBSyncHeader {
-    // type Item = SMBSyncHeader;`dd
 
     fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
         println!("parse 2: {:?}", bytes);
@@ -107,7 +107,6 @@ impl Header for SMBSyncHeader {
 }
 
 impl Header for LegacySMBHeader {
-    // type Item = LegacySMBHeader;
 
     fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
         if bytes.len() < 28 {

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::str;
+use nom::error::ErrorKind;
+use nom::IResult;
 use crate::protocol::body::Body;
 use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
 use crate::protocol::body::session_setup::{SMBSessionSetupRequestBody, SMBSessionSetupResponseBody};
@@ -17,29 +19,29 @@ pub enum SMBBody {
 
 impl Body<SMBSyncHeader> for SMBBody {
 
-    fn from_bytes_and_header_exists<'a>(bytes: &'a [u8], header: &SMBSyncHeader) -> Option<(Self, &'a [u8])> {
+    fn from_bytes_and_header_exists<'a>(bytes: &'a [u8], header: &SMBSyncHeader) -> IResult<&'a [u8], Self> {
         let body = Self::from_bytes_and_header(bytes, header);
-        if body.0 == SMBBody::None {
-            return None;
+        if body.1 == SMBBody::None {
+            return Err(nom::Err::Error(nom::error::Error::new(body.0, ErrorKind::Fail)));
         }
-        Some(body)
+        Ok(body)
     }
 
-    fn from_bytes_and_header<'a>(bytes: &'a [u8], header: &SMBSyncHeader) -> (Self, &'a [u8]) {
+    fn from_bytes_and_header<'a>(bytes: &'a [u8], header: &SMBSyncHeader) -> (&'a [u8], Self) {
         match header.command {
             SMBCommandCode::Negotiate => {
                 if let Some((negotiation_body, carryover)) = SMBNegotiateRequest::from_bytes(bytes) {
-                    return (SMBBody::NegotiateRequest(negotiation_body), carryover)
+                    return (carryover, SMBBody::NegotiateRequest(negotiation_body))
                 }
-                (SMBBody::None, bytes)
+                (bytes, SMBBody::None)
             },
             SMBCommandCode::SessionSetup => {
                 if let Some((session_setup_body, carryover)) = SMBSessionSetupRequestBody::from_bytes(bytes) {
-                    return (SMBBody::SessionSetupRequest(session_setup_body), carryover)
+                    return (carryover, SMBBody::SessionSetupRequest(session_setup_body))
                 }
-                (SMBBody::None, bytes)
+                (bytes, SMBBody::None)
             }
-            _ => (SMBBody::None, bytes)
+            _ => (bytes, SMBBody::None)
         }
     }
 
@@ -63,15 +65,15 @@ pub enum LegacySMBBody {
 }
 
 impl Body<LegacySMBHeader> for LegacySMBBody {
-    fn from_bytes_and_header_exists<'a>(bytes: &'a [u8], header: &LegacySMBHeader) -> Option<(Self, &'a [u8])> {
+    fn from_bytes_and_header_exists<'a>(bytes: &'a [u8], header: &LegacySMBHeader) -> IResult<&'a [u8], Self> {
         let body = Self::from_bytes_and_header(bytes, header);
-        if body.0 == LegacySMBBody::None {
-            return None;
+        if body.1 == LegacySMBBody::None {
+            return Err(nom::Err::Error(nom::error::Error::new(body.0, ErrorKind::Fail)));
         }
-        Some(body)
+        Ok(body)
     }
 
-    fn from_bytes_and_header<'a>(bytes: &'a [u8], header: &LegacySMBHeader) -> (Self, &'a [u8]) {
+    fn from_bytes_and_header<'a>(bytes: &'a [u8], header: &LegacySMBHeader) -> (&'a [u8], Self) {
         return match header.command {
             LegacySMBCommandCode::Negotiate => {
                 let count = bytes[0] as usize;
@@ -89,9 +91,9 @@ impl Body<LegacySMBHeader> for LegacySMBBody {
                     }
                 }).collect();
                 let body = LegacySMBBody::Negotiate(protocol_strs);
-                (body, &bytes[(count + 1)..])
+                (&bytes[(count + 1)..], body)
             },
-            _ => (LegacySMBBody::None, bytes)
+            _ => (bytes, LegacySMBBody::None)
         }
     }
 

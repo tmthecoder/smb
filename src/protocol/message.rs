@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::str;
+use nom::combinator::{map, map_parser};
 use nom::IResult;
-use nom::sequence::preceded;
 use crate::byte_helper::u16_to_bytes;
 use crate::protocol::body::{Body, LegacySMBBody, SMBBody};
 use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
@@ -25,8 +25,8 @@ impl<S: Header, T: Body<S>> SMBMessage<S, T> {
 }
 
 pub trait Message {
-    fn from_bytes_assert_body(bytes: &[u8]) -> Option<(Self, &[u8])> where Self: Sized;
-    fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> where Self: Sized;
+    fn from_bytes_assert_body(bytes: &[u8]) -> IResult<&[u8], Self> where Self: Sized;
+    fn from_bytes(bytes: &[u8]) -> IResult<&[u8], Self> where Self: Sized;
     fn as_bytes(&self) -> Vec<u8>;
     fn parse(bytes: &[u8]) -> IResult<&[u8], Self> where Self: Sized;
 }
@@ -39,17 +39,17 @@ impl SMBMessage<SMBSyncHeader, SMBBody> {
     }
 }
 
-impl<S: Header, T:  Body<S>> Message for SMBMessage<S, T> {
-    fn from_bytes_assert_body(bytes: &[u8]) -> Option<(Self, &[u8])> {
-        let (remaining_bytes, header) = S::parse(bytes).ok()?;
-        let (body, carryover) = T::from_bytes_and_header_exists(remaining_bytes, &header)?;
-        Some((Self { header, body }, carryover))
+impl<S: Header, T: Body<S>> Message for SMBMessage<S, T> {
+    fn from_bytes_assert_body(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining_bytes, header) = map(S::parse, |s| s)(bytes)?;
+        let (remaining_bytes, body) = T::from_bytes_and_header_exists(remaining_bytes, &header)?;
+        Ok((remaining_bytes, Self { header, body}))
     }
 
-    fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
-        let (remaining_bytes, header) = S::parse(bytes).ok()?;
-        let (body, carryover) = T::from_bytes_and_header(remaining_bytes, &header);
-        Some((Self { header, body }, carryover))
+    fn from_bytes(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining_bytes, header) = S::parse(bytes)?;
+        let (remaining_bytes, body) = T::from_bytes_and_header(remaining_bytes, &header);
+        Ok(( remaining_bytes, Self { header, body }))
     }
 
     fn as_bytes(&self) -> Vec<u8> {
