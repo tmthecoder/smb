@@ -1,8 +1,19 @@
+use std::string::FromUtf8Error;
 use bitflags::bitflags;
+use der::Encode;
+use nom::bytes::complete::{take, take_until};
+use nom::combinator::{map, map_res};
+use nom::Err::Error;
+use nom::error::ErrorKind;
+use nom::IResult;
+use nom::multi::count;
+use nom::number::complete::{be_u16, be_u32};
+use nom::sequence::tuple;
 use num_enum::TryFromPrimitive;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
+use crate::protocol::body::negotiate::negotiate_context::RDMATransformID::Signing;
 
 macro_rules! ctx_to_bytes {
     ($body: expr) => ({
@@ -14,6 +25,13 @@ macro_rules! ctx_to_bytes {
             &*bytes
         ].concat()
     });
+}
+
+macro_rules! ctx_parse_enumify {
+    ($enumType: expr, $bodyType: expr, $data: expr) => ({
+        let (remaining, body) = $bodyType($data)?;
+        Ok((remaining, $enumType(body)))
+    })
 }
 
 macro_rules! vector_with_only_last {
@@ -55,6 +73,24 @@ impl NegotiateContext {
             0x07 => Some(Self::RDMATransformCapabilities(RDMATransformCapabilitiesBody::from_bytes(data_bytes)?)),
             0x08 => Some(Self::SigningCapabilities(SigningCapabilitiesBody::from_bytes(data_bytes)?)),
             _ => None
+        }
+    }
+
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining, (ctx_type_num, _, _)) = tuple((
+            be_u16,
+            be_u16,
+            take(4_usize),
+        ))(bytes)?;
+        match ctx_type_num {
+            0x01 => ctx_parse_enumify!(Self::PreAuthIntegrityCapabilities, PreAuthIntegrityCapabilitiesBody::parse, remaining),
+            0x02 => ctx_parse_enumify!(Self::EncryptionCapabilities, EncryptionCapabilitiesBody::parse, remaining),
+            0x03 => ctx_parse_enumify!(Self::CompressionCapabilities, CompressionCapabilitiesBody::parse, remaining),
+            0x05 => ctx_parse_enumify!(Self::NetnameNegotiateContextID, NetnameNegotiateContextIDBody::parse, remaining),
+            0x06 => ctx_parse_enumify!(Self::TransportCapabilities, TransportCapabilitiesBody::parse, remaining),
+            0x07 => ctx_parse_enumify!(Self::RDMATransformCapabilities, RDMATransformCapabilitiesBody::parse, remaining),
+            0x08 => ctx_parse_enumify!(Self::SigningCapabilities, SigningCapabilitiesBody::parse, remaining),
+            _ => Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)))
         }
     }
 
@@ -131,6 +167,22 @@ impl PreAuthIntegrityCapabilitiesBody {
         Some(Self { hash_algorithms, salt })
     }
 
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining, (alg_cnt, salt_len)) = tuple((
+            be_u16,
+            be_u16
+        ))(bytes)?;
+        let (remaining, hash_algorithms) = count(
+            map_res(be_u16, HashAlgorithm::try_from),
+            alg_cnt as usize
+        )(remaining)?;
+        let (remaining, salt) = map(
+            take(salt_len),
+            |s: &[u8]| s.to_vec(),
+        )(remaining)?;
+        Ok((remaining, Self {hash_algorithms, salt}))
+    }
+
     pub fn as_bytes(&self) -> Vec<u8> {
         [
             &u16_to_bytes(self.hash_algorithms.len() as u16),
@@ -163,11 +215,20 @@ impl EncryptionCapabilitiesBody {
         let mut ciphers = Vec::new();
         let mut cipher_ptr = 2_usize;
         while ciphers.len() < cipher_cnt {
-            let cipher = bytes_to_u16(&bytes[cipher_ptr..(cipher_ptr+2)]);
+            let cipher = bytes_to_u16(&bytes[cipher_ptr..(cipher_ptr + 2)]);
             ciphers.push(EncryptionCipher::try_from(cipher).ok()?);
             cipher_ptr += 2;
         }
         Some(Self { ciphers })
+    }
+
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining, cipher_cnt) = be_u16(bytes)?;
+        let (remaining, ciphers) = count(map_res(
+            be_u16,
+            EncryptionCipher::try_from
+        ), cipher_cnt as usize)(remaining)?;
+        Ok((remaining, Self { ciphers }))
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -217,6 +278,19 @@ impl CompressionCapabilitiesBody {
         Some(Self { flags, compression_algorithms })
     }
 
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining, (alg_cnt, _, flags)) = tuple((
+            be_u16,
+            be_u16,
+            map_res(be_u32, CompressionCapabilitiesFlags::try_from),
+        ))(bytes)?;
+        let (remaining, compression_algorithms) = count(
+            map_res(be_u16, CompressionAlgorithm::try_from),
+            alg_cnt as usize
+        )(remaining)?;
+        Ok((remaining, Self { flags, compression_algorithms }))
+    }
+
     pub fn as_bytes(&self) -> Vec<u8> {
         [
             &u16_to_bytes(self.compression_algorithms.len() as u16)[0..],
@@ -243,6 +317,19 @@ impl NetnameNegotiateContextIDBody {
         Some(Self { netname })
     }
 
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining, name_len) = be_u16(bytes)?;
+        let (remaining, netname) = map_res(
+            take(name_len),
+            |s: &[u8]| {
+                let mut vec = s.to_vec();
+                vec.retain(|x| *x != 0_u8);
+                String::from_utf8(vec)
+            },
+        )(&remaining[4..])?;
+        Ok((remaining, Self { netname }))
+    }
+
     pub fn as_bytes(&self) -> Vec<u8> {
         self.netname.bytes().collect::<Vec<u8>>()
     }
@@ -267,6 +354,11 @@ impl TransportCapabilitiesBody {
         let flags_num = bytes_to_u32(&bytes[0..4]);
         let flags = TransportCapabilitiesFlags::from_bits_truncate(flags_num);
         Some(Self { flags })
+    }
+
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining, flags) = map(be_u32, TransportCapabilitiesFlags::from_bits_truncate)(bytes)?;
+        Ok((remaining, Self { flags }))
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -301,6 +393,15 @@ impl RDMATransformCapabilitiesBody {
             transform_id_ptr += 2;
         }
         Some(Self { transform_ids })
+    }
+
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining, transform_cnt) = be_u16(bytes)?;
+        let (remaining, transform_ids) = count(
+            map_res(be_u16, RDMATransformID::try_from),
+            transform_cnt as usize
+        )(remaining)?;
+        Ok((remaining, Self { transform_ids }))
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -338,6 +439,15 @@ impl SigningCapabilitiesBody {
             signing_alg_ptr += 2;
         }
         Some(Self { signing_algorithms })
+    }
+
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining, signing_alg_cnt) = be_u16(bytes)?;
+        let (remaining, signing_algorithms) = count(
+            map_res(be_u16, SigningAlgorithm::try_from),
+            signing_alg_cnt as usize
+        )(remaining)?;
+        Ok((remaining, Self { signing_algorithms }))
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {

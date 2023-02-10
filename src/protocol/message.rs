@@ -60,6 +60,6 @@ impl<S: Header, T: Body<S>> Message for SMBMessage<S, T> {
     }
 
     fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        todo!()
+        Self::from_bytes_assert_body(bytes)
     }
 }

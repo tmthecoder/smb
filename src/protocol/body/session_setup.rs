@@ -1,5 +1,9 @@
 use std::net::TcpStream;
 use bitflags::bitflags;
+use nom::combinator::map;
+use nom::IResult;
+use nom::number::complete::be_u16;
+use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes};
 use crate::protocol::body::{Capabilities, SecurityMode};
@@ -20,13 +24,15 @@ impl SMBSessionSetupRequestBody {
         let security_buffer_len = bytes_to_u16(&bytes[14..16]) as usize;
         if bytes.len() < 24 + (security_buffer_len as usize) { return None }
         let flags = SMBSessionSetupFlags::from_bits_truncate(bytes[2]);
-        let security_mode = SecurityMode::from_bits_truncate(bytes[3]);
-        let capabilities = Capabilities::from_bits_truncate(bytes_to_u32(&bytes[4..8]) as u8);
+        let security_mode = SecurityMode::from_bits_truncate(bytes[3].into());
+        let capabilities = Capabilities::from_bits_truncate(bytes_to_u32(&bytes[4..8]));
         let previous_session_id = bytes_to_u64(&bytes[16..24]);
         let buffer = Vec::from(&bytes[security_buffer_offset..(security_buffer_offset + security_buffer_len)]);
         println!("Buffer: {:?}", buffer);
         Some((Self { flags, security_mode, capabilities, previous_session_id, buffer }, &bytes[(security_buffer_offset + security_buffer_len)..]))
     }
+
+
     
     pub fn get_buffer_copy(&self) -> Vec<u8> {
         self.buffer.clone()

@@ -1,3 +1,9 @@
+use nom::bytes::complete::take;
+use nom::combinator::{map, map_res};
+use nom::IResult;
+use nom::multi::count;
+use nom::number::complete::{be_u16, be_u32};
+use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
@@ -17,8 +23,8 @@ impl SMBNegotiateRequestBody {
     pub fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
         if bytes.len() < 37 { return None }
         let dialect_count = bytes_to_u16(&bytes[2..4]) as usize;
-        let security_mode = SecurityMode::from_bits_truncate(bytes[4]);
-        let capabilities = Capabilities::from_bits_truncate(bytes[8]);
+        let security_mode = SecurityMode::from_bits_truncate(bytes[4] as u16);
+        let capabilities = Capabilities::from_bits_truncate(bytes[8] as u32);
         let client_uuid = Uuid::from_slice(&bytes[12..28]).ok()?;
         let mut dialects = Vec::new();
         let mut dialect_idx = 36;
@@ -56,6 +62,44 @@ impl SMBNegotiateRequestBody {
             // TODO add negotiate ctx parsing
         }
         Some((Self { security_mode, capabilities, client_uuid, dialects, negotiate_contexts }, carryover))
+    }
+
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining, (_, dialect_count, security_mode, _, capabilities, client_uuid)) = tuple((
+            map(be_u16, |x| x == 36),
+            be_u16,
+            map(be_u16, SecurityMode::from_bits_truncate),
+            take(2_usize),
+            map(be_u32, Capabilities::from_bits_truncate),
+            map_res(take(16_usize), Uuid::from_slice),
+        ))(bytes)?;
+        let dialect_start = &remaining[8..];
+        let (remaining_post_dialect, dialects) = count(
+            map_res(be_u16, SMBDialect::try_from),
+            dialect_count as usize
+        )(dialect_start)?;
+        let (remaining_bytes, negotiate_contexts) = if dialects.contains(&SMBDialect::V3_1_1) {
+            let (_, (_, neg_ctx_cnt, _)) = tuple((
+               be_u32,
+               be_u16,
+               take(2_usize)
+            ))(remaining)?;
+            let padding_len = (dialect_start.len() - remaining_post_dialect.len()) % 8;
+            let (remaining_post_context, contexts) = count(
+                NegotiateContext::parse,
+                neg_ctx_cnt as usize,
+            )(&remaining_post_dialect[padding_len..])?;
+            (remaining_post_context, contexts)
+        } else {
+            (remaining_post_dialect, Vec::new())
+        };
+        Ok((remaining_bytes, Self {
+            security_mode,
+            capabilities,
+            client_uuid,
+            dialects,
+            negotiate_contexts
+        }))
     }
 }
 
@@ -143,7 +187,7 @@ impl SMBNegotiateResponseBody {
         }
         [
             &[65, 0][0..], // Structure Size
-            &[self.security_mode.bits(), 0],
+            &u16_to_bytes(self.security_mode.bits()),
             &u16_to_bytes(self.dialect as u16),
             &u16_to_bytes(self.negotiate_contexts.len() as u16),
             &*self.guid.as_bytes(),

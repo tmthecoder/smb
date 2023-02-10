@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 bitflags! {
    #[derive(Serialize, Deserialize)]
-   pub struct Capabilities: u8 {
+   pub struct Capabilities: u32 {
       const GLOBAL_CAP_DFS                = 0x01;
       const GLOBAL_CAP_LEASING            = 0x02;
       const GLOBAL_CAP_LARGE_MTU          = 0x04;
