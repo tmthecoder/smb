@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::str;
-use nom::combinator::{map, map_parser};
+use nom::combinator::map;
 use nom::IResult;
 use crate::byte_helper::u16_to_bytes;
 use crate::protocol::body::{Body, LegacySMBBody, SMBBody};
@@ -9,7 +9,7 @@ use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
 pub type SMBSyncMessage = SMBMessage<SMBSyncHeader, SMBBody>;
 pub type SMBLegacyMessage = SMBMessage<LegacySMBHeader, LegacySMBBody>;
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct SMBMessage<S: Header, T: Body<S>> {
     pub header: S,
     pub body: T,
@@ -41,13 +41,13 @@ impl SMBMessage<SMBSyncHeader, SMBBody> {
 
 impl<S: Header, T: Body<S>> Message for SMBMessage<S, T> {
     fn from_bytes_assert_body(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining_bytes, header) = map(S::parse, |s| s)(bytes)?;
+        let (remaining_bytes, (header, _)) = map(S::parse, |s| s)(bytes)?;
         let (remaining_bytes, body) = T::from_bytes_and_header_exists(remaining_bytes, &header)?;
         Ok((remaining_bytes, Self { header, body}))
     }
 
     fn from_bytes(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining_bytes, header) = S::parse(bytes)?;
+        let (remaining_bytes, (header, _)) = S::parse(bytes)?;
         let (remaining_bytes, body) = T::from_bytes_and_header(remaining_bytes, &header);
         Ok(( remaining_bytes, Self { header, body }))
     }
@@ -59,7 +59,9 @@ impl<S: Header, T: Body<S>> Message for SMBMessage<S, T> {
         [[0, 0].to_vec(), len_bytes.to_vec(), self.header.as_bytes(), self.body.as_bytes()].concat()
     }
 
-    fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        Self::from_bytes_assert_body(bytes)
+    fn parse<'a>(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining, (header, command_code)) = S::parse(bytes)?;
+        let (remaining, body) = T::parse_with_cc(remaining, command_code)?;
+        Ok((remaining, Self { header, body }))
     }
 }

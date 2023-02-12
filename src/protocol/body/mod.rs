@@ -25,6 +25,7 @@ pub type SMBSessionSetupResponse = session_setup::SMBSessionSetupResponseBody;
 
 
 pub trait Body<S: Header> {
+    fn parse_with_cc(bytes: &[u8], command_code: S::CommandCode) -> IResult<&[u8], Self> where Self: Sized;
     fn from_bytes_and_header_exists<'a>(bytes: &'a [u8], header: &S) -> IResult<&'a [u8], Self> where Self: Sized;
     fn from_bytes_and_header<'a>(bytes: &'a [u8], header: &S) -> (&'a [u8], Self) where Self: Sized;
     fn as_bytes(&self) -> Vec<u8>;

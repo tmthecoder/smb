@@ -1,7 +1,6 @@
 use nom::bytes::complete::{tag, take};
-use nom::combinator::{map, map_opt, map_res};
+use nom::combinator::{map, map_opt, map_res, peek};
 use nom::IResult;
-use nom::Parser;
 use nom::number::complete::be_u8;
 use nom::number::streaming::{be_u16, be_u32, be_u64};
 use nom::sequence::tuple;
@@ -36,6 +35,8 @@ pub struct LegacySMBHeader {
 
 impl Header for SMBSyncHeader {
 
+    type CommandCode = SMBCommandCode;
+
     fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
         println!("parse 2: {:?}", bytes);
         if bytes.len() < 60 {
@@ -58,7 +59,7 @@ impl Header for SMBSyncHeader {
         }, &bytes[60..]))
     }
 
-    fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+    fn parse(bytes: &[u8]) -> IResult<&[u8], (Self, Self::CommandCode)> {
         map(tuple((
             tag([0xFE]),
             tag(b"SMB"),
@@ -74,7 +75,7 @@ impl Header for SMBSyncHeader {
             be_u32,
             be_u64,
             map_res(take(16_usize), <([u8; 16])>::try_from),
-        )), |(_, _, _, _, channel_sequence, command, _, flags, next_command, message_id, _, tree_id, session_id, signature)| Self {
+        )), |(_, _, _, _, channel_sequence, command, _, flags, next_command, message_id, _, tree_id, session_id, signature)| (Self {
             command,
             channel_sequence,
             flags,
@@ -83,7 +84,7 @@ impl Header for SMBSyncHeader {
             tree_id,
             session_id,
             signature
-        })(bytes)
+        }, command))(bytes)
     }
 
     fn as_bytes(&self) -> Vec<u8> {
@@ -108,6 +109,8 @@ impl Header for SMBSyncHeader {
 
 impl Header for LegacySMBHeader {
 
+    type CommandCode = LegacySMBCommandCode;
+
     fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
         if bytes.len() < 28 {
             return None;
@@ -125,7 +128,7 @@ impl Header for LegacySMBHeader {
         }, &bytes[28..]))
     }
 
-    fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+    fn parse(bytes: &[u8]) -> IResult<&[u8], (Self, Self::CommandCode)> {
         map(tuple((
             tag([0xFE]),
             tag(b"SMB"),
@@ -138,7 +141,7 @@ impl Header for LegacySMBHeader {
             be_u16,
             be_u16,
             be_u16,
-        )), |(_, _, command, status, flags, flags2, extra, tid, pid, uid, mid)| Self {
+        )), |(_, _, command, status, flags, flags2, extra, tid, pid, uid, mid)| (Self {
             command,
             status,
             flags,
@@ -148,7 +151,7 @@ impl Header for LegacySMBHeader {
             pid,
             uid,
             mid
-        })(bytes)
+        }, command))(bytes)
     }
 
     fn as_bytes(&self) -> Vec<u8> {

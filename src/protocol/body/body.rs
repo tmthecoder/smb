@@ -1,11 +1,16 @@
 use serde::{Deserialize, Serialize};
 use std::str;
+use nom::combinator::map_res;
 use nom::error::ErrorKind;
 use nom::IResult;
+use nom::number::complete::be_u16;
 use crate::protocol::body::Body;
 use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
 use crate::protocol::body::session_setup::{SMBSessionSetupRequestBody, SMBSessionSetupResponseBody};
-use crate::protocol::header::{LegacySMBCommandCode, LegacySMBHeader, SMBCommandCode, SMBSyncHeader};
+use crate::protocol::header::LegacySMBCommandCode;
+use crate::protocol::header::LegacySMBHeader;
+use crate::protocol::header::SMBCommandCode;
+use crate::protocol::header::SMBSyncHeader;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum SMBBody {
@@ -18,6 +23,19 @@ pub enum SMBBody {
 }
 
 impl Body<SMBSyncHeader> for SMBBody {
+
+    fn parse_with_cc(bytes: &[u8], command_code: SMBCommandCode) -> IResult<&[u8], Self> {
+        match command_code {
+            SMBCommandCode::Negotiate => {
+                let (remaining, body) = SMBNegotiateRequest::parse(bytes)?;
+                Ok((remaining, SMBBody::NegotiateRequest(body)))
+            },
+            // SMBCommandCode::SessionSetup => {
+            //     let (remaining, body) => SMBSessionSetupRequestBody::
+            // }
+            _ => Err(nom::Err::Error(nom::error::Error::new(bytes, ErrorKind::Fail))),
+        }
+    }
 
     fn from_bytes_and_header_exists<'a>(bytes: &'a [u8], header: &SMBSyncHeader) -> IResult<&'a [u8], Self> {
         let body = Self::from_bytes_and_header(bytes, header);
@@ -65,6 +83,10 @@ pub enum LegacySMBBody {
 }
 
 impl Body<LegacySMBHeader> for LegacySMBBody {
+    fn parse_with_cc(bytes: &[u8], command_code: LegacySMBCommandCode) -> IResult<&[u8], Self> where Self: Sized {
+        todo!()
+    }
+
     fn from_bytes_and_header_exists<'a>(bytes: &'a [u8], header: &LegacySMBHeader) -> IResult<&'a [u8], Self> {
         let body = Self::from_bytes_and_header(bytes, header);
         if body.1 == LegacySMBBody::None {
