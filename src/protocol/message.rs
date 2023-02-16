@@ -59,7 +59,7 @@ impl<S: Header, T: Body<S>> Message for SMBMessage<S, T> {
         [[0, 0].to_vec(), len_bytes.to_vec(), self.header.as_bytes(), self.body.as_bytes()].concat()
     }
 
-    fn parse<'a>(bytes: &[u8]) -> IResult<&[u8], Self> {
+    fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, (header, command_code)) = S::parse(bytes)?;
         let (remaining, body) = T::parse_with_cc(remaining, command_code)?;
         Ok((remaining, Self { header, body }))

@@ -1,8 +1,8 @@
-use std::net::TcpStream;
 use bitflags::bitflags;
+use nom::bytes::complete::take;
 use nom::combinator::map;
-use nom::IResult;
-use nom::number::complete::be_u16;
+use nom::{IResult, Parser};
+use nom::number::complete::{be_u16, be_u32, be_u64, be_u8};
 use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes};
@@ -27,13 +27,34 @@ impl SMBSessionSetupRequestBody {
         let security_mode = SecurityMode::from_bits_truncate(bytes[3].into());
         let capabilities = Capabilities::from_bits_truncate(bytes_to_u32(&bytes[4..8]));
         let previous_session_id = bytes_to_u64(&bytes[16..24]);
-        let buffer = Vec::from(&bytes[security_buffer_offset..(security_buffer_offset + security_buffer_len)]);
+        let buffer =  bytes[security_buffer_offset..(security_buffer_offset + security_buffer_len)].to_vec();
         println!("Buffer: {:?}", buffer);
         Some((Self { flags, security_mode, capabilities, previous_session_id, buffer }, &bytes[(security_buffer_offset + security_buffer_len)..]))
     }
 
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (_, (_, flags, security_mode, capabilities, _, security_buffer_offset, security_buffer_len, previous_session_id)) = tuple((
+            take(2_usize),
+            map(be_u8, SMBSessionSetupFlags::from_bits_truncate),
+            map(be_u8, |b: u8| SecurityMode::from_bits_truncate(b.into())),
+            map(be_u32, Capabilities::from_bits_truncate),
+            take(4_usize),
+            map(be_u16, |x| x - 64),
+            be_u16,
+            be_u64,
+        ))(bytes)?;
+        let (remaining, buffer) = take(security_buffer_offset)(bytes)
+            .and_then(|(remaining, _)| take(security_buffer_len)(remaining))
+            .map(|res| (res.0, res.1.to_vec()))?;
+        Ok((remaining, Self {
+            flags,
+            security_mode,
+            capabilities,
+            previous_session_id,
+            buffer
+        }))
+    }
 
-    
     pub fn get_buffer_copy(&self) -> Vec<u8> {
         self.buffer.clone()
     }
