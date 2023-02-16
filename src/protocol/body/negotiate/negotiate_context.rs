@@ -7,13 +7,12 @@ use nom::Err::Error;
 use nom::error::ErrorKind;
 use nom::IResult;
 use nom::multi::count;
-use nom::number::complete::{be_u16, be_u32};
+use nom::number::complete::{le_u16, le_u32};
 use nom::sequence::tuple;
 use num_enum::TryFromPrimitive;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
-use crate::protocol::body::negotiate::negotiate_context::RDMATransformID::Signing;
 
 macro_rules! ctx_to_bytes {
     ($body: expr) => ({
@@ -28,8 +27,10 @@ macro_rules! ctx_to_bytes {
 }
 
 macro_rules! ctx_parse_enumify {
-    ($enumType: expr, $bodyType: expr, $data: expr) => ({
-        let (remaining, body) = $bodyType($data)?;
+    ($enumType: expr, $bodyType: expr, $data: expr, $len: expr) => ({
+        let (_, body) = $bodyType($data).unwrap();
+        let padding = if $len % 8 == 0 || (6 + $len) as usize >= $data.len() { 0 } else { 8 - $len % 8 };
+        let (remaining, _) = take(6 + $len + padding)($data)?;
         Ok((remaining, $enumType(body)))
     })
 }
@@ -77,19 +78,20 @@ impl NegotiateContext {
     }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, (ctx_type_num, _, _)) = tuple((
-            be_u16,
-            be_u16,
+        let (_, (ctx_type_num, ctx_len, _)) = tuple((
+            le_u16,
+            le_u16,
             take(4_usize),
         ))(bytes)?;
+        let (remaining, _) = take(2_usize)(bytes)?;
         match ctx_type_num {
-            0x01 => ctx_parse_enumify!(Self::PreAuthIntegrityCapabilities, PreAuthIntegrityCapabilitiesBody::parse, remaining),
-            0x02 => ctx_parse_enumify!(Self::EncryptionCapabilities, EncryptionCapabilitiesBody::parse, remaining),
-            0x03 => ctx_parse_enumify!(Self::CompressionCapabilities, CompressionCapabilitiesBody::parse, remaining),
-            0x05 => ctx_parse_enumify!(Self::NetnameNegotiateContextID, NetnameNegotiateContextIDBody::parse, remaining),
-            0x06 => ctx_parse_enumify!(Self::TransportCapabilities, TransportCapabilitiesBody::parse, remaining),
-            0x07 => ctx_parse_enumify!(Self::RDMATransformCapabilities, RDMATransformCapabilitiesBody::parse, remaining),
-            0x08 => ctx_parse_enumify!(Self::SigningCapabilities, SigningCapabilitiesBody::parse, remaining),
+            0x01 => ctx_parse_enumify!(Self::PreAuthIntegrityCapabilities, PreAuthIntegrityCapabilitiesBody::parse, remaining, ctx_len),
+            0x02 => ctx_parse_enumify!(Self::EncryptionCapabilities, EncryptionCapabilitiesBody::parse, remaining, ctx_len),
+            0x03 => ctx_parse_enumify!(Self::CompressionCapabilities, CompressionCapabilitiesBody::parse, remaining, ctx_len),
+            0x05 => ctx_parse_enumify!(Self::NetnameNegotiateContextID, NetnameNegotiateContextIDBody::parse, remaining, ctx_len),
+            0x06 => ctx_parse_enumify!(Self::TransportCapabilities, TransportCapabilitiesBody::parse, remaining, ctx_len),
+            0x07 => ctx_parse_enumify!(Self::RDMATransformCapabilities, RDMATransformCapabilitiesBody::parse, remaining, ctx_len),
+            0x08 => ctx_parse_enumify!(Self::SigningCapabilities, SigningCapabilitiesBody::parse, remaining, ctx_len),
             _ => Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)))
         }
     }
@@ -168,12 +170,13 @@ impl PreAuthIntegrityCapabilitiesBody {
     }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, (alg_cnt, salt_len)) = tuple((
-            be_u16,
-            be_u16
+        let (remaining, (_, alg_cnt, salt_len)) = tuple((
+            take(6_usize),
+            le_u16,
+            le_u16
         ))(bytes)?;
         let (remaining, hash_algorithms) = count(
-            map_res(be_u16, HashAlgorithm::try_from),
+            map_res(le_u16, HashAlgorithm::try_from),
             alg_cnt as usize
         )(remaining)?;
         let (remaining, salt) = map(
@@ -223,9 +226,10 @@ impl EncryptionCapabilitiesBody {
     }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, cipher_cnt) = be_u16(bytes)?;
+        let (remaining, _) = take(6_usize)(bytes)?;
+        let (remaining, cipher_cnt) = le_u16(remaining)?;
         let (remaining, ciphers) = count(map_res(
-            be_u16,
+            le_u16,
             EncryptionCipher::try_from
         ), cipher_cnt as usize)(remaining)?;
         Ok((remaining, Self { ciphers }))
@@ -279,13 +283,14 @@ impl CompressionCapabilitiesBody {
     }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, (alg_cnt, _, flags)) = tuple((
-            be_u16,
-            be_u16,
-            map_res(be_u32, CompressionCapabilitiesFlags::try_from),
+        let (remaining, (_, alg_cnt, _, flags)) = tuple((
+            take(6_usize),
+            le_u16,
+            le_u16,
+            map_res(le_u32, CompressionCapabilitiesFlags::try_from),
         ))(bytes)?;
         let (remaining, compression_algorithms) = count(
-            map_res(be_u16, CompressionAlgorithm::try_from),
+            map_res(le_u16, CompressionAlgorithm::try_from),
             alg_cnt as usize
         )(remaining)?;
         Ok((remaining, Self { flags, compression_algorithms }))
@@ -318,7 +323,8 @@ impl NetnameNegotiateContextIDBody {
     }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, name_len) = be_u16(bytes)?;
+        let (remaining, name_len) = le_u16(bytes)?;
+        let (remaining, _) = take(4_usize)(remaining)?;
         let (remaining, netname) = map_res(
             take(name_len),
             |s: &[u8]| {
@@ -326,7 +332,7 @@ impl NetnameNegotiateContextIDBody {
                 vec.retain(|x| *x != 0_u8);
                 String::from_utf8(vec)
             },
-        )(&remaining[4..])?;
+        )(remaining)?;
         Ok((remaining, Self { netname }))
     }
 
@@ -357,7 +363,7 @@ impl TransportCapabilitiesBody {
     }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, flags) = map(be_u32, TransportCapabilitiesFlags::from_bits_truncate)(bytes)?;
+        let (remaining, flags) = map(le_u32, TransportCapabilitiesFlags::from_bits_truncate)(bytes)?;
         Ok((remaining, Self { flags }))
     }
 
@@ -396,9 +402,9 @@ impl RDMATransformCapabilitiesBody {
     }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, transform_cnt) = be_u16(bytes)?;
+        let (remaining, transform_cnt) = le_u16(bytes)?;
         let (remaining, transform_ids) = count(
-            map_res(be_u16, RDMATransformID::try_from),
+            map_res(le_u16, RDMATransformID::try_from),
             transform_cnt as usize
         )(remaining)?;
         Ok((remaining, Self { transform_ids }))
@@ -442,9 +448,9 @@ impl SigningCapabilitiesBody {
     }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, signing_alg_cnt) = be_u16(bytes)?;
+        let (remaining, signing_alg_cnt) = le_u16(bytes)?;
         let (remaining, signing_algorithms) = count(
-            map_res(be_u16, SigningAlgorithm::try_from),
+            map_res(le_u16, SigningAlgorithm::try_from),
             signing_alg_cnt as usize
         )(remaining)?;
         Ok((remaining, Self { signing_algorithms }))

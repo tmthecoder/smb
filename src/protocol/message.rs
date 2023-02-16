@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use serde::{Deserialize, Serialize};
 use std::str;
 use nom::combinator::map;
@@ -39,7 +40,7 @@ impl SMBMessage<SMBSyncHeader, SMBBody> {
     }
 }
 
-impl<S: Header, T: Body<S>> Message for SMBMessage<S, T> {
+impl<S: Header + Debug, T: Body<S>> Message for SMBMessage<S, T> {
     fn from_bytes_assert_body(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining_bytes, (header, _)) = map(S::parse, |s| s)(bytes)?;
         let (remaining_bytes, body) = T::from_bytes_and_header_exists(remaining_bytes, &header)?;
@@ -61,6 +62,7 @@ impl<S: Header, T: Body<S>> Message for SMBMessage<S, T> {
 
     fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, (header, command_code)) = S::parse(bytes)?;
+        println!("Header: {:?}", header);
         let (remaining, body) = T::parse_with_cc(remaining, command_code)?;
         Ok((remaining, Self { header, body }))
     }

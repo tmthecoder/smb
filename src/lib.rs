@@ -98,7 +98,7 @@ impl Iterator for SMBMessageIterator<'_> {
                     if buffer[(pos)..].starts_with(b"SMB") {
                         let carryover;
                         let message;
-                        if let Ok((remaining, msg)) = SMBMessage::<SMBSyncHeader, SMBBody>::from_bytes_assert_body(&buffer[(pos-1)..read]) {
+                        if let Ok((remaining, msg)) = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[(pos-1)..read]) {
                             carryover = remaining;
                             message = msg;
                         } else {

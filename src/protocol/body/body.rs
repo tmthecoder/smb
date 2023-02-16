@@ -30,9 +30,10 @@ impl Body<SMBSyncHeader> for SMBBody {
                 let (remaining, body) = SMBNegotiateRequest::parse(bytes)?;
                 Ok((remaining, SMBBody::NegotiateRequest(body)))
             },
-            // SMBCommandCode::SessionSetup => {
-            //     let (remaining, body) => SMBSessionSetupRequestBody::
-            // }
+            SMBCommandCode::SessionSetup => {
+                let (remaining, body) = SMBSessionSetupRequestBody::parse(bytes)?;
+                Ok((remaining, SMBBody::SessionSetupRequest(body)))
+            }
             _ => Err(nom::Err::Error(nom::error::Error::new(bytes, ErrorKind::Fail))),
         }
     }
