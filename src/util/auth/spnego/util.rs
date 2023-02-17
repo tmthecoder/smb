@@ -23,7 +23,7 @@ pub fn read_length(buffer: &[u8], offset: &mut usize) -> usize {
     let mut len = buffer[*offset] as usize;
     *offset += 1;
     if len >= 0x80 {
-        let field_size = (len & 0x7F);
+        let field_size = len & 0x7F;
         len = 0;
         for byte in &buffer[*offset..(*offset + field_size)] {
             len *= 256;

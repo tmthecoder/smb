@@ -1,11 +1,12 @@
 use bitflags::bitflags;
 use nom::bytes::complete::take;
 use nom::combinator::map;
-use nom::{IResult, Parser};
+use nom::IResult;
 use nom::number::complete::{le_u16, le_u32, le_u64, le_u8};
 use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
-use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes};
+
+use crate::byte_helper::u16_to_bytes;
 use crate::protocol::body::{Capabilities, SecurityMode};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]

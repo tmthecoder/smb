@@ -1,13 +1,10 @@
-use std::io::Read;
-use std::net::TcpStream;
-use std::time::Duration;
 use smb_reader::protocol::body::{Capabilities, FileTime, SecurityMode, SMBBody, SMBDialect, SMBSessionSetupResponse};
 use smb_reader::protocol::body::negotiate::SMBNegotiateResponse;
 use smb_reader::protocol::header::{SMBCommandCode, SMBFlags, SMBSyncHeader};
 use smb_reader::protocol::message::SMBMessage;
 use smb_reader::SMBListener;
-use smb_reader::util::auth::ntlm::{NTLMAuthProvider, NTLMMessage};
 use smb_reader::util::auth::{AuthProvider, User};
+use smb_reader::util::auth::ntlm::{NTLMAuthProvider, NTLMMessage};
 use smb_reader::util::auth::spnego::SPNEGOToken;
 
 const NTLM_ID: [u8; 10] = [0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x02, 0x0a];

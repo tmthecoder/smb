@@ -1,10 +1,11 @@
 use nom::bytes::complete::{tag, take};
-use nom::combinator::{map, map_opt, map_res, peek};
+use nom::combinator::{map, map_opt, map_res};
 use nom::IResult;
 use nom::number::complete::le_u8;
 use nom::number::streaming::{le_u16, le_u32, le_u64};
 use nom::sequence::tuple;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes, u32_to_bytes, u64_to_bytes};
 use crate::protocol::header::{Header, LegacySMBCommandCode, LegacySMBFlags, LegacySMBFlags2, SMBCommandCode, SMBExtra, SMBFlags, SMBStatus};
 

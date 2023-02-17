@@ -1,16 +1,16 @@
 extern crate core;
 
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+
+use crate::protocol::body::{LegacySMBBody, SMBBody};
+use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
+use crate::protocol::message::{Message, SMBMessage};
+
 pub mod protocol;
 pub mod util;
 // pub mod server;
 mod byte_helper;
-mod gss_helper;
-
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream, ToSocketAddrs};
-use crate::protocol::body::{LegacySMBBody, SMBBody};
-use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
-use crate::protocol::message::{Message, SMBMessage};
 
 #[derive(Debug)]
 pub struct SMBListener {

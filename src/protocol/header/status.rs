@@ -1,14 +1,15 @@
 use num_enum::TryFromPrimitive;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+
 use crate::byte_helper::{bytes_to_u16, u16_to_bytes};
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub enum SMBStatus {
     NTStatus(NTStatusCode),
     DosError(char, char, u16)
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct NTStatusCode {
     level: NTStatusLevel,
     facility: [u8; 2],

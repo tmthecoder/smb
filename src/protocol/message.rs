@@ -1,8 +1,9 @@
 use std::fmt::Debug;
-use serde::{Deserialize, Serialize};
 use std::str;
-use nom::combinator::map;
+
 use nom::IResult;
+use serde::{Deserialize, Serialize};
+
 use crate::byte_helper::u16_to_bytes;
 use crate::protocol::body::{Body, LegacySMBBody, SMBBody};
 use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
