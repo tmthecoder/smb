@@ -8,8 +8,6 @@ mod gss_helper;
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
-use nom::bytes::complete::tag;
-use nom::error::Error;
 use crate::protocol::body::{LegacySMBBody, SMBBody};
 use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
@@ -87,26 +85,20 @@ impl Iterator for SMBMessageIterator<'_> {
         let mut buffer = [0_u8; 512];
         println!("In next: {} W carryover: {:?}", self.carryover_len, self.carryover);
         if self.carryover_len >= 32 && self.carryover.starts_with(b"SMB") {
-            let (header, _) = SMBSyncHeader::from_bytes(&self.carryover)?;
+            let (_, (header, _)) = SMBSyncHeader::parse(&self.carryover).ok()?;
             return Some(SMBMessage { header, body: SMBBody::None });
         }
         match self.connection.stream.read(&mut buffer) {
             Ok(read) => {
-                println!("buffer: {:?}", buffer);
-                let res = tag::<_, _, Error<_>>(b"SMB")(&buffer[0..]);
                 if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
                     if buffer[(pos)..].starts_with(b"SMB") {
-                        let carryover;
-                        let message;
-                        if let Ok((remaining, msg)) = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[(pos-1)..read]) {
-                            carryover = remaining;
-                            message = msg;
+                        let (carryover, message) = if let Ok((remaining, msg)) = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[(pos-1)..read]) {
+                            (remaining, msg)
                         } else {
                             let (remaining, legacy_msg) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::parse(&buffer[(pos-1)..read]).ok()?;
-                            carryover = remaining;
                             let m = SMBMessage::<SMBSyncHeader, SMBBody>::from_legacy(legacy_msg)?;
-                            message = m;
-                        }
+                            (remaining, m)
+                        };
                         for (idx, byte) in carryover.iter().enumerate() {
                             self.carryover[self.carryover_len + idx] = *byte;
                         }

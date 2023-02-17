@@ -66,16 +66,6 @@ impl SMBSessionSetupResponseBody {
 }
 
 impl SMBSessionSetupResponseBody {
-    pub fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
-        if bytes.len() < 9 { return None; }
-        let security_buffer_offset = (bytes_to_u16(&bytes[4..6]) - 64) as usize;
-        let security_buffer_len = bytes_to_u16(&bytes[6..8]) as usize;
-        if bytes.len() < 9 + (security_buffer_len as usize) { return None }
-        let session_flags = SMBSessionFlags::from_bits_truncate(bytes_to_u16(&bytes[2..4]));
-        let buffer = Vec::from(&bytes[security_buffer_offset..(security_buffer_offset + security_buffer_len)]);
-        Some((Self { session_flags, buffer }, &bytes[(security_buffer_offset + security_buffer_len)..]))
-    }
-
     pub fn as_bytes(&self) -> Vec<u8> {
         let security_offset = 72_u16;
         [
