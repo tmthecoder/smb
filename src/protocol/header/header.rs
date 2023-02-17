@@ -1,14 +1,14 @@
 use nom::bytes::complete::{tag, take};
 use nom::combinator::{map, map_opt, map_res, peek};
 use nom::IResult;
-use nom::number::complete::be_u8;
-use nom::number::streaming::{be_u16, be_u32, be_u64};
+use nom::number::complete::le_u8;
+use nom::number::streaming::{le_u16, le_u32, le_u64};
 use nom::sequence::tuple;
 use serde::{Serialize, Deserialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, bytes_to_u64, u16_to_bytes, u32_to_bytes, u64_to_bytes};
 use crate::protocol::header::{Header, LegacySMBCommandCode, LegacySMBFlags, LegacySMBFlags2, SMBCommandCode, SMBExtra, SMBFlags, SMBStatus};
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct SMBSyncHeader {
     pub command: SMBCommandCode,
     channel_sequence: u32, // status in smb2
@@ -38,7 +38,6 @@ impl Header for SMBSyncHeader {
     type CommandCode = SMBCommandCode;
 
     fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
-        println!("parse 2: {:?}", bytes);
         if bytes.len() < 60 {
             return None;
         }
@@ -46,7 +45,6 @@ impl Header for SMBSyncHeader {
         for (idx, byte) in bytes[44..60].iter().enumerate() {
             signature[idx] = *byte;
         }
-        println!("status: {}, reserved: {:?}", bytes_to_u32(&bytes[4..8]), &bytes[28..32]);
         Some((SMBSyncHeader {
             command: bytes_to_u16(& bytes[8..10]).try_into().ok()?,
             flags: SMBFlags::from_bits_truncate(bytes_to_u32(&bytes[12..16])),
@@ -63,17 +61,17 @@ impl Header for SMBSyncHeader {
         map(tuple((
             tag([0xFE]),
             tag(b"SMB"),
-            map(be_u16, |x| x == 64),
+            map(le_u16, |x| x == 64),
             take(2_usize),
-            be_u32,
-            map_res(be_u16, SMBCommandCode::try_from),
+            le_u32,
+            map_res(le_u16, SMBCommandCode::try_from),
             take(2_usize),
-            map(be_u32, SMBFlags::from_bits_truncate),
-            be_u32,
-            be_u64,
+            map(le_u32, SMBFlags::from_bits_truncate),
+            le_u32,
+            le_u64,
             take(4_usize),
-            be_u32,
-            be_u64,
+            le_u32,
+            le_u64,
             map_res(take(16_usize), <([u8; 16])>::try_from),
         )), |(_, _, _, _, channel_sequence, command, _, flags, next_command, message_id, _, tree_id, session_id, signature)| (Self {
             command,
@@ -132,15 +130,15 @@ impl Header for LegacySMBHeader {
         map(tuple((
             tag([0xFE]),
             tag(b"SMB"),
-            map_res(be_u8, LegacySMBCommandCode::try_from),
+            map_res(le_u8, LegacySMBCommandCode::try_from),
             map_opt(take(4_usize), SMBStatus::from_bytes),
-            map(be_u8, LegacySMBFlags::from_bits_truncate),
-            map(be_u16, LegacySMBFlags2::from_bits_truncate),
+            map(le_u8, LegacySMBFlags::from_bits_truncate),
+            map(le_u16, LegacySMBFlags2::from_bits_truncate),
             map(take(12_usize), SMBExtra::from_bytes),
-            be_u16,
-            be_u16,
-            be_u16,
-            be_u16,
+            le_u16,
+            le_u16,
+            le_u16,
+            le_u16,
         )), |(_, _, command, status, flags, flags2, extra, tid, pid, uid, mid)| (Self {
             command,
             status,

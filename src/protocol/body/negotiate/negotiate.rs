@@ -10,7 +10,7 @@ use nom::IResult;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct SMBNegotiateRequestBody {
     security_mode: SecurityMode,
     capabilities: Capabilities,
@@ -76,7 +76,6 @@ impl SMBNegotiateRequestBody {
     }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        println!("in parse: {:?}", bytes);
         let (remaining, (_, dialect_count, security_mode, _, capabilities, client_uuid)) =
             tuple((
                 map(le_u16, |x| x == 36),
@@ -101,7 +100,6 @@ impl SMBNegotiateRequestBody {
                     &remaining_post_dialect[padding..],
                 )
             }).unwrap();
-            println!("Contexts: {:?}", contexts);
             (remaining_post_context, contexts)
         } else {
             (remaining_post_dialect, Vec::new())

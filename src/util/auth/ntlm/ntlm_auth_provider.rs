@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::util::auth::{AuthProvider, User};
-use crate::util::auth::ntlm::ntlm_message::NTLMNegotiateFlags;
-use crate::util::auth::ntlm::{NTLMChallengeMessageBody, NTLMMessage};
+use crate::util::auth::ntlm::NTLMMessage;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct NTLMAuthProvider {

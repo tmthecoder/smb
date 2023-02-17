@@ -1,4 +1,3 @@
-use std::str::from_utf8;
 use serde::{Deserialize, Serialize};
 use crate::byte_helper::bytes_to_u32;
 use crate::util::auth::ntlm::ntlm_auth_provider::NTLMAuthContext;
@@ -49,7 +48,7 @@ impl NTLMAuthenticateMessageBody {
 }
 
 impl NTLMAuthenticateMessageBody {
-    pub fn authenticate(&self, context: &mut NTLMAuthContext, accepted_users: &Vec<User>, guest_supported: bool) -> u8 {
+    pub fn authenticate(&self, context: &mut NTLMAuthContext, accepted_users: &[User], guest_supported: bool) -> u8 {
         context.domain_name = Some(self.domain_name.clone());
         context.user_name = Some(self.user_name.clone());
         context.work_station = Some(self.work_station.clone());

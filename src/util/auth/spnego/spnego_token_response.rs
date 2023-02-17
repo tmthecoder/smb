@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::util::auth::spnego::util::{DER_ENCODING_SEQUENCE_TAG, read_length, NEG_STATE_TAG, SUPPORTED_MECH_TAG, RESPONSE_TOKEN_TAG, MECH_LIST_MIC_TAG, DER_ENCODING_ENUM_TAG, DER_ENCODING_OID_TAG, DER_ENCODING_BYTE_ARRAY_TAG, read_der_byte_array, read_der_oid};
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq, TryFromPrimitive, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, TryFromPrimitive, Deserialize, Serialize)]
 pub enum NegotiateState {
     AcceptCompleted = 0x0,
     AcceptIncomplete,

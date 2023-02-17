@@ -1,7 +1,5 @@
-use std::string::FromUtf8Error;
 use bitflags::bitflags;
-use der::Encode;
-use nom::bytes::complete::{take, take_until};
+use nom::bytes::complete::take;
 use nom::combinator::{map, map_res};
 use nom::Err::Error;
 use nom::error::ErrorKind;
@@ -113,7 +111,7 @@ impl NegotiateContext {
             NegotiateContext::PreAuthIntegrityCapabilities(body) => {
                 let hash_algorithms = vector_with_only_last!(body.hash_algorithms.clone());
                 let mut salt = vec![0_u8; 32];
-                rand::rngs::ThreadRng::default().fill_bytes(&mut *salt);
+                rand::rngs::ThreadRng::default().fill_bytes(&mut salt);
                 Some(NegotiateContext::PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilitiesBody { hash_algorithms, salt }))
             }
             NegotiateContext::EncryptionCapabilities(body) => {

@@ -1,4 +1,4 @@
-use nom::{IResult, Parser};
+use nom::IResult;
 
 mod header;
 mod command_code;

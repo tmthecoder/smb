@@ -61,6 +61,7 @@ impl<S: Header + Debug, T: Body<S>> Message for SMBMessage<S, T> {
     }
 
     fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        println!("Bytes: {:?}", bytes);
         let (remaining, (header, command_code)) = S::parse(bytes)?;
         println!("Header: {:?}", header);
         let (remaining, body) = T::parse_with_cc(remaining, command_code)?;

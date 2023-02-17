@@ -16,7 +16,7 @@ pub struct NTStatusCode {
 }
 
 #[repr(u8)]
-#[derive(Serialize, Deserialize, TryFromPrimitive, PartialEq, Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, TryFromPrimitive, PartialEq, Eq, Debug, Copy, Clone)]
 pub enum NTStatusLevel {
     Success = 0x0,
     Information,
