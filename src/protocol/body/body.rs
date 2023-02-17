@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::str;
-use nom::combinator::map_res;
+use nom::bytes::complete::take_till;
 use nom::error::ErrorKind;
 use nom::IResult;
-use nom::number::complete::be_u16;
+use nom::multi::many1;
+use nom::number::complete::le_u8;
 use crate::protocol::body::Body;
 use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
 use crate::protocol::body::session_setup::{SMBSessionSetupRequestBody, SMBSessionSetupResponseBody};
@@ -38,32 +39,6 @@ impl Body<SMBSyncHeader> for SMBBody {
         }
     }
 
-    fn from_bytes_and_header_exists<'a>(bytes: &'a [u8], header: &SMBSyncHeader) -> IResult<&'a [u8], Self> {
-        let body = Self::from_bytes_and_header(bytes, header);
-        if body.1 == SMBBody::None {
-            return Err(nom::Err::Error(nom::error::Error::new(body.0, ErrorKind::Fail)));
-        }
-        Ok(body)
-    }
-
-    fn from_bytes_and_header<'a>(bytes: &'a [u8], header: &SMBSyncHeader) -> (&'a [u8], Self) {
-        match header.command {
-            SMBCommandCode::Negotiate => {
-                if let Some((negotiation_body, carryover)) = SMBNegotiateRequest::from_bytes(bytes) {
-                    return (carryover, SMBBody::NegotiateRequest(negotiation_body))
-                }
-                (bytes, SMBBody::None)
-            },
-            SMBCommandCode::SessionSetup => {
-                if let Some((session_setup_body, carryover)) = SMBSessionSetupRequestBody::from_bytes(bytes) {
-                    return (carryover, SMBBody::SessionSetupRequest(session_setup_body))
-                }
-                (bytes, SMBBody::None)
-            }
-            _ => (bytes, SMBBody::None)
-        }
-    }
-
     fn as_bytes(&self) -> Vec<u8> {
         match self {
             SMBBody::NegotiateResponse(x) => {
@@ -85,39 +60,22 @@ pub enum LegacySMBBody {
 
 impl Body<LegacySMBHeader> for LegacySMBBody {
     fn parse_with_cc(bytes: &[u8], command_code: LegacySMBCommandCode) -> IResult<&[u8], Self> where Self: Sized {
-        todo!()
-    }
-
-    fn from_bytes_and_header_exists<'a>(bytes: &'a [u8], header: &LegacySMBHeader) -> IResult<&'a [u8], Self> {
-        let body = Self::from_bytes_and_header(bytes, header);
-        if body.1 == LegacySMBBody::None {
-            return Err(nom::Err::Error(nom::error::Error::new(body.0, ErrorKind::Fail)));
-        }
-        Ok(body)
-    }
-
-    fn from_bytes_and_header<'a>(bytes: &'a [u8], header: &LegacySMBHeader) -> (&'a [u8], Self) {
-        return match header.command {
-            LegacySMBCommandCode::Negotiate => {
-                let count = bytes[0] as usize;
-                let sliver = &bytes[1..=count];
-                println!("{:?}", sliver);
-                let protocol_strs: Vec<String> = sliver.split(|num| *num == 0x02).filter_map(|mut protocol| {
-                    if let Some(x) = protocol.last() {
-                        if *x == 0 {
-                            protocol = &protocol[0..(protocol.len() - 1)];
-                        }
-                        if protocol.is_empty() { return None; }
-                        Some(str::from_utf8(protocol).ok()?.to_owned())
-                    } else {
-                        None
-                    }
-                }).collect();
-                let body = LegacySMBBody::Negotiate(protocol_strs);
-                (&bytes[(count + 1)..], body)
-            },
-            _ => (bytes, LegacySMBBody::None)
-        }
+       match command_code {
+           LegacySMBCommandCode::Negotiate => {
+                let (remaining, cnt) = le_u8(bytes)?;
+                let (remaining, protocol_vecs) = many1(take_till(|n: u8| n == 0x02))(remaining)?;
+                let mut protocol_strs = Vec::new();
+                for slice in protocol_vecs {
+                    let mut vec = slice.to_vec();
+                    vec.retain(|x| *x != 0);
+                    protocol_strs.push(String::from_utf8(vec).map_err(
+                        |_| nom::Err::Error(nom::error::Error::new(bytes, ErrorKind::Fail))
+                    )?);
+                }
+               Ok((remaining, LegacySMBBody::Negotiate(protocol_strs)))
+           }
+           _ => Err(nom::Err::Error(nom::error::Error::new(bytes, ErrorKind::Fail))),
+       }
     }
 
     fn as_bytes(&self) -> Vec<u8> {

@@ -18,20 +18,6 @@ pub struct SMBSessionSetupRequestBody {
 }
 
 impl SMBSessionSetupRequestBody {
-    pub fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
-        if bytes.len() < 25 { return None; }
-        let security_buffer_offset = (bytes_to_u16(&bytes[12..14]) - 64) as usize;
-        let security_buffer_len = bytes_to_u16(&bytes[14..16]) as usize;
-        if bytes.len() < 24 + (security_buffer_len as usize) { return None }
-        let flags = SMBSessionSetupFlags::from_bits_truncate(bytes[2]);
-        let security_mode = SecurityMode::from_bits_truncate(bytes[3].into());
-        let capabilities = Capabilities::from_bits_truncate(bytes_to_u32(&bytes[4..8]));
-        let previous_session_id = bytes_to_u64(&bytes[16..24]);
-        let buffer =  bytes[security_buffer_offset..(security_buffer_offset + security_buffer_len)].to_vec();
-        println!("Buffer: {:?}", buffer);
-        Some((Self { flags, security_mode, capabilities, previous_session_id, buffer }, &bytes[(security_buffer_offset + security_buffer_len)..]))
-    }
-
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (_, (_, flags, security_mode, capabilities, _, security_buffer_offset, security_buffer_len, previous_session_id)) = tuple((
             take(2_usize),

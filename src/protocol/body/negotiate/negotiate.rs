@@ -1,4 +1,4 @@
-use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
+use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
 use crate::protocol::body::negotiate::NegotiateContext;
 use crate::protocol::body::{Capabilities, FileTime, SMBDialect, SecurityMode};
 use nom::bytes::complete::take;
@@ -20,61 +20,6 @@ pub struct SMBNegotiateRequestBody {
 }
 
 impl SMBNegotiateRequestBody {
-    pub fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
-        if bytes.len() < 37 {
-            return None;
-        }
-        let dialect_count = bytes_to_u16(&bytes[2..4]) as usize;
-        let security_mode = SecurityMode::from_bits_truncate(bytes[4] as u16);
-        let capabilities = Capabilities::from_bits_truncate(bytes[8] as u32);
-        let client_uuid = Uuid::from_slice(&bytes[12..28]).ok()?;
-        let mut dialects = Vec::new();
-        let mut dialect_idx = 36;
-        let mut carryover = bytes;
-        while dialects.len() < dialect_count {
-            let dialect_code = bytes_to_u16(&bytes[dialect_idx..(dialect_idx + 2)]);
-            if let Ok(dialect) = SMBDialect::try_from(dialect_code) {
-                dialects.push(dialect);
-            }
-            dialect_idx += 2;
-        }
-        carryover = &bytes[dialect_idx..];
-        let mut negotiate_contexts = Vec::new();
-        if dialects.contains(&SMBDialect::V3_1_1) {
-            let negotiate_ctx_idx = bytes_to_u32(&bytes[28..32]) - 64;
-            let negotiate_ctx_cnt = bytes_to_u16(&bytes[32..34]) as usize;
-            let mut start = negotiate_ctx_idx as usize;
-            while negotiate_contexts.len() < negotiate_ctx_cnt {
-                let context = NegotiateContext::from_bytes(&bytes[start..]);
-                if let Some(context) = context {
-                    negotiate_contexts.push(context);
-                }
-                let context_len = bytes_to_u16(&bytes[(start + 2)..(start + 4)]);
-                start += context_len as usize;
-                start += 8;
-                if negotiate_contexts.len() != negotiate_ctx_cnt {
-                    start += 8 - (start % 8);
-                }
-            }
-            if start < bytes.len() {
-                carryover = &bytes[start..];
-            } else {
-                carryover = &[];
-            }
-            // TODO add negotiate ctx parsing
-        }
-        Some((
-            Self {
-                security_mode,
-                capabilities,
-                client_uuid,
-                dialects,
-                negotiate_contexts,
-            },
-            carryover,
-        ))
-    }
-
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, (_, dialect_count, security_mode, _, capabilities, client_uuid)) =
             tuple((

@@ -102,7 +102,7 @@ impl Iterator for SMBMessageIterator<'_> {
                             carryover = remaining;
                             message = msg;
                         } else {
-                            let (remaining, legacy_msg) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::from_bytes_assert_body(&buffer[(pos-1)..read]).ok()?;
+                            let (remaining, legacy_msg) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::parse(&buffer[(pos-1)..read]).ok()?;
                             carryover = remaining;
                             let m = SMBMessage::<SMBSyncHeader, SMBBody>::from_legacy(legacy_msg)?;
                             message = m;
