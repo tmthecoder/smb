@@ -38,8 +38,7 @@ fn main() -> anyhow::Result<()> {
                }
                SMBCommandCode::SessionSetup => {
                    if let SMBBody::SessionSetupRequest(request) = message.body {
-                       let mut offset = 0;
-                       let spnego_init_buffer: SPNEGOToken<NTLMAuthProvider> = SPNEGOToken::from_bytes(&request.get_buffer_copy(), &mut offset).unwrap();
+                       let spnego_init_buffer: SPNEGOToken<NTLMAuthProvider> = SPNEGOToken::parse(&request.get_buffer_copy()).unwrap().1;
                        println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
                        let helper = NTLMAuthProvider::new(vec![User::new("tejas".into(), "test".into())], true);
                        match spnego_init_buffer {
@@ -56,8 +55,9 @@ fn main() -> anyhow::Result<()> {
                                println!("SPNEGOToken: {:?}", resp_msg);
                                let ntlm_msg = NTLMMessage::from_bytes(&resp_msg.response_token.unwrap()).unwrap();
                                println!("NTLM: {:?}", ntlm_msg);
-                               let (status, output) = helper.accept_security_context(&ntlm_msg);
 
+                               let (status, output) = helper.accept_security_context(&ntlm_msg);
+                               println!("input: {:?}", ntlm_msg);
                            }
                            _ => {}
                        }

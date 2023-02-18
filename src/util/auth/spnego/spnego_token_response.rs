@@ -1,8 +1,15 @@
+use std::ops::Neg;
+
+use nom::combinator::map_res;
+use nom::Err::Error;
+use nom::error::ErrorKind;
+use nom::IResult;
+use nom::number::complete::le_u8;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 
 use crate::util::auth::AuthProvider;
-use crate::util::auth::spnego::util::{DER_ENCODING_ENUM_TAG, DER_ENCODING_SEQUENCE_TAG, MECH_LIST_MIC_TAG, NEG_STATE_TAG, read_der_byte_array, read_der_oid, read_length, RESPONSE_TOKEN_TAG, SUPPORTED_MECH_TAG};
+use crate::util::auth::spnego::util::{DER_ENCODING_ENUM_TAG, DER_ENCODING_SEQUENCE_TAG, MECH_LIST_MIC_TAG, NEG_STATE_TAG, parse_der_byte_array, parse_der_oid, parse_field_with_len, parse_length, RESPONSE_TOKEN_TAG, SUPPORTED_MECH_TAG};
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, TryFromPrimitive, Deserialize, Serialize)]
@@ -23,69 +30,68 @@ pub struct SPNEGOTokenResponseBody<T: AuthProvider> {
 }
 
 impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
-    pub fn as_bytes(&self) -> Vec<u8> {Vec::new()}
+    pub fn as_bytes(&self) -> Vec<u8> { Vec::new() }
 
-    pub fn from_bytes(bytes: &[u8], offset: &mut usize) -> Option<Self> {
-        let _ = read_length(bytes, offset);
-        if bytes[*offset] != DER_ENCODING_SEQUENCE_TAG { return None;}
-        *offset += 1;
-        let seq_len = read_length(bytes, offset);
-        if bytes.len() < *offset + seq_len { return None; }
-
-        let sequence = &bytes[*offset..(*offset + seq_len)];
-        let mut ptr = 0;
-
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining, _) = parse_length(bytes)?;
+        let (remaining, mut tag) = le_u8(remaining)?;
+        if tag != DER_ENCODING_SEQUENCE_TAG { return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))) }
+        let (remaining, mut sequence) = parse_field_with_len(remaining)?;
         let mut state = None;
         let mut supported_mech = None;
         let mut response_token = None;
         let mut mech_list_mic = None;
 
-        while ptr < sequence.len() {
-            let tag = sequence[ptr];
-            ptr += 1;
-            println!("Tag: {}", tag);
+        while !sequence.is_empty() {
+            println!("SEQ: {:?}", sequence);
+            (sequence, tag) = le_u8(sequence)?;
             match tag {
                 NEG_STATE_TAG => {
-                    state = Self::read_negotiate_state(sequence, &mut ptr);
+                    let (s, neg_state) = Self::parse_negotiate_state(sequence)?;
+                    sequence = s;
+                    state = Some(neg_state);
                 },
                 SUPPORTED_MECH_TAG => {
-                    supported_mech = Self::read_supported_mech(sequence, &mut ptr);
+                    let (s, mech) = Self::parse_supported_mech(sequence)?;
+                    sequence = s;
+                    supported_mech = Some(mech);
                 },
                 RESPONSE_TOKEN_TAG => {
-                    response_token = Self::read_response_token(sequence, &mut ptr);
+                    let (s, resp) = Self::parse_response_token(sequence)?;
+                    sequence = s;
+                    response_token = Some(resp);
                 },
                 MECH_LIST_MIC_TAG => {
-                    mech_list_mic = Self::read_mech_list_mic(sequence, &mut ptr);
+                    let (s, mic) = Self::parse_mech_list_mic(sequence)?;
+                    sequence = s;
+                    mech_list_mic = Some(mic);
                 },
-                _ => return None,
+                _ => return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))),
             }
         }
 
-        *offset += seq_len;
-        Some(SPNEGOTokenResponseBody { mechanism: None, state, supported_mech, response_token, mech_list_mic})
+        Ok((remaining, SPNEGOTokenResponseBody { mechanism: None, state, supported_mech, response_token, mech_list_mic }))
     }
 }
 
 // Private static helper methods
 impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
-    fn read_negotiate_state(buffer: &[u8], offset: &mut usize) -> Option<NegotiateState> {
-        let _ = read_length(buffer, offset);
-        if buffer[*offset] != DER_ENCODING_ENUM_TAG { return None; };
-        let _ = read_length(buffer, offset);
-        let state = NegotiateState::try_from(buffer[*offset]).ok();
-        *offset += 1;
-        state
+    fn parse_negotiate_state(buffer: &[u8]) -> IResult<&[u8], NegotiateState> {
+        let (remaining, _) = parse_length(buffer)?;
+        let (remaining, tag) = le_u8(remaining)?;
+        if tag != DER_ENCODING_ENUM_TAG { return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))) }
+        map_res(le_u8, NegotiateState::try_from)(remaining)
     }
 
-    fn read_supported_mech(buffer: &[u8], offset: &mut usize) -> Option<Vec<u8>> {
-        read_der_oid(buffer, offset)
+    fn parse_supported_mech(buffer: &[u8]) -> IResult<&[u8], Vec<u8>> {
+        parse_der_oid(buffer)
     }
 
-    fn read_response_token(buffer: &[u8], offset: &mut usize) -> Option<Vec<u8>> {
-       read_der_byte_array(buffer, offset) 
+    fn parse_response_token(buffer: &[u8]) -> IResult<&[u8], Vec<u8>> {
+        parse_der_byte_array(buffer)
     }
 
-    fn read_mech_list_mic(buffer: &[u8], offset: &mut usize) -> Option<Vec<u8>> {
-        read_der_byte_array(buffer, offset)
+    fn parse_mech_list_mic(buffer: &[u8]) -> IResult<&[u8], Vec<u8>> {
+        parse_der_byte_array(buffer)
     }
 }

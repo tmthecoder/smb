@@ -1,7 +1,12 @@
+use nom::{IResult, Parser};
+use nom::Err::Error;
+use nom::error::ErrorKind;
+use nom::multi::many0;
+use nom::number::complete::le_u8;
 use serde::{Deserialize, Serialize};
 
 use crate::util::auth::AuthProvider;
-use crate::util::auth::spnego::util::{DER_ENCODING_BYTE_ARRAY_TAG, DER_ENCODING_OID_TAG, DER_ENCODING_SEQUENCE_TAG, get_field_size, get_length, MECH_LIST_MIC_TAG, MECH_TOKEN_TAG, MECH_TYPE_LIST_TAG, NEG_TOKEN_INIT_TAG, read_der_byte_array, read_der_multibyte, read_length, REQUIRED_FLAGS_TAG};
+use crate::util::auth::spnego::util::{DER_ENCODING_BYTE_ARRAY_TAG, DER_ENCODING_OID_TAG, DER_ENCODING_SEQUENCE_TAG, get_field_size, get_length, MECH_LIST_MIC_TAG, MECH_TOKEN_TAG, MECH_TYPE_LIST_TAG, NEG_TOKEN_INIT_TAG, parse_der_byte_array, parse_der_multibyte, parse_field_with_len, parse_length};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SPNEGOTokenInitBody<T: AuthProvider> {
@@ -12,39 +17,36 @@ pub struct SPNEGOTokenInitBody<T: AuthProvider> {
 }
 
 impl<T: AuthProvider> SPNEGOTokenInitBody<T> {
-
-    pub fn from_bytes(bytes: &[u8], offset: &mut usize) -> Option<Self> {
-        let _ = read_length(bytes, offset);
-        if bytes[*offset] != DER_ENCODING_SEQUENCE_TAG { return None;}
-        *offset += 1;
-        let seq_len = read_length(bytes, offset);
-        if bytes.len() < *offset + seq_len { return None; }
-
-        let sequence = &bytes[*offset..(*offset + seq_len)];
-        let mut ptr = 0;
-
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        let (remaining, _) = parse_length(bytes)?;
+        let (remaining, mut tag) = le_u8(remaining)?;
+        if tag != DER_ENCODING_SEQUENCE_TAG { return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))) }
+        let (remaining, mut sequence) = parse_field_with_len(remaining)?;
         let mut mech_type_list = None;
         let mut mech_token = None;
         let mut mech_list_mic = None;
-        while ptr < sequence.len() {
-            let tag = sequence[ptr];
-            ptr += 1;
+        while !sequence.is_empty() {
+            (sequence, tag) = le_u8(sequence)?;
             match tag {
                 MECH_TYPE_LIST_TAG => {
-                    mech_type_list = Self::read_mech_type_list(sequence, &mut ptr);
+                    let (s, list) = Self::parse_mech_type_list(sequence)?;
+                    sequence = s;
+                    mech_type_list = Some(list);
                 },
-                REQUIRED_FLAGS_TAG => return None,
                 MECH_TOKEN_TAG => {
-                    mech_token = Self::read_mech_token(sequence, &mut ptr);
+                    let (s, token) = Self::parse_mech_token(sequence)?;
+                    sequence = s;
+                    mech_token = Some(token);
                 },
                 MECH_LIST_MIC_TAG => {
-                    mech_list_mic = Self::read_mech_list_mic(sequence, &mut ptr);
+                    let (s, mic) = Self::parse_mech_list_mic(sequence)?;
+                    sequence = s;
+                    mech_list_mic = Some(mic);
                 },
-                _ => return None,
+                _ => return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))),
             }
         }
-        *offset += seq_len;
-        Some(SPNEGOTokenInitBody { mechanism: None, mech_type_list, mech_token, mech_list_mic})
+        Ok((remaining, SPNEGOTokenInitBody { mechanism: None, mech_type_list, mech_token, mech_list_mic }))
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -78,28 +80,21 @@ impl<T: AuthProvider> SPNEGOTokenInitBody<T> {
 
 // Private static helper methods (reading methods)
 impl<T: AuthProvider> SPNEGOTokenInitBody<T> {
-    fn read_mech_type_list(buffer: &[u8], offset: &mut usize) -> Option<Vec<Vec<u8>>> {
-        let mut mech_type_list = Vec::new();
-        let _ = read_length(buffer, offset);
-        if buffer[*offset] != DER_ENCODING_SEQUENCE_TAG { return None; }
-        *offset += 1;
-        let seq_len = read_length(buffer, offset);
-        if buffer.len() < *offset + seq_len { return None; }
-        let sequence = &buffer[*offset..(*offset + seq_len)];
-        let mut ptr = 0;
-        while ptr < sequence.len() {
-            mech_type_list.push(read_der_multibyte(sequence, &mut ptr, DER_ENCODING_OID_TAG)?);
-        }
-        *offset += seq_len;
-        Some(mech_type_list)
+    fn parse_mech_type_list(buffer: &[u8]) -> IResult<&[u8], Vec<Vec<u8>>> {
+        let (remaining, _) = parse_length(buffer)?;
+        let (remaining, tag) = le_u8(remaining)?;
+        if tag != DER_ENCODING_SEQUENCE_TAG { return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))) }
+        let (remaining, sequence) = parse_field_with_len(remaining)?;
+        let (_, list) = many0(|buf| parse_der_multibyte(buf, DER_ENCODING_OID_TAG))(sequence)?;
+        Ok((remaining, list))
     }
 
-    fn read_mech_token(buffer: &[u8], offset: &mut usize) -> Option<Vec<u8>> {
-       read_der_byte_array(buffer, offset)
+    fn parse_mech_token(buffer: &[u8]) -> IResult<&[u8], Vec<u8>> {
+        parse_der_byte_array(buffer)
     }
 
-    fn read_mech_list_mic(buffer: &[u8], offset: &mut usize) -> Option<Vec<u8>> {
-       read_der_byte_array(buffer, offset)
+    fn parse_mech_list_mic(buffer: &[u8]) -> IResult<&[u8], Vec<u8>> {
+        parse_der_byte_array(buffer)
     }
 }
 

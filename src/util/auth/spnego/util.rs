@@ -1,3 +1,11 @@
+use nom::bytes::complete::take;
+use nom::combinator::map;
+use nom::Err::Error;
+use nom::error::ErrorKind;
+use nom::IResult;
+use nom::multi::fold_many_m_n;
+use nom::number::complete::le_u8;
+
 pub const NEG_TOKEN_INIT_TAG: u8 = 0xA0;
 pub const NEG_TOKEN_RESP_TAG: u8 = 0xA1;
 
@@ -19,19 +27,18 @@ pub const DER_ENCODING_BYTE_ARRAY_TAG: u8 = 0x04;
 
 pub const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
 
-pub fn read_length(buffer: &[u8], offset: &mut usize) -> usize {
-    let mut len = buffer[*offset] as usize;
-    *offset += 1;
-    if len >= 0x80 {
-        let field_size = len & 0x7F;
-        len = 0;
-        for byte in &buffer[*offset..(*offset + field_size)] {
-            len *= 256;
-            len += (*byte) as usize;
-        }
-        *offset += field_size;
-    }
-    len
+pub fn parse_length(buffer: &[u8]) -> IResult<&[u8], usize> {
+    let (remaining, len) = le_u8(buffer)?;
+    if len < 0x80 { return Ok((remaining, len as usize)); }
+    let field_size = (len & 0x7f) as usize;
+    fold_many_m_n(field_size, field_size, le_u8, || 0_usize, |len, item| len * 256 + item as usize)(remaining)
+}
+
+pub fn parse_field_with_len(buffer: &[u8]) -> IResult<&[u8], &[u8]> {
+    parse_length(buffer).and_then(|(remaining, len)| {
+        println!("len: {len}");
+        take(len)(remaining)
+    })
 }
 
 pub fn get_field_size(len: usize) -> usize {
@@ -62,23 +69,18 @@ pub fn get_length(length: usize) -> Vec<u8> {
     [&[(0x80 | len_bytes.len()) as u8][0..], &*len_bytes].concat()
 }
 
-pub fn read_der_oid(buffer: &[u8], offset: &mut usize) -> Option<Vec<u8>> {
-    let _ = read_length(buffer, offset);
-    read_der_multibyte(buffer, offset, DER_ENCODING_OID_TAG)
+pub fn parse_der_oid(buffer: &[u8]) -> IResult<&[u8], Vec<u8>> {
+    let (remaining, _) = parse_length(buffer)?;
+    parse_der_multibyte(remaining, DER_ENCODING_OID_TAG)
 }
 
-pub fn read_der_byte_array(buffer: &[u8], offset: &mut usize) -> Option<Vec<u8>> {
-    let _ = read_length(buffer, offset);
-    read_der_multibyte(buffer, offset, DER_ENCODING_BYTE_ARRAY_TAG)
+pub fn parse_der_byte_array(buffer: &[u8]) -> IResult<&[u8], Vec<u8>> {
+    let (remaining, _) = parse_length(buffer)?;
+    parse_der_multibyte(remaining, DER_ENCODING_BYTE_ARRAY_TAG)
 }
 
-pub fn read_der_multibyte(buffer: &[u8], offset: &mut usize, type_tag: u8) -> Option<Vec<u8>> {
-    // let _ = read_length(buffer, offset);
-    if buffer[*offset] != type_tag { return None; }
-    *offset += 1;
-    let length = read_length(buffer, offset);
-    if buffer.len() < *offset + length { return None; }
-    let start = *offset;
-    *offset += length;
-    Some(buffer[start..(start + length)].to_vec())
+pub fn parse_der_multibyte(buffer: &[u8], tag: u8) -> IResult<&[u8], Vec<u8>> {
+    let (remaining, b_tag) = le_u8(buffer)?;
+    if tag != b_tag { return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))); }
+    map(parse_field_with_len, |buf| buf.to_vec())(remaining)
 }

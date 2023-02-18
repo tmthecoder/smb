@@ -1,7 +1,13 @@
+use nom::bytes::complete::take;
+use nom::Err::Error;
+use nom::error::ErrorKind;
+use nom::IResult;
+use nom::number::complete::le_u8;
 use serde::{Deserialize, Serialize};
+
 use crate::util::auth::AuthProvider;
 use crate::util::auth::spnego::{SPNEGOTokenInit2Body, SPNEGOTokenInitBody, SPNEGOTokenResponseBody};
-use crate::util::auth::spnego::util::{DER_ENCODING_OID_TAG, read_length, SPNEGO_ID, NEG_TOKEN_INIT_TAG, NEG_TOKEN_RESP_TAG, get_field_size, APPLICATION_TAG, get_length, DER_ENCODING_SEQUENCE_TAG};
+use crate::util::auth::spnego::util::{APPLICATION_TAG, DER_ENCODING_OID_TAG, DER_ENCODING_SEQUENCE_TAG, get_field_size, get_length, NEG_TOKEN_INIT_TAG, NEG_TOKEN_RESP_TAG, parse_field_with_len, SPNEGO_ID};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum SPNEGOToken<T: AuthProvider> {
@@ -11,32 +17,41 @@ pub enum SPNEGOToken<T: AuthProvider> {
 }
 
 impl<T: AuthProvider> SPNEGOToken<T> {
-    pub fn from_bytes(bytes: &[u8], offset: &mut usize) -> Option<Self> {
-        println!("off: {}, Bytesss: {:?}", offset, bytes);
-        let tag = bytes[*offset];
-        *offset += 1;
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        println!("bytes: {:?},", bytes);
+        let (remaining, tag) = le_u8(bytes)?;
         match tag {
             APPLICATION_TAG => {
-                if bytes[*offset + 1] == DER_ENCODING_OID_TAG {
-                    *offset += 2;
-                    let oid_length = read_length(bytes, offset);
-                    let oid = &bytes[*offset..(*offset + oid_length)];
-                    *offset += oid_length;
-                    if oid.len() == SPNEGO_ID.len() && *oid == SPNEGO_ID {
-                        let tag = bytes[*offset];
-                        println!("OID: {:?}", tag);
-                        *offset += 1;
-                        return match tag {
-                            NEG_TOKEN_INIT_TAG => Some(SPNEGOToken::Init(SPNEGOTokenInitBody::from_bytes(bytes, offset)?)),
-                            NEG_TOKEN_RESP_TAG => Some(SPNEGOToken::Response(SPNEGOTokenResponseBody::from_bytes(bytes, offset)?)),
-                            _ => None,
+                take(1_usize)(remaining)
+                    .and_then(|(remaining, _)| {
+                        let (remaining, tag) = le_u8(remaining)?;
+                        if tag != DER_ENCODING_OID_TAG {
+                            return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)));
                         }
-                    }
-                }
-                None
+                        let (remaining, oid) = parse_field_with_len(remaining)?;
+                        if oid.len() != SPNEGO_ID.len() || *oid != SPNEGO_ID {
+                            return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)));
+                        }
+                        let (remaining, tag) = le_u8(remaining)?;
+                        println!("TAG: {}", tag);
+                        match tag {
+                            NEG_TOKEN_INIT_TAG => {
+                                let (remaining, body) = SPNEGOTokenInitBody::parse(remaining)?;
+                                Ok((remaining, SPNEGOToken::Init(body)))
+                            },
+                            NEG_TOKEN_RESP_TAG => {
+                                let (remaining, body) = SPNEGOTokenResponseBody::parse(remaining)?;
+                                Ok((remaining, SPNEGOToken::Response(body)))
+                            },
+                            _ => Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)))
+                        }
+                    })
             },
-            NEG_TOKEN_RESP_TAG => Some(SPNEGOToken::Response(SPNEGOTokenResponseBody::from_bytes(bytes, offset)?)),
-            _ => None,
+            NEG_TOKEN_RESP_TAG => {
+                let (remaining, body) = SPNEGOTokenResponseBody::parse(remaining)?;
+                Ok((remaining, SPNEGOToken::Response(body)))
+            },
+            _ => Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)))
         }
     }
 
