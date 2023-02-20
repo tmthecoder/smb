@@ -1,8 +1,10 @@
+use nom::IResult;
 use rand::RngCore;
 use rand::rngs::ThreadRng;
+use serde::{Deserialize, Serialize};
+
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
 use crate::util::auth::ntlm::ntlm_message::NTLMNegotiateFlags;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NTLMChallengeMessageBody {
@@ -26,6 +28,10 @@ impl NTLMChallengeMessageBody {
 
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         None
+    }
+
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        todo!()
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {

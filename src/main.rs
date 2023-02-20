@@ -43,7 +43,7 @@ fn main() -> anyhow::Result<()> {
                        let helper = NTLMAuthProvider::new(vec![User::new("tejas".into(), "test".into())], true);
                        match spnego_init_buffer {
                            SPNEGOToken::Init(init_msg) => {
-                               let ntlm_msg = NTLMMessage::from_bytes(&init_msg.mech_token.unwrap()).unwrap();
+                               let ntlm_msg = NTLMMessage::parse(&init_msg.mech_token.unwrap()).unwrap().1;
                                let (status, output) = helper.accept_security_context(&ntlm_msg);
                                let resp = SMBSessionSetupResponse::from_request(request, spnego_resp_buffer(&output.as_bytes())).unwrap();
                                let resp_body = SMBBody::SessionSetupResponse(resp);
@@ -53,7 +53,7 @@ fn main() -> anyhow::Result<()> {
                            },
                            SPNEGOToken::Response(resp_msg) => {
                                println!("SPNEGOToken: {:?}", resp_msg);
-                               let ntlm_msg = NTLMMessage::from_bytes(&resp_msg.response_token.unwrap()).unwrap();
+                               let ntlm_msg = NTLMMessage::parse(&resp_msg.response_token.unwrap()).unwrap().1;
                                println!("NTLM: {:?}", ntlm_msg);
 
                                let (status, output) = helper.accept_security_context(&ntlm_msg);

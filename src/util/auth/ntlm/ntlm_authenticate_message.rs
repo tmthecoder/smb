@@ -1,8 +1,13 @@
+use nom::bytes::complete::take;
+use nom::combinator::{map, map_res};
+use nom::IResult;
+use nom::number::complete::le_u32;
+use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
+
 use crate::byte_helper::bytes_to_u32;
 use crate::util::auth::ntlm::ntlm_auth_provider::NTLMAuthContext;
-use crate::util::auth::ntlm::ntlm_message::{NTLMNegotiateFlags, read_ntlm_buffer_ptr};
-
+use crate::util::auth::ntlm::ntlm_message::{NTLMNegotiateFlags, parse_ntlm_buffer_ptr, read_ntlm_buffer_ptr};
 use crate::util::auth::User;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -40,6 +45,30 @@ impl NTLMAuthenticateMessageBody {
             encrypted_session_key,
             mic: Vec::new(),
         })
+    }
+
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        map(tuple((
+            map_res(take(8_usize), |s: &[u8]| String::from_utf8(s.to_vec())),
+            take(4_usize),
+            map(parse_ntlm_buffer_ptr, |s| s.to_vec()),
+            map(parse_ntlm_buffer_ptr, |s| s.to_vec()),
+            map_res(parse_ntlm_buffer_ptr, |s: &[u8]| String::from_utf8(s.to_vec())),
+            map_res(parse_ntlm_buffer_ptr, |s: &[u8]| String::from_utf8(s.to_vec())),
+            map_res(parse_ntlm_buffer_ptr, |s: &[u8]| String::from_utf8(s.to_vec())),
+            map(parse_ntlm_buffer_ptr, |s| s.to_vec()),
+            map(le_u32, NTLMNegotiateFlags::from_bits_truncate)
+        )), |(signature, _, lm_challenge_response, nt_challenge_response, domain_name, user_name, work_station, encrypted_session_key, negotiate_flags)| Self {
+            signature,
+            lm_challenge_response,
+            nt_challenge_response,
+            domain_name,
+            user_name,
+            work_station,
+            encrypted_session_key,
+            negotiate_flags,
+            mic: Vec::new(),
+        })(bytes)
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {

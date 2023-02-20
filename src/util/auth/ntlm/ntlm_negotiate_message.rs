@@ -1,6 +1,12 @@
+use nom::bytes::complete::take;
+use nom::combinator::{map, map_res};
+use nom::IResult;
+use nom::number::complete::le_u32;
+use nom::sequence::tuple;
+use serde::{Deserialize, Serialize};
+
 use crate::byte_helper::bytes_to_u32;
 use crate::util::auth::ntlm::ntlm_message::NTLMNegotiateFlags;
-use serde::{Deserialize, Serialize};
 use crate::util::auth::ntlm::NTLMChallengeMessageBody;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -26,10 +32,26 @@ impl NTLMNegotiateMessageBody {
         })
     }
 
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        map(tuple((
+            map_res(take(8_usize), |slice: &[u8]| String::from_utf8(slice.to_vec())),
+            take(4_usize),
+            map(le_u32, NTLMNegotiateFlags::from_bits_truncate),
+            map_res(take(8_usize), |slice: &[u8]| String::from_utf8(slice.to_vec())),
+            map_res(take(8_usize), |slice: &[u8]| String::from_utf8(slice.to_vec())),
+        )),
+            |(signature, _, negotiate_flags, domain_name, workstation)| Self {
+                signature,
+                negotiate_flags,
+                domain_name,
+                workstation,
+            },
+        )(bytes)
+    }
+
     pub fn as_bytes(&self) -> Vec<u8> {
         [
             self.signature.as_bytes(),
-
         ].concat()
     }
 }
