@@ -1,75 +1,100 @@
-use smb_reader::protocol::body::{Capabilities, FileTime, SecurityMode, SMBBody, SMBDialect, SMBSessionSetupResponse};
 use smb_reader::protocol::body::negotiate::SMBNegotiateResponse;
+use smb_reader::protocol::body::{
+    Capabilities, FileTime, SMBBody, SMBDialect, SMBSessionSetupResponse, SecurityMode,
+};
 use smb_reader::protocol::header::{SMBCommandCode, SMBFlags, SMBSyncHeader};
 use smb_reader::protocol::message::SMBMessage;
-use smb_reader::SMBListener;
-use smb_reader::util::auth::{AuthProvider, User};
 use smb_reader::util::auth::ntlm::{NTLMAuthProvider, NTLMMessage};
 use smb_reader::util::auth::spnego::SPNEGOToken;
+use smb_reader::util::auth::{AuthProvider, User};
+use smb_reader::SMBListener;
 
 const NTLM_ID: [u8; 10] = [0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x02, 0x0a];
 const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
 
 fn main() -> anyhow::Result<()> {
-    let server = SMBListener::new("127.0.0.1:50122");
+    let server = SMBListener::new("127.0.0.1:50122")?;
     let start_time = FileTime::now();
-    for mut connection in server.unwrap().connections() {
+    for mut connection in server.connections() {
         let mut cloned_connection = connection.try_clone()?;
-        // let mut server_sock = TcpStream::connect("127.0.0.1:50124").unwrap();
-        // let mut token_len_buf = [0_u8; 4];
-        // server_sock.read_exact(&mut token_len_buf).unwrap();
-        // let mut token_buf = vec![0; u32::from_be_bytes(token_len_buf) as usize];
-        // server_sock.read_exact(&mut *token_buf).unwrap();
-       for message in connection.messages() {
-           match message.header.command {
-               SMBCommandCode::LegacyNegotiate => {
-                   let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::new(SecurityMode::empty(), SMBDialect::V2_X_X, Capabilities::empty(), 100, 100, 100, start_time.clone(), Vec::new()));
-                   let resp_header = SMBSyncHeader::new(SMBCommandCode::Negotiate, SMBFlags::SERVER_TO_REDIR, 0, 0, 65535, 65535, [0; 16]);
-                   let resp_msg = SMBMessage::new(resp_header, resp_body);
-                   cloned_connection.send_message(resp_msg)?;
-               }
-               SMBCommandCode::Negotiate => {
-                   if let SMBBody::NegotiateRequest(request) = message.body {
-                       let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::from_request(request, spnego_init_buffer(true)).unwrap());
-                       let resp_header = message.header.create_response_header(0x0);
-                       let resp_msg = SMBMessage::new(resp_header, resp_body);
-                       cloned_connection.send_message(resp_msg)?;
-                   }
-               }
-               SMBCommandCode::SessionSetup => {
-                   if let SMBBody::SessionSetupRequest(request) = message.body {
-                       let spnego_init_buffer: SPNEGOToken<NTLMAuthProvider> = SPNEGOToken::parse(&request.get_buffer_copy()).unwrap().1;
-                       println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
-                       let helper = NTLMAuthProvider::new(vec![User::new("tejas".into(), "test".into())], true);
-                       match spnego_init_buffer {
-                           SPNEGOToken::Init(init_msg) => {
-                               let ntlm_msg = NTLMMessage::parse(&init_msg.mech_token.unwrap()).unwrap().1;
-                               let (status, output) = helper.accept_security_context(&ntlm_msg);
-                               let resp = SMBSessionSetupResponse::from_request(request, spnego_resp_buffer(&output.as_bytes())).unwrap();
-                               let resp_body = SMBBody::SessionSetupResponse(resp);
-                               let resp_header = message.header.create_response_header(0);
-                               let resp_msg = SMBMessage::new(resp_header, resp_body);
-                               cloned_connection.send_message(resp_msg)?;
-                           },
-                           SPNEGOToken::Response(resp_msg) => {
-                               println!("SPNEGOToken: {:?}", resp_msg);
-                               let ntlm_msg = NTLMMessage::parse(&resp_msg.response_token.unwrap()).unwrap().1;
-                               println!("NTLM: {:?}", ntlm_msg);
+        for message in connection.messages() {
+            match message.header.command {
+                SMBCommandCode::LegacyNegotiate => {
+                    let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::new(
+                        SecurityMode::empty(),
+                        SMBDialect::V2_X_X,
+                        Capabilities::empty(),
+                        100,
+                        100,
+                        100,
+                        start_time.clone(),
+                        Vec::new(),
+                    ));
+                    let resp_header = SMBSyncHeader::new(
+                        SMBCommandCode::Negotiate,
+                        SMBFlags::SERVER_TO_REDIR,
+                        0,
+                        0,
+                        65535,
+                        65535,
+                        [0; 16],
+                    );
+                    let resp_msg = SMBMessage::new(resp_header, resp_body);
+                    cloned_connection.send_message(resp_msg)?;
+                }
+                SMBCommandCode::Negotiate => {
+                    if let SMBBody::NegotiateRequest(request) = message.body {
+                        let resp_body = SMBBody::NegotiateResponse(
+                            SMBNegotiateResponse::from_request(request, spnego_init_buffer(true))
+                                .unwrap(),
+                        );
+                        let resp_header = message.header.create_response_header(0x0);
+                        let resp_msg = SMBMessage::new(resp_header, resp_body);
+                        cloned_connection.send_message(resp_msg)?;
+                    }
+                }
+                SMBCommandCode::SessionSetup => {
+                    if let SMBBody::SessionSetupRequest(request) = message.body {
+                        let spnego_init_buffer: SPNEGOToken<NTLMAuthProvider> =
+                            SPNEGOToken::parse(&request.get_buffer_copy()).unwrap().1;
+                        println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
+                        let helper = NTLMAuthProvider::new(
+                            vec![User::new("tejas".into(), "test".into())],
+                            true,
+                        );
+                        match spnego_init_buffer {
+                            SPNEGOToken::Init(init_msg) => {
+                                let ntlm_msg =
+                                    NTLMMessage::parse(&init_msg.mech_token.unwrap()).unwrap().1;
+                                let (status, output) = helper.accept_security_context(&ntlm_msg);
+                                let resp = SMBSessionSetupResponse::from_request(
+                                    request,
+                                    spnego_resp_buffer(&output.as_bytes()),
+                                )
+                                .unwrap();
+                                let resp_body = SMBBody::SessionSetupResponse(resp);
+                                let resp_header = message.header.create_response_header(0);
+                                let resp_msg = SMBMessage::new(resp_header, resp_body);
+                                cloned_connection.send_message(resp_msg)?;
+                            }
+                            SPNEGOToken::Response(resp_msg) => {
+                                println!("SPNEGOToken: {:?}", resp_msg);
+                                let ntlm_msg =
+                                    NTLMMessage::parse(&resp_msg.response_token.unwrap())
+                                        .unwrap()
+                                        .1;
+                                println!("NTLM: {:?}", ntlm_msg);
 
-                               let (status, output) = helper.accept_security_context(&ntlm_msg);
-                               println!("input: {:?}", ntlm_msg);
-                           }
-                           _ => {}
-                       }
-                   }
-               }
-               _ => {}
-           }
-           if message.header.command != SMBCommandCode::Negotiate {
-               continue;
-           }
-
-       }
+                                let (status, output) = helper.accept_security_context(&ntlm_msg);
+                                println!("input: {:?}", ntlm_msg);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
     }
     Ok(())
 }
@@ -103,8 +128,9 @@ fn spnego_init_buffer(header: bool) -> Vec<u8> {
         &*get_length(oid_size),
         &[6],
         &*get_length(NTLM_ID.len()),
-        &NTLM_ID
-    ].concat()
+        &NTLM_ID,
+    ]
+    .concat()
 }
 
 fn spnego_resp_buffer(response: &Vec<u8>) -> Vec<u8> {
@@ -117,7 +143,17 @@ fn spnego_resp_buffer(response: &Vec<u8>) -> Vec<u8> {
 
     let mechanism_construction_field_size = get_field_size(mechanism_construction_len);
     let token_construction_field_size = get_field_size(token_construction_len);
-    let sequence_len = 1 + token_construction_field_size + 1 + token_field_len + response.len() + nego_status_len + 1 + mechanism_construction_field_size + 1 + mechanism_len + NTLM_ID.len();
+    let sequence_len = 1
+        + token_construction_field_size
+        + 1
+        + token_field_len
+        + response.len()
+        + nego_status_len
+        + 1
+        + mechanism_construction_field_size
+        + 1
+        + mechanism_len
+        + NTLM_ID.len();
 
     let seq_field_size = get_field_size(sequence_len);
     let construction_len = 1 + seq_field_size + sequence_len;
@@ -133,7 +169,7 @@ fn spnego_resp_buffer(response: &Vec<u8>) -> Vec<u8> {
         &*get_length(1),
         &[0x01],
         &[161],
-        &*get_length( 1 + mechanism_len + NTLM_ID.len()),
+        &*get_length(1 + mechanism_len + NTLM_ID.len()),
         &[6],
         &*get_length(NTLM_ID.len()),
         &NTLM_ID,
@@ -141,8 +177,9 @@ fn spnego_resp_buffer(response: &Vec<u8>) -> Vec<u8> {
         &*get_length(1 + token_field_len + response.len()),
         &[4],
         &*get_length(response.len()),
-        response
-    ].concat()
+        response,
+    ]
+    .concat()
 }
 
 fn get_field_size(len: usize) -> usize {
@@ -153,7 +190,7 @@ fn get_field_size(len: usize) -> usize {
     let mut len = len;
     while len > 0 {
         len /= 256;
-        adder+=1;
+        adder += 1;
     }
     adder
 }
@@ -167,7 +204,8 @@ fn get_header(size: usize) -> Vec<u8> {
         &[6][0..],
         &*get_length(SPNEGO_ID.len()),
         &SPNEGO_ID,
-    ].concat()
+    ]
+    .concat()
 }
 
 fn get_length(length: usize) -> Vec<u8> {
@@ -184,3 +222,4 @@ fn get_length(length: usize) -> Vec<u8> {
     len_bytes.reverse();
     [&[(0x80 | len_bytes.len()) as u8][0..], &*len_bytes].concat()
 }
+
