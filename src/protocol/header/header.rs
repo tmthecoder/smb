@@ -38,26 +38,6 @@ impl Header for SMBSyncHeader {
 
     type CommandCode = SMBCommandCode;
 
-    fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
-        if bytes.len() < 60 {
-            return None;
-        }
-        let mut signature = [0_u8; 16];
-        for (idx, byte) in bytes[44..60].iter().enumerate() {
-            signature[idx] = *byte;
-        }
-        Some((SMBSyncHeader {
-            command: bytes_to_u16(& bytes[8..10]).try_into().ok()?,
-            flags: SMBFlags::from_bits_truncate(bytes_to_u32(&bytes[12..16])),
-            channel_sequence: 0,
-            next_command: bytes_to_u32(&bytes[16..20]),
-            message_id: bytes_to_u64(&bytes[20..28]),
-            tree_id: bytes_to_u32(&bytes[32..36]),
-            session_id: bytes_to_u64(&bytes[36..44]),
-            signature,
-        }, &bytes[60..]))
-    }
-
     fn parse(bytes: &[u8]) -> IResult<&[u8], (Self, Self::CommandCode)> {
         map(tuple((
             tag([0xFE]),
@@ -110,32 +90,15 @@ impl Header for LegacySMBHeader {
 
     type CommandCode = LegacySMBCommandCode;
 
-    fn from_bytes(bytes: &[u8]) -> Option<(Self, &[u8])> {
-        if bytes.len() < 28 {
-            return None;
-        }
-        Some((LegacySMBHeader {
-            command: bytes[0].try_into().ok()?,
-            status: SMBStatus::from_bytes(&bytes[1..5])?,
-            flags: LegacySMBFlags::from_bits_truncate(bytes[5]),
-            flags2: LegacySMBFlags2::from_bits_truncate(bytes_to_u16(&bytes[6..8])),
-            extra: SMBExtra::from_bytes(&bytes[8..20]),
-            tid: bytes_to_u16(&bytes[20..22]),
-            pid: bytes_to_u16(&bytes[22..24]),
-            uid: bytes_to_u16(&bytes[24..26]),
-            mid: bytes_to_u16(&bytes[26..28]),
-        }, &bytes[28..]))
-    }
-
     fn parse(bytes: &[u8]) -> IResult<&[u8], (Self, Self::CommandCode)> {
         map(tuple((
             tag([0xFE]),
             tag(b"SMB"),
             map_res(le_u8, LegacySMBCommandCode::try_from),
-            map_opt(take(4_usize), SMBStatus::from_bytes),
+            SMBStatus::parse,
             map(le_u8, LegacySMBFlags::from_bits_truncate),
             map(le_u16, LegacySMBFlags2::from_bits_truncate),
-            map(take(12_usize), SMBExtra::from_bytes),
+            SMBExtra::from_bytes,
             le_u16,
             le_u16,
             le_u16,

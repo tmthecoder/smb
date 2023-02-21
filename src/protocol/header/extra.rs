@@ -1,3 +1,8 @@
+use nom::bytes::complete::take;
+use nom::combinator::map;
+use nom::IResult;
+use nom::number::complete::{le_u16, le_u64};
+use nom::sequence::tuple;
 use serde::{Serialize, Deserialize};
 use crate::byte_helper::{bytes_to_u16, bytes_to_u64, u16_to_bytes, u64_to_bytes};
 
@@ -8,11 +13,11 @@ pub struct SMBExtra {
 }
 
 impl SMBExtra {
-    pub fn from_bytes(bytes: &[u8]) -> Self {
-        SMBExtra {
-            pid_high: bytes_to_u16(&bytes[0..2]),
-            signature: bytes_to_u64(&bytes[2..10])
-        }
+    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+        map(tuple((le_u16, le_u64, take(2_usize))), |(pid_high, signature, _)| Self {
+            pid_high,
+            signature
+        })(bytes)
     }
 }
 

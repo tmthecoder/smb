@@ -10,6 +10,7 @@ use nom::sequence::tuple;
 use num_enum::TryFromPrimitive;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+
 use crate::byte_helper::{bytes_to_u16, bytes_to_u32, u16_to_bytes, u32_to_bytes};
 
 macro_rules! ctx_to_bytes {
@@ -60,21 +61,6 @@ pub enum NegotiateContext {
 }
 
 impl NegotiateContext {
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let ctx_type_num = bytes_to_u16(&bytes[0..2]);
-        let data_bytes = &bytes[8..];
-        match ctx_type_num {
-            0x01 => Some(Self::PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilitiesBody::from_bytes(data_bytes)?)),
-            0x02 => Some(Self::EncryptionCapabilities(EncryptionCapabilitiesBody::from_bytes(data_bytes)?)),
-            0x03 => Some(Self::CompressionCapabilities(CompressionCapabilitiesBody::from_bytes(data_bytes)?)),
-            0x05 => Some(Self::NetnameNegotiateContextID(NetnameNegotiateContextIDBody::from_bytes(&bytes[2..])?)),
-            0x06 => Some(Self::TransportCapabilities(TransportCapabilitiesBody::from_bytes(data_bytes)?)),
-            0x07 => Some(Self::RDMATransformCapabilities(RDMATransformCapabilitiesBody::from_bytes(data_bytes)?)),
-            0x08 => Some(Self::SigningCapabilities(SigningCapabilitiesBody::from_bytes(data_bytes)?)),
-            _ => None
-        }
-    }
-
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (_, (ctx_type_num, ctx_len, _)) = tuple((
             le_u16,
@@ -154,19 +140,6 @@ pub enum HashAlgorithm {
 impl PreAuthIntegrityCapabilitiesBody {
     fn byte_code(&self) -> u16 { 0x01 }
 
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let algorithm_cnt = bytes_to_u16(&bytes[0..2]);
-        let salt_len = bytes_to_u16(&bytes[2..4]) as usize;
-        let mut bytes_ptr = 4_usize;
-        let mut hash_algorithms = Vec::new();
-        while hash_algorithms.len() < algorithm_cnt as usize {
-            hash_algorithms.push(HashAlgorithm::try_from(bytes_to_u16(&bytes[bytes_ptr..(bytes_ptr+2)])).ok()?);
-            bytes_ptr += 2;
-        }
-        let salt = Vec::from(&bytes[bytes_ptr..(bytes_ptr + salt_len)]);
-        Some(Self { hash_algorithms, salt })
-    }
-
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, (_, alg_cnt, salt_len)) = tuple((
             take(6_usize),
@@ -210,18 +183,6 @@ pub enum EncryptionCipher {
 
 impl EncryptionCapabilitiesBody {
     fn byte_code(&self) -> u16 { 0x02 }
-
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let cipher_cnt = bytes_to_u16(&bytes[0..2]) as usize;
-        let mut ciphers = Vec::new();
-        let mut cipher_ptr = 2_usize;
-        while ciphers.len() < cipher_cnt {
-            let cipher = bytes_to_u16(&bytes[cipher_ptr..(cipher_ptr + 2)]);
-            ciphers.push(EncryptionCipher::try_from(cipher).ok()?);
-            cipher_ptr += 2;
-        }
-        Some(Self { ciphers })
-    }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, _) = take(6_usize)(bytes)?;
@@ -267,19 +228,6 @@ pub enum CompressionAlgorithm {
 impl CompressionCapabilitiesBody {
     fn byte_code(&self) -> u16 { 0x03 }
 
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let algorithm_cnt = bytes_to_u16(&bytes[0..2]) as usize;
-        let flags = CompressionCapabilitiesFlags::try_from(bytes_to_u32(&bytes[4..8])).ok()?;
-        let mut compression_algorithms = Vec::new();
-        let mut algorithm_ptr = 8_usize;
-        while compression_algorithms.len() < algorithm_cnt {
-            let cipher = bytes_to_u16(&bytes[algorithm_ptr..(algorithm_ptr+2)]);
-            compression_algorithms.push(CompressionAlgorithm::try_from(cipher).ok()?);
-            algorithm_ptr += 2;
-        }
-        Some(Self { flags, compression_algorithms })
-    }
-
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, (_, alg_cnt, _, flags)) = tuple((
             take(6_usize),
@@ -311,14 +259,6 @@ pub struct NetnameNegotiateContextIDBody {
 
 impl NetnameNegotiateContextIDBody {
     fn byte_code(&self) -> u16 { 0x05 }
-
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let name_len = bytes_to_u16(&bytes[0..2]) as usize;
-        let mut unicode_vec = Vec::from(&bytes[6..(6 + name_len)]);
-        unicode_vec.retain(|x| *x != 0_u8);
-        let netname = String::from_utf8(unicode_vec).ok()?;
-        Some(Self { netname })
-    }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, name_len) = le_u16(bytes)?;
@@ -354,12 +294,6 @@ bitflags! {
 impl TransportCapabilitiesBody {
     fn byte_code(&self) -> u16 { 0x06 }
 
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let flags_num = bytes_to_u32(&bytes[0..4]);
-        let flags = TransportCapabilitiesFlags::from_bits_truncate(flags_num);
-        Some(Self { flags })
-    }
-
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, flags) = map(le_u32, TransportCapabilitiesFlags::from_bits_truncate)(bytes)?;
         Ok((remaining, Self { flags }))
@@ -385,19 +319,6 @@ pub enum RDMATransformID {
 
 impl RDMATransformCapabilitiesBody {
     fn byte_code(&self) -> u16 { 0x07 }
-
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let transform_count = bytes_to_u16(&bytes[0..2]) as usize;
-        let mut transform_ids = Vec::new();
-        let mut transform_id_ptr = 8_usize;
-        while transform_ids.len() < transform_count {
-            let transform_id_code = bytes_to_u16(&bytes[transform_id_ptr..(transform_id_ptr+2)]);
-            let transform_id = RDMATransformID::try_from(transform_id_code).ok()?;
-            transform_ids.push(transform_id);
-            transform_id_ptr += 2;
-        }
-        Some(Self { transform_ids })
-    }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, transform_cnt) = le_u16(bytes)?;
@@ -432,18 +353,6 @@ pub enum SigningAlgorithm {
 
 impl SigningCapabilitiesBody {
     fn byte_code(&self) -> u16 { 0x08 }
-
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let singing_alg_cnt = bytes_to_u16(&bytes[0..2]) as usize;
-        let mut signing_algorithms = Vec::new();
-        let mut signing_alg_ptr = 2;
-        while signing_algorithms.len() < singing_alg_cnt {
-            let signing_alg_num = bytes_to_u16(&bytes[signing_alg_ptr..(signing_alg_ptr+2)]);
-            signing_algorithms.push(SigningAlgorithm::try_from(signing_alg_num).ok()?);
-            signing_alg_ptr += 2;
-        }
-        Some(Self { signing_algorithms })
-    }
 
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, signing_alg_cnt) = le_u16(bytes)?;
