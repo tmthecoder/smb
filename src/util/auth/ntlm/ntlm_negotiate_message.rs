@@ -18,20 +18,6 @@ pub struct NTLMNegotiateMessageBody {
 }
 
 impl NTLMNegotiateMessageBody {
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() < 24 { return None;}
-        let signature = String::from_utf8(bytes[..8].to_vec()).ok()?;
-        let negotiate_flags = NTLMNegotiateFlags::from_bits(bytes_to_u32(&bytes[12..16])).unwrap();
-        let domain_name = String::from_utf8(bytes[16..24].to_vec()).ok()?;
-        let workstation = String::from_utf8(bytes[24..32].to_vec()).ok()?;
-        Some(Self {
-            signature,
-            negotiate_flags,
-            domain_name,
-            workstation,
-        })
-    }
-
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         map(tuple((
             map_res(take(8_usize), |slice: &[u8]| String::from_utf8(slice.to_vec())),

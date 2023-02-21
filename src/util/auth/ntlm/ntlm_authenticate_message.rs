@@ -1,13 +1,13 @@
+use nom::{IResult, Parser};
 use nom::bytes::complete::take;
 use nom::combinator::{map, map_res};
-use nom::IResult;
 use nom::number::complete::le_u32;
 use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 
 use crate::byte_helper::bytes_to_u32;
 use crate::util::auth::ntlm::ntlm_auth_provider::NTLMAuthContext;
-use crate::util::auth::ntlm::ntlm_message::{NTLMNegotiateFlags, parse_ntlm_buffer_ptr, read_ntlm_buffer_ptr};
+use crate::util::auth::ntlm::ntlm_message::{NTLMNegotiateFlags, parse_ntlm_buffer_fields, read_ntlm_buffer_ptr};
 use crate::util::auth::User;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -24,51 +24,45 @@ pub struct NTLMAuthenticateMessageBody {
 }
 
 impl NTLMAuthenticateMessageBody {
-    pub fn from_bytes(bytes: &[u8]) -> Option<NTLMAuthenticateMessageBody> {
-        let signature = String::from_utf8(bytes[..8].to_vec()).ok()?;
-        let lm_challenge_response = read_ntlm_buffer_ptr(bytes, 12)?;
-        let nt_challenge_response = read_ntlm_buffer_ptr(bytes, 20)?;
-        let domain_name = String::from_utf8(read_ntlm_buffer_ptr(bytes, 28)?).ok()?;
-        let user_name = String::from_utf8(read_ntlm_buffer_ptr(bytes, 36)?).ok()?;
-        let work_station = String::from_utf8(read_ntlm_buffer_ptr(bytes, 44)?).ok()?;
-        let encrypted_session_key = read_ntlm_buffer_ptr(bytes, 52)?;
-        let negotiate_flags = NTLMNegotiateFlags::from_bits(bytes_to_u32(&bytes[60..64]))?;
-
-        Some(Self {
-            signature,
-            negotiate_flags,
-            domain_name,
-            user_name,
-            work_station,
-            lm_challenge_response,
-            nt_challenge_response,
-            encrypted_session_key,
-            mic: Vec::new(),
-        })
-    }
-
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        map(tuple((
+        tuple((
             map_res(take(8_usize), |s: &[u8]| String::from_utf8(s.to_vec())),
             take(4_usize),
-            map(parse_ntlm_buffer_ptr, |s| s.to_vec()),
-            map(parse_ntlm_buffer_ptr, |s| s.to_vec()),
-            map_res(parse_ntlm_buffer_ptr, |s: &[u8]| String::from_utf8(s.to_vec())),
-            map_res(parse_ntlm_buffer_ptr, |s: &[u8]| String::from_utf8(s.to_vec())),
-            map_res(parse_ntlm_buffer_ptr, |s: &[u8]| String::from_utf8(s.to_vec())),
-            map(parse_ntlm_buffer_ptr, |s| s.to_vec()),
+            parse_ntlm_buffer_fields,
+            parse_ntlm_buffer_fields,
+            parse_ntlm_buffer_fields,
+            parse_ntlm_buffer_fields,
+            parse_ntlm_buffer_fields,
+            parse_ntlm_buffer_fields,
             map(le_u32, NTLMNegotiateFlags::from_bits_truncate)
-        )), |(signature, _, lm_challenge_response, nt_challenge_response, domain_name, user_name, work_station, encrypted_session_key, negotiate_flags)| Self {
-            signature,
-            lm_challenge_response,
-            nt_challenge_response,
-            domain_name,
-            user_name,
-            work_station,
-            encrypted_session_key,
-            negotiate_flags,
-            mic: Vec::new(),
-        })(bytes)
+        ))(bytes).and_then(|(_, (signature, _, lm_challenge_info, nt_challenge_info, domain_name_into, user_name_info, work_station_info, encrypted_session_key_info, negotiate_flags))| {
+            let (_, lm_challenge_response) = get_buffer(lm_challenge_info.0, lm_challenge_info.1, bytes)?;
+            let (_, nt_challenge_response) = get_buffer(nt_challenge_info.0, nt_challenge_info.1, bytes)?;
+            let (_, domain_name) = map_res(
+                |bytes| get_buffer(domain_name_into.0, domain_name_into.1, bytes),
+                String::from_utf8,
+            )(bytes)?;
+            let (_, user_name) = map_res(
+                |bytes| get_buffer(user_name_info.0, user_name_info.1, bytes),
+                String::from_utf8,
+            )(bytes)?;
+            let (_, work_station) = map_res(
+                |bytes| get_buffer(work_station_info.0, work_station_info.1, bytes),
+                String::from_utf8,
+            )(bytes)?;
+            let (remaining, encrypted_session_key) = get_buffer(encrypted_session_key_info.0, encrypted_session_key_info.1, bytes)?;
+            Ok((remaining, Self {
+                signature,
+                negotiate_flags,
+                domain_name,
+                user_name,
+                work_station,
+                lm_challenge_response,
+                nt_challenge_response,
+                encrypted_session_key,
+                mic: Vec::new(),
+            }))
+        })
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -96,18 +90,21 @@ impl NTLMAuthenticateMessageBody {
 
         let password = accepted_users.iter().find(|user| user.username == self.user_name);
         if password.is_none() {
-            if guest_supported {
+            return if guest_supported {
                 context.guest = Some(true);
-                return 0;
+                0
             } else {
-                return 1; // TODO login counter and failure
+                1 // TODO login counter and failure
             }
         }
 
-        if self.negotiate_flags.contains(NTLMNegotiateFlags::EXTENDED_SESSION_SECURITY) {
-
-        }
+        if self.negotiate_flags.contains(NTLMNegotiateFlags::EXTENDED_SESSION_SECURITY) {}
 
         0
     }
+}
+
+fn get_buffer(length: u16, offset: u32, buffer: &[u8]) -> IResult<&[u8], Vec<u8>> {
+    let (remaining, slice) = take(offset as usize)(buffer).and_then(|(remaining, _)| take(length as usize)(remaining))?;
+    Ok((remaining, slice.to_vec()))
 }

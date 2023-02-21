@@ -26,10 +26,6 @@ impl NTLMChallengeMessageBody {
         }
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        None
-    }
-
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         todo!()
     }

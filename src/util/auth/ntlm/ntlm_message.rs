@@ -18,16 +18,6 @@ pub enum NTLMMessage {
 }
 
 impl NTLMMessage {
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() < 24 { return None; }
-        match bytes_to_u32(&bytes[8..12]) {
-            0x01 => Some(NTLMMessage::Negotiate(NTLMNegotiateMessageBody::from_bytes(bytes)?)),
-            0x02 => Some(NTLMMessage::Challenge(NTLMChallengeMessageBody::from_bytes(bytes)?)),
-            0x03 => Some(NTLMMessage::Authenticate(NTLMAuthenticateMessageBody::from_bytes(bytes)?)),
-            _ => None,
-        }
-    }
-
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (_, msg_type) = take(8_usize)(bytes)
             .and_then(|(remaining, _)| le_u32(remaining))?;
@@ -96,8 +86,8 @@ pub(crate) fn read_ntlm_buffer_ptr(buffer: &[u8], offset: usize) -> Option<Vec<u
     Some(buffer[buffer_offset..(buffer_offset + length)].to_vec())
 }
 
-pub(crate) fn parse_ntlm_buffer_ptr(bytes: &[u8]) -> IResult<&[u8], &[u8]> {
+pub(crate) fn parse_ntlm_buffer_fields(bytes: &[u8]) -> IResult<&[u8], (u16, u32)> {
     let (remaining, length) = le_u16(bytes)?;
-    let (_, buffer_offset) = take(2_usize)(remaining).and_then(|(remaining, _)| le_u32(remaining))?;
-    take(buffer_offset as usize)(bytes).and_then(|(remaining, _)| take(length as usize)(remaining))
+    let (remaining, buffer_offset) = take(2_usize)(remaining).and_then(|(remaining, _)| le_u32(remaining))?;
+    Ok((remaining, (length, buffer_offset)))
 }
