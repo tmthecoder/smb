@@ -1,5 +1,3 @@
-use std::ops::Neg;
-
 use nom::combinator::map_res;
 use nom::Err::Error;
 use nom::error::ErrorKind;

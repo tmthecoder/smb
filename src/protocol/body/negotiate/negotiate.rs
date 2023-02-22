@@ -36,15 +36,15 @@ impl SMBNegotiateRequestBody {
             dialect_count as usize,
         )(dialect_start)?;
         let (remaining_bytes, negotiate_contexts) = if dialects.contains(&SMBDialect::V3_1_1) {
-            let (remaining_post_context, contexts) = tuple((le_u32, le_u16, take(2_usize)))(
-                remaining,
-            )
-            .and_then(|(_, (_, neg_ctx_cnt, _))| {
-                let padding = (dialect_start.len() - remaining_post_dialect.len()) % 8;
-                count(NegotiateContext::parse, neg_ctx_cnt as usize)(
-                    &remaining_post_dialect[padding..],
-                )
-            }).unwrap();
+            let (remaining_post_context, contexts) =
+                tuple((le_u32, le_u16, take(2_usize)))(remaining)
+                    .and_then(|(_, (_, neg_ctx_cnt, _))| {
+                        let padding = (dialect_start.len() - remaining_post_dialect.len()) % 8;
+                        count(NegotiateContext::parse, neg_ctx_cnt as usize)(
+                            &remaining_post_dialect[padding..],
+                        )
+                    })
+                    .unwrap();
             (remaining_post_context, contexts)
         } else {
             (remaining_post_dialect, Vec::new())
@@ -62,7 +62,7 @@ impl SMBNegotiateRequestBody {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct SMBNegotiateResponseBody {
     security_mode: SecurityMode,
     dialect: SMBDialect,
@@ -147,18 +147,17 @@ impl SMBNegotiateResponseBody {
                 negotiate_ctx_vec.append(&mut bytes);
             }
         }
-        let security_offset;
-        if self.buffer.len() == 0 {
-            security_offset = [0, 0];
+        let security_offset = if self.buffer.is_empty() {
+            [0, 0]
         } else {
-            security_offset = [128, 0];
-        }
+            [128, 0]
+        };
         [
             &[65, 0][0..], // Structure Size
             &u16_to_bytes(self.security_mode.bits()),
             &u16_to_bytes(self.dialect as u16),
             &u16_to_bytes(self.negotiate_contexts.len() as u16),
-            &*self.guid.as_bytes(),
+            self.guid.as_bytes(),
             &u32_to_bytes(self.capabilities.bits() as u32),
             &u32_to_bytes(self.max_transact_size),
             &u32_to_bytes(self.max_read_size),

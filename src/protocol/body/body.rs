@@ -15,7 +15,7 @@ use crate::protocol::header::LegacySMBHeader;
 use crate::protocol::header::SMBCommandCode;
 use crate::protocol::header::SMBSyncHeader;
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub enum SMBBody {
     None,
     NegotiateRequest(SMBNegotiateRequest),

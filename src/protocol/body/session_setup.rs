@@ -1,9 +1,9 @@
 use bitflags::bitflags;
 use nom::bytes::complete::take;
 use nom::combinator::map;
-use nom::IResult;
 use nom::number::complete::{le_u16, le_u32, le_u64, le_u8};
 use nom::sequence::tuple;
+use nom::IResult;
 use serde::{Deserialize, Serialize};
 
 use crate::byte_helper::u16_to_bytes;
@@ -15,12 +15,24 @@ pub struct SMBSessionSetupRequestBody {
     security_mode: SecurityMode,
     capabilities: Capabilities,
     previous_session_id: u64,
-    buffer: Vec<u8>
+    buffer: Vec<u8>,
 }
 
 impl SMBSessionSetupRequestBody {
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (_, (_, flags, security_mode, capabilities, _, security_buffer_offset, security_buffer_len, previous_session_id)) = tuple((
+        let (
+            _,
+            (
+                _,
+                flags,
+                security_mode,
+                capabilities,
+                _,
+                security_buffer_offset,
+                security_buffer_len,
+                previous_session_id,
+            ),
+        ) = tuple((
             take(2_usize),
             map(le_u8, SMBSessionSetupFlags::from_bits_truncate),
             map(le_u8, |b: u8| SecurityMode::from_bits_truncate(b.into())),
@@ -33,13 +45,16 @@ impl SMBSessionSetupRequestBody {
         let (remaining, buffer) = take(security_buffer_offset)(bytes)
             .and_then(|(remaining, _)| take(security_buffer_len)(remaining))
             .map(|res| (res.0, res.1.to_vec()))?;
-        Ok((remaining, Self {
-            flags,
-            security_mode,
-            capabilities,
-            previous_session_id,
-            buffer
-        }))
+        Ok((
+            remaining,
+            Self {
+                flags,
+                security_mode,
+                capabilities,
+                previous_session_id,
+                buffer,
+            },
+        ))
     }
 
     pub fn get_buffer_copy(&self) -> Vec<u8> {
@@ -50,18 +65,21 @@ impl SMBSessionSetupRequestBody {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct SMBSessionSetupResponseBody {
     session_flags: SMBSessionFlags,
-    buffer: Vec<u8>
+    buffer: Vec<u8>,
 }
 
 impl SMBSessionSetupResponseBody {
     pub fn new(session_flags: SMBSessionFlags, buffer: Vec<u8>) -> Self {
-        Self { session_flags, buffer }
+        Self {
+            session_flags,
+            buffer,
+        }
     }
 
     pub fn from_request(request: SMBSessionSetupRequestBody, token: Vec<u8>) -> Option<Self> {
         Some(Self {
             session_flags: SMBSessionFlags::empty(),
-            buffer: token
+            buffer: token,
         })
     }
 }
@@ -74,8 +92,9 @@ impl SMBSessionSetupResponseBody {
             &u16_to_bytes(self.session_flags.bits),
             &u16_to_bytes(security_offset),
             &u16_to_bytes(self.buffer.len() as u16),
-            &*self.buffer
-        ].concat()
+            &*self.buffer,
+        ]
+        .concat()
     }
 }
 
@@ -94,3 +113,4 @@ bitflags! {
         const ENCRYPT_DATA = 0x04;
     }
 }
+

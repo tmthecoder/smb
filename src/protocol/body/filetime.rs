@@ -1,8 +1,8 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
 use crate::byte_helper::{bytes_to_u32, bytes_to_u64, u32_to_bytes, u64_to_bytes};
+use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 pub struct FileTime {
     low_date_time: u32,
     high_date_time: u32,
@@ -16,7 +16,7 @@ impl FileTime {
         let bytes = u64_to_bytes(filetype_normalized);
         FileTime {
             low_date_time: bytes_to_u32(&bytes[0..4]),
-            high_date_time: bytes_to_u32(&bytes[4..])
+            high_date_time: bytes_to_u32(&bytes[4..]),
         }
     }
 
@@ -27,7 +27,7 @@ impl FileTime {
 
     pub fn to_unix(&self) -> u64 {
         let bytes = self.as_bytes();
-        bytes_to_u64(&*bytes)
+        bytes_to_u64(&bytes)
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {

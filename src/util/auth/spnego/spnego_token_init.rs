@@ -1,4 +1,4 @@
-use nom::{IResult, Parser};
+use nom::IResult;
 use nom::Err::Error;
 use nom::error::ErrorKind;
 use nom::multi::many0;

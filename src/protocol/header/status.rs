@@ -1,6 +1,6 @@
 use nom::bits::streaming::take;
-use nom::combinator::{map_res, map};
-use nom::error::{ErrorKind, make_error};
+use nom::combinator::map;
+use nom::error::ErrorKind;
 use nom::number::complete::le_u8;
 use nom::number::streaming::le_u16;
 use nom::sequence::tuple;
@@ -9,7 +9,7 @@ use nom::Err::Error;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 
-use crate::byte_helper::{bytes_to_u16, u16_to_bytes};
+use crate::byte_helper::u16_to_bytes;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub enum SMBStatus {
