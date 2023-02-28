@@ -1,11 +1,12 @@
 use bitflags::bitflags;
-use nom::IResult;
 use nom::bytes::complete::take;
 use nom::Err::Error;
 use nom::error::ErrorKind;
+use nom::IResult;
 use nom::number::complete::{le_u16, le_u32};
 use serde::{Deserialize, Serialize};
 
+use crate::util::as_bytes::AsByteVec;
 use crate::util::auth::ntlm::{NTLMAuthenticateMessageBody, NTLMChallengeMessageBody, NTLMNegotiateMessageBody};
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -36,8 +37,13 @@ impl NTLMMessage {
             _ => Err(Error(nom::error::Error::new(bytes, ErrorKind::Fail)))
         }
     }
-
     pub fn as_bytes(&self) -> Vec<u8> {
+        self.as_byte_vec()
+    }
+}
+
+impl AsByteVec for NTLMMessage {
+    fn as_byte_vec(&self) -> Vec<u8> {
         match self {
             NTLMMessage::Negotiate(msg) => msg.as_bytes(),
             NTLMMessage::Challenge(msg) => msg.as_bytes(),

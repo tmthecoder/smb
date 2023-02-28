@@ -1,10 +1,11 @@
 use nom::bytes::complete::take;
 use nom::combinator::{map, map_res};
+use nom::IResult;
 use nom::number::complete::le_u32;
 use nom::sequence::tuple;
-use nom::IResult;
 use serde::{Deserialize, Serialize};
 
+use crate::util::auth::nt_status::NTStatus;
 use crate::util::auth::ntlm::ntlm_message::NTLMNegotiateFlags;
 use crate::util::auth::ntlm::NTLMChallengeMessageBody;
 
@@ -47,7 +48,7 @@ impl NTLMNegotiateMessageBody {
 }
 
 impl NTLMNegotiateMessageBody {
-    pub fn get_challenge_response(&self) -> NTLMChallengeMessageBody {
+    pub fn get_challenge_response(&self) -> (NTStatus, NTLMChallengeMessageBody) {
         fn add_if_present(
             flags: &mut NTLMNegotiateFlags,
             original: &NTLMNegotiateFlags,
@@ -121,7 +122,7 @@ impl NTLMNegotiateMessageBody {
 
         let target_name = "fakeserver";
 
-        NTLMChallengeMessageBody::new(target_name.into(), negotiate_flags)
+        (NTStatus::SecIContinueNeeded, NTLMChallengeMessageBody::new(target_name.into(), negotiate_flags))
     }
 }
 

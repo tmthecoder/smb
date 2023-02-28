@@ -4,5 +4,4 @@ pub struct AuthContext {
     work_station: String,
     version: String,
     guest: bool,
-
 }

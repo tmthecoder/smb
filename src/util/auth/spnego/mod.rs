@@ -3,7 +3,7 @@ mod spnego_token_init;
 mod spnego_token_init_2;
 mod spnego_token_response;
 
-pub(crate) mod util;
+pub(crate) mod der_utils;
 
 pub type SPNEGOToken<T> = spnego_token::SPNEGOToken<T>;
 pub type SPNEGOTokenInitBody<T> = spnego_token_init::SPNEGOTokenInitBody<T>;

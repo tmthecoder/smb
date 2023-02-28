@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::util::auth::AuthProvider;
 use crate::util::auth::spnego::{SPNEGOTokenInit2Body, SPNEGOTokenInitBody, SPNEGOTokenResponseBody};
-use crate::util::auth::spnego::util::{APPLICATION_TAG, DER_ENCODING_OID_TAG, DER_ENCODING_SEQUENCE_TAG, get_field_size, get_length, NEG_TOKEN_INIT_TAG, NEG_TOKEN_RESP_TAG, parse_field_with_len, SPNEGO_ID};
+use crate::util::auth::spnego::der_utils::{APPLICATION_TAG, DER_ENCODING_OID_TAG, DER_ENCODING_SEQUENCE_TAG, get_field_size, get_length, NEG_TOKEN_INIT_TAG, NEG_TOKEN_RESP_TAG, parse_field_with_len, SPNEGO_ID};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum SPNEGOToken<T: AuthProvider> {
@@ -63,11 +63,11 @@ impl<T: AuthProvider> SPNEGOToken<T> {
         };
         if header {
             let oid_size = get_field_size(SPNEGO_ID.len());
-            let token_len = 1 + oid_size + bytes.len();
+            let token_len = 1 + oid_size + SPNEGO_ID.len() + bytes.len();
             [
                 &[APPLICATION_TAG][0..],
                 &get_length(token_len),
-                &[DER_ENCODING_SEQUENCE_TAG],
+                &[DER_ENCODING_OID_TAG],
                 &get_length(SPNEGO_ID.len()),
                 &SPNEGO_ID,
                 &bytes

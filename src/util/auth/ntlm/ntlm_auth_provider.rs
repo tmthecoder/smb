@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
+
 use crate::util::auth::{AuthProvider, User};
+use crate::util::auth::nt_status::NTStatus;
 use crate::util::auth::ntlm::NTLMMessage;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -24,19 +26,20 @@ impl AuthProvider for NTLMAuthProvider {
         vec![0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x02, 0x0a]
     }
 
-    fn accept_security_context(&self, input_message: &NTLMMessage) -> (u8, NTLMMessage) {
+    fn accept_security_context(&self, input_message: &NTLMMessage) -> (NTStatus, NTLMMessage) {
         match input_message {
             NTLMMessage::Negotiate(x) => {
-                (0, NTLMMessage::Challenge(x.get_challenge_response()))
+                let (status, challenge) = x.get_challenge_response();
+                (status, NTLMMessage::Challenge(challenge))
             },
             NTLMMessage::Challenge(x) => {
-                (0, NTLMMessage::Dummy)
+                (NTStatus::StatusSuccess, NTLMMessage::Dummy)
             },
             NTLMMessage::Authenticate(x) => {
-                (0, NTLMMessage::Dummy)
+                (NTStatus::StatusSuccess, NTLMMessage::Dummy)
             },
             NTLMMessage::Dummy => {
-                (0, NTLMMessage::Dummy)
+                (NTStatus::StatusSuccess, NTLMMessage::Dummy)
             }
         }
     }
