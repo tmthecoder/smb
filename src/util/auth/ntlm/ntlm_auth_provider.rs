@@ -4,7 +4,7 @@ use crate::util::auth::{AuthProvider, User};
 use crate::util::auth::nt_status::NTStatus;
 use crate::util::auth::ntlm::NTLMMessage;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct NTLMAuthProvider {
     accepted_users: Vec<User>,
     guest_supported: bool

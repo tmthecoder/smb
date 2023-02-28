@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::util::auth::AuthProvider;
 use crate::util::auth::spnego::der_utils::{DER_ENCODING_BYTE_ARRAY_TAG, DER_ENCODING_OID_TAG, DER_ENCODING_SEQUENCE_TAG, encode_der_bytes, get_array_field_len, get_field_size, get_length, MECH_LIST_MIC_TAG, MECH_TOKEN_TAG, MECH_TYPE_LIST_TAG, NEG_TOKEN_INIT_TAG, parse_der_byte_array, parse_der_multibyte, parse_field_with_len, parse_length};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct SPNEGOTokenInitBody<T: AuthProvider> {
     mechanism: Option<T>,
     mech_type_list: Option<Vec<Vec<u8>>>,
