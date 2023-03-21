@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
 use crate::util::auth::ntlm::ntlm_message::NTLMNegotiateFlags;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 pub struct NTLMChallengeMessageBody {
     signature: String,
     target_name: String,
@@ -60,5 +60,19 @@ impl NTLMChallengeMessageBody {
             &name,
             &[0; 4],
         ].concat()
+    }
+}
+
+impl NTLMChallengeMessageBody {
+    pub fn signature(&self) -> &String {
+        &self.signature
+    }
+
+    pub fn target_name(&self) -> &String {
+        &self.target_name
+    }
+
+    pub fn server_challenge(&self) -> &[u8; 8] {
+        &self.server_challenge
     }
 }

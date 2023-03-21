@@ -1,9 +1,10 @@
 use nom::IResult;
+
 use crate::protocol::header::Header;
 
 mod body;
 mod capabilities;
-mod common_types;
+mod dialect;
 mod filetime;
 pub mod negotiate;
 mod security_mode;
@@ -17,7 +18,7 @@ pub type Capabilities = capabilities::Capabilities;
 pub type FileTime = filetime::FileTime;
 pub type SecurityMode = security_mode::SecurityMode;
 
-pub type SMBDialect = common_types::SMBDialect;
+pub type SMBDialect = dialect::SMBDialect;
 pub type SMBSessionSetupRequest = session_setup::SMBSessionSetupRequestBody;
 pub type SMBSessionSetupResponse = session_setup::SMBSessionSetupResponseBody;
 

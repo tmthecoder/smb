@@ -1,17 +1,19 @@
-use std::fmt::{Display, format, Formatter, Pointer};
+use std::fmt::{Display, format, Formatter, Pointer, write};
 
 use nom::Err;
 use nom::error::{Error, ErrorKind};
 
 #[derive(Debug)]
 pub enum SMBError {
-    ParseError(ErrorKind)
+    ParseError(ErrorKind),
+    CryptoError,
 }
 
 impl Display for SMBError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ParseError(x) => write!(f, "Parse Error with kind: {:?}", x)
+            Self::ParseError(x) => write!(f, "Parse Error with kind: {:?}", x),
+            Self::CryptoError => write!(f, "Crypto operation failed")
         }
     }
 }

@@ -1,4 +1,3 @@
-use nom::Err::Error;
 use nom::error::ErrorKind;
 
 use smb_reader::protocol::body::{
@@ -9,7 +8,8 @@ use smb_reader::protocol::header::{SMBCommandCode, SMBFlags, SMBSyncHeader};
 use smb_reader::protocol::message::SMBMessage;
 use smb_reader::SMBListener;
 use smb_reader::util::auth::{AuthProvider, User};
-use smb_reader::util::auth::ntlm::{NTLMAuthProvider, NTLMMessage};
+use smb_reader::util::auth::nt_status::NTStatus;
+use smb_reader::util::auth::ntlm::{NTLMAuthContext, NTLMAuthProvider, NTLMMessage};
 use smb_reader::util::auth::spnego::{SPNEGOToken, SPNEGOTokenInitBody, SPNEGOTokenResponseBody};
 use smb_reader::util::error::SMBError;
 
@@ -19,6 +19,7 @@ const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
 fn main() -> anyhow::Result<()> {
     let server = SMBListener::new("127.0.0.1:50122")?;
     let start_time = FileTime::now();
+    let mut ctx = NTLMAuthContext::new();
     for mut connection in server.connections() {
         let mut cloned_connection = connection.try_clone()?;
         for message in connection.messages() {
@@ -53,7 +54,7 @@ fn main() -> anyhow::Result<()> {
                             SMBNegotiateResponse::from_request(request, init_buffer.as_bytes(true))
                                 .unwrap(),
                         );
-                        let resp_header = message.header.create_response_header(0x0);
+                        let resp_header = message.header.create_response_header(0x0, 0);
                         let resp_msg = SMBMessage::new(resp_header, resp_body);
                         cloned_connection.send_message(resp_msg)?;
                     }
@@ -64,36 +65,35 @@ fn main() -> anyhow::Result<()> {
                             SPNEGOToken::parse(&request.get_buffer_copy()).unwrap().1;
                         println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
                         let helper = NTLMAuthProvider::new(
-                            vec![User::new("tejas".into(), "test".into())],
+                            vec![User::new("tejasmehta".into(), "Password".into())],
                             true,
                         );
-                        match spnego_init_buffer {
+                        let (status, output) = match spnego_init_buffer {
                             SPNEGOToken::Init(init_msg) => {
                                 let mech_token = init_msg.mech_token.ok_or(SMBError::ParseError(ErrorKind::Fail))?;
                                 let ntlm_msg =
                                     NTLMMessage::parse(&mech_token).map_err(SMBError::from)?.1;
-                                let (status, output) = helper.accept_security_context(&ntlm_msg);
-                                let spnego_response_body = SPNEGOTokenResponseBody::<NTLMAuthProvider>::new(status, output);
-                                let resp = SMBSessionSetupResponse::from_request(
-                                    request,
-                                    spnego_response_body.as_bytes(),
-                                ).unwrap();
-                                let resp_body = SMBBody::SessionSetupResponse(resp);
-                                let resp_header = message.header.create_response_header(0);
-                                let resp_msg = SMBMessage::new(resp_header, resp_body);
-                                cloned_connection.send_message(resp_msg)?;
+                                helper.accept_security_context(&ntlm_msg, &mut ctx)
                             }
                             SPNEGOToken::Response(resp_msg) => {
                                 let response_token = resp_msg.response_token.ok_or(SMBError::ParseError(ErrorKind::Fail))?;
                                 let ntlm_msg =
                                     NTLMMessage::parse(&response_token).map_err(SMBError::from)?.1;
                                 println!("NTLM: {:?}", ntlm_msg);
-
-                                let (status, output) = helper.accept_security_context(&ntlm_msg);
-                                println!("input: {:?}", ntlm_msg);
+                                helper.accept_security_context(&ntlm_msg, &mut ctx)
                             }
-                            _ => {}
-                        }
+                            _ => { (NTStatus::StatusSuccess, NTLMMessage::Dummy) }
+                        };
+                        println!("status: {:?}, output: {:?}", status, output);
+                        let spnego_response_body = SPNEGOTokenResponseBody::<NTLMAuthProvider>::new(status.clone(), output);
+                        let resp = SMBSessionSetupResponse::from_request(
+                            request,
+                            spnego_response_body.as_bytes(),
+                        ).unwrap();
+                        let resp_body = SMBBody::SessionSetupResponse(resp);
+                        let resp_header = message.header.create_response_header(0, 1010);
+                        let resp_msg = SMBMessage::new(resp_header, resp_body);
+                        cloned_connection.send_message(resp_msg)?;
                     }
                 }
                 _ => {}

@@ -9,7 +9,7 @@ use crate::util::auth::nt_status::NTStatus;
 use crate::util::auth::ntlm::ntlm_message::NTLMNegotiateFlags;
 use crate::util::auth::ntlm::NTLMChallengeMessageBody;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 pub struct NTLMNegotiateMessageBody {
     signature: String,
     pub negotiate_flags: NTLMNegotiateFlags,

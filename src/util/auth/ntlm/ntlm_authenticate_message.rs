@@ -1,15 +1,27 @@
+use des::cipher::{BlockEncrypt, KeyInit};
+use des::Des;
+use digest::Digest;
+use hmac::{Hmac, Mac};
+use md4::Md4;
+use md5::Md5;
+use nom::{AsBytes, IResult};
 use nom::bytes::complete::take;
 use nom::combinator::{map, map_res};
 use nom::number::complete::le_u32;
 use nom::sequence::tuple;
-use nom::IResult;
+use rc4::{Key, Rc4, StreamCipher};
+use rc4::consts::{U128, U16};
 use serde::{Deserialize, Serialize};
 
+use crate::byte_helper::u16_to_bytes;
 use crate::util::auth::ntlm::ntlm_auth_provider::NTLMAuthContext;
-use crate::util::auth::ntlm::ntlm_message::{parse_ntlm_buffer_fields, NTLMNegotiateFlags};
+use crate::util::auth::ntlm::ntlm_message::{NTLMNegotiateFlags, parse_ntlm_buffer_fields};
 use crate::util::auth::User;
+use crate::util::crypto::ntlm_v1_extended::authenticate_v1_extended;
+use crate::util::crypto::ntlm_v2::authenticate_v2;
+use crate::util::error::SMBError;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 pub struct NTLMAuthenticateMessageBody {
     signature: String,
     negotiate_flags: NTLMNegotiateFlags,
@@ -54,18 +66,18 @@ impl NTLMAuthenticateMessageBody {
                     get_buffer(lm_challenge_info.0, lm_challenge_info.1, bytes)?;
                 let (_, nt_challenge_response) =
                     get_buffer(nt_challenge_info.0, nt_challenge_info.1, bytes)?;
-                let (_, domain_name) = map_res(
+                let (_, domain_name) = map(map_res(
                     |bytes| get_buffer(domain_name_into.0, domain_name_into.1, bytes),
                     String::from_utf8,
-                )(bytes)?;
-                let (_, user_name) = map_res(
+                ), |s| s.replace('\0', ""))(bytes)?;
+                let (_, user_name) = map(map_res(
                     |bytes| get_buffer(user_name_info.0, user_name_info.1, bytes),
                     String::from_utf8,
-                )(bytes)?;
-                let (_, work_station) = map_res(
+                ), |s| s.replace('\0', ""))(bytes)?;
+                let (_, work_station) = map(map_res(
                     |bytes| get_buffer(work_station_info.0, work_station_info.1, bytes),
                     String::from_utf8,
-                )(bytes)?;
+                ), |s| s.replace('\0', ""))(bytes)?;
                 let (remaining, encrypted_session_key) = get_buffer(
                     encrypted_session_key_info.0,
                     encrypted_session_key_info.1,
@@ -102,25 +114,24 @@ impl NTLMAuthenticateMessageBody {
         guest_supported: bool,
     ) -> u8 {
         context.domain_name = Some(self.domain_name.clone());
-        context.user_name = Some(self.user_name.clone());
+        context.user_name = Some(self.user_name.clone().replace('\0', ""));
         context.work_station = Some(self.work_station.clone());
 
         context.version = Some("6.1.7200".into()); // TODO FIX
         if self.negotiate_flags.contains(NTLMNegotiateFlags::ANONYMOUS) {
-            if guest_supported {
+            return if guest_supported {
                 context.guest = Some(true);
-                return 0;
+                0
             } else {
-                return 1; // TODO failure
+                1 // TODO failure
             }
         }
 
         // TODO check if remaining attempts are allowed
-
-        let password = accepted_users
+        let matched_user = accepted_users
             .iter()
             .find(|user| user.username == self.user_name);
-        if password.is_none() {
+        if matched_user.is_none() {
             return if guest_supported {
                 context.guest = Some(true);
                 0
@@ -129,14 +140,40 @@ impl NTLMAuthenticateMessageBody {
             };
         }
 
-        if self
+        let matched_user = matched_user.unwrap();
+
+        let server_challenge = &context.server_challenge;
+        let response_key: Vec<u8> = if self
             .negotiate_flags
             .contains(NTLMNegotiateFlags::EXTENDED_SESSION_SECURITY)
-        {}
-
-        0
+        {
+            if self.lm_challenge_response.len() == 24 && self.lm_challenge_response[0..8] != [0; 8] {
+                // ntlm v1 extended
+                let response = authenticate_v1_extended(&matched_user.password, server_challenge, &self.lm_challenge_response, &self.nt_challenge_response);
+                Vec::new()
+            } else {
+                // ntlm v2
+                let (_, proof_str) = authenticate_v2(&self.domain_name, &self.user_name, &matched_user.password, server_challenge, &self.lm_challenge_response, &self.nt_challenge_response).unwrap();
+                proof_str
+            }
+        } else {
+            Vec::new()
+        };
+        if response_key.is_empty() { 1 } else {
+            let session_key = if self.negotiate_flags.contains(NTLMNegotiateFlags::KEY_EXCHANGE) {
+                let mut rc4 = Rc4::new(Key::<U16>::from_slice(&response_key));
+                let mut output = vec![0; self.encrypted_session_key.len()];
+                rc4.apply_keystream_b2b(&self.encrypted_session_key, &mut output).unwrap();
+                output
+            } else {
+                response_key
+            };
+            context.session_key = session_key;
+            0
+        }
     }
 }
+
 
 fn get_buffer(length: u16, offset: u32, buffer: &[u8]) -> IResult<&[u8], Vec<u8>> {
     let (remaining, slice) = take(offset as usize)(buffer)

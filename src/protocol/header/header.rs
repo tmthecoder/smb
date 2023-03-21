@@ -1,9 +1,9 @@
 use nom::bytes::complete::{tag, take};
 use nom::combinator::{map, map_res};
+use nom::IResult;
 use nom::number::complete::le_u8;
 use nom::number::streaming::{le_u16, le_u32, le_u64};
 use nom::sequence::tuple;
-use nom::IResult;
 use serde::{Deserialize, Serialize};
 
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes, u64_to_bytes};
@@ -96,10 +96,10 @@ impl Header for SMBSyncHeader {
             &[0xFE_u8],
             &b"SMB"[0..],
             &[64, 0],                             // Structure size,
-            &[0; 2],                              // Credit
+            &[1, 0],                              // Credit
             &u32_to_bytes(self.channel_sequence), // Reserved/Status/TODO
             &u16_to_bytes(self.command as u16),
-            &[0; 2], // CreditResponse,
+            &[1, 0], // CreditResponse,
             &u32_to_bytes(self.flags.bits()),
             &[0; 4], // Next Command,
             &u64_to_bytes(self.message_id),
@@ -205,7 +205,7 @@ impl SMBSyncHeader {
         }
     }
 
-    pub fn create_response_header(&self, channel_sequence: u32) -> Self {
+    pub fn create_response_header(&self, channel_sequence: u32, session_id: u64) -> Self {
         Self {
             command: self.command,
             flags: SMBFlags::SERVER_TO_REDIR,
@@ -213,8 +213,8 @@ impl SMBSyncHeader {
             next_command: 0,
             message_id: self.message_id,
             tree_id: self.tree_id,
-            session_id: self.session_id,
-            signature: [1; 16],
+            session_id,
+            signature: [0; 16],
         }
     }
 }

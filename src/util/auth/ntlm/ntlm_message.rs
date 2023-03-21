@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::util::as_bytes::AsByteVec;
 use crate::util::auth::ntlm::{NTLMAuthenticateMessageBody, NTLMChallengeMessageBody, NTLMNegotiateMessageBody};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 pub enum NTLMMessage {
     Negotiate(NTLMNegotiateMessageBody),
     Challenge(NTLMChallengeMessageBody),

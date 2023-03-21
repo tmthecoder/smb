@@ -30,17 +30,22 @@ pub struct SPNEGOTokenResponseBody<T: AuthProvider> {
 }
 
 impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
-    pub fn new(status: NTStatus, token_content: T::Item) -> Self {
+    pub fn new(status: NTStatus, token_content: T::Message) -> Self {
         let state = Some(match status {
             NTStatus::StatusSuccess => NegotiateState::AcceptCompleted,
             NTStatus::SecIContinueNeeded => NegotiateState::AcceptIncomplete,
             _ => NegotiateState::Reject
         });
+        let (response_token, supported_mech) = if token_content.as_byte_vec().is_empty() {
+            (None, None)
+        } else {
+            (Some(token_content.as_byte_vec()), Some(T::get_oid()))
+        };
         Self {
             mechanism: None,
             state,
-            supported_mech: Some(T::get_oid()),
-            response_token: Some(token_content.as_byte_vec()),
+            supported_mech,
+            response_token,
             mech_list_mic: None,
         }
     }
