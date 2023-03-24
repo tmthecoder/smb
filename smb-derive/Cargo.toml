@@ -1,0 +1,16 @@
+[package]
+name = "smb_derive"
+version = "0.0.0"
+authors = ["Tejas Mehta <tmthecoder@gmail.com>"]
+description = "A `cargo generate` template for quick-starting a procedural macro crate"
+keywords = ["template", "proc_macro", "procmacro"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1"
+proc-macro2 = "1.0"
+syn = {version = "2.0.9", features = ["extra-traits"]}
+darling = "0.14.4"

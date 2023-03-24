@@ -8,7 +8,7 @@ pub fn authenticate_v1_extended(password: &str, server_challenge: &[u8], lm_resp
     let client_challenge = &lm_response[0..8];
     let expected_v1_response = compute_ntlmv1_extended_response(server_challenge, client_challenge, password)?;
 
-    return Ok(nt_respobse == expected_v1_response)
+    Ok(nt_respobse == expected_v1_response)
 }
 
 fn compute_ntlmv1_extended_response(server_challenge: &[u8], client_challenge: &[u8], password: &str) -> Result<Vec<u8>, anyhow::Error> {

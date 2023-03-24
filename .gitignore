@@ -1,5 +1,5 @@
-/target
-/Cargo.lock
+**/target
+**/Cargo.lockgit
 
 .DS_Store
 **/.DS_Store
