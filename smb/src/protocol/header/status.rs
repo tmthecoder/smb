@@ -1,13 +1,16 @@
+use nom::{bits, IResult};
 use nom::bits::streaming::take;
 use nom::combinator::map;
+use nom::Err::Error;
 use nom::error::ErrorKind;
 use nom::number::complete::le_u8;
 use nom::number::streaming::le_u16;
 use nom::sequence::tuple;
-use nom::{bits, IResult};
-use nom::Err::Error;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
+
+use smb_core::{SMBFromBytes, SMBResult};
+use smb_core::error::SMBError;
 
 use crate::byte_helper::u16_to_bytes;
 
@@ -49,11 +52,17 @@ impl SMBStatus {
                 } else {
                     map(
                         tuple((le_u8, le_u8, le_u16)),
-                        |(first, second, third)| Self::DosError(first.into(), second.into(), third)
+                        |(first, second, third)| Self::DosError(first.into(), second.into(), third),
                     )(bytes)
                 }
             })?;
         todo!()
+    }
+}
+
+impl SMBFromBytes for SMBStatus {
+    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        Self::parse(input).map_err(|_e| SMBError::ParseError("Invalid format".into()))
     }
 }
 
@@ -65,7 +74,7 @@ impl SMBStatus {
                 &[x.facility[1]][0..],
                 &u16_to_bytes(x.error_code)[0..],
             ]
-            .concat(),
+                .concat(),
             SMBStatus::DosError(c1, c2, code) => [
                 &[*c1 as u8][0..],
                 &[*c2 as u8][0..],

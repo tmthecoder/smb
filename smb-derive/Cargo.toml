@@ -1,5 +1,5 @@
 [package]
-name = "smb_derive"
+name = "smb-derive"
 version = "0.0.0"
 authors = ["Tejas Mehta <tmthecoder@gmail.com>"]
 description = "A `cargo generate` template for quick-starting a procedural macro crate"

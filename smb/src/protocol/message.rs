@@ -4,6 +4,8 @@ use std::str;
 use nom::IResult;
 use serde::{Deserialize, Serialize};
 
+use smb_core::SMBFromBytes;
+
 use crate::byte_helper::u16_to_bytes;
 use crate::protocol::body::{Body, LegacySMBBody, SMBBody};
 use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
@@ -39,8 +41,7 @@ impl SMBMessage<SMBSyncHeader, SMBBody> {
     }
 }
 
-impl<S: Header + Debug, T: Body<S>> Message for SMBMessage<S, T> {
-
+impl<S: Header + Debug + SMBFromBytes, T: Body<S>> Message for SMBMessage<S, T> {
     fn as_bytes(&self) -> Vec<u8> {
         let smb2_message = [self.header.as_bytes(), self.body.as_bytes()].concat();
         let mut len_bytes = u16_to_bytes(smb2_message.len() as u16);

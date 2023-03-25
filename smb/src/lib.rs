@@ -3,6 +3,8 @@ extern crate core;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 
+use smb_core::SMBFromBytes;
+
 use crate::protocol::body::{LegacySMBBody, SMBBody};
 use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
@@ -92,6 +94,7 @@ impl Iterator for SMBMessageIterator<'_> {
             Ok(read) => {
                 if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
                     if buffer[(pos)..].starts_with(b"SMB") {
+                        println!("header: {:?}", SMBSyncHeader::parse_smb_message(&buffer[(pos - 1)..read]));
                         let (carryover, message) = if let Ok((remaining, msg)) = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[(pos-1)..read]) {
                             (remaining, msg)
                         } else {

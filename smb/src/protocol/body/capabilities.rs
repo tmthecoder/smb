@@ -2,7 +2,7 @@ use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
 bitflags! {
-   #[derive(Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
    pub struct Capabilities: u32 {
       const GLOBAL_CAP_DFS                = 0x01;
       const GLOBAL_CAP_LEASING            = 0x02;

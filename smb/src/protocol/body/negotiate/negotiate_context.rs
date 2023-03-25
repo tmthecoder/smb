@@ -1,12 +1,12 @@
 use bitflags::bitflags;
 use nom::bytes::complete::take;
 use nom::combinator::{map, map_res};
+use nom::Err::Error;
 use nom::error::ErrorKind;
+use nom::IResult;
 use nom::multi::count;
 use nom::number::complete::{le_u16, le_u32};
 use nom::sequence::tuple;
-use nom::Err::Error;
-use nom::IResult;
 use num_enum::TryFromPrimitive;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -355,13 +355,13 @@ impl NetnameNegotiateContextIDBody {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub struct TransportCapabilitiesBody {
     pub(crate) flags: TransportCapabilitiesFlags,
 }
 
 bitflags! {
-    #[derive(Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
     pub struct TransportCapabilitiesFlags: u32 {
         const ACCEPT_TRANSPORT_LEVEL_SECURITY = 0x01;
     }
@@ -379,7 +379,7 @@ impl TransportCapabilitiesBody {
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
-        u32_to_bytes(self.flags.bits).into()
+        u32_to_bytes(self.flags.bits()).into()
     }
 }
 

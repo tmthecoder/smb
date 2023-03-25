@@ -1,8 +1,12 @@
 use bitflags::bitflags;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+
+use smb_core::{SMBFromBytes, SMBResult};
+use smb_core::error::SMBError;
+use smb_derive::SMBFromBytes;
 
 bitflags! {
-    #[derive(Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
     pub struct LegacySMBFlags: u8 {
         const SERVER_TO_REDIR      = 0b10000000;
         const REQUEST_BATCH_OPLOCK = 0b1000000;
@@ -16,7 +20,7 @@ bitflags! {
 }
 
 bitflags! {
-    #[derive(Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
     pub struct SMBFlags: u32 {
         const SERVER_TO_REDIR = 0x00000001;
         const ASYNC_COMMAND = 0x00000002;
@@ -34,14 +38,16 @@ impl Default for LegacySMBFlags {
     }
 }
 
-impl LegacySMBFlags {
-    pub fn clear(&mut self) {
-        self.bits = 0;
+impl SMBFromBytes for SMBFlags {
+    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        let flags = Self::from_bits_truncate(u32::from_le_bytes(<[u8; 4]>::try_from(&input[0..4])
+            .map_err(|_e| SMBError::ParseError("Invalid byte slice".into()))?));
+        Ok((&input[4..], flags))
     }
 }
 
-impl SMBFlags {
-    pub fn clear(&mut self) {
-        self.bits = 0;
+impl SMBFromBytes for LegacySMBFlags {
+    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        Ok((&input[1..], Self::from_bits_truncate(input[0])))
     }
 }

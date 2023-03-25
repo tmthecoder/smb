@@ -1,9 +1,9 @@
 use bitflags::bitflags;
 use nom::bytes::complete::take;
 use nom::combinator::map;
+use nom::IResult;
 use nom::number::complete::{le_u16, le_u32, le_u64, le_u8};
 use nom::sequence::tuple;
-use nom::IResult;
 use serde::{Deserialize, Serialize};
 
 use crate::byte_helper::u16_to_bytes;
@@ -89,7 +89,7 @@ impl SMBSessionSetupResponseBody {
         let security_offset = 72_u16;
         [
             &[9, 0][0..],
-            &u16_to_bytes(self.session_flags.bits),
+            &u16_to_bytes(self.session_flags.bits()),
             &u16_to_bytes(security_offset),
             &u16_to_bytes(self.buffer.len() as u16),
             &*self.buffer,
@@ -99,14 +99,14 @@ impl SMBSessionSetupResponseBody {
 }
 
 bitflags! {
-    #[derive(Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
     pub struct SMBSessionSetupFlags: u8 {
         const SMB2_SESSION_FLAG_BINDING = 0x01;
     }
 }
 
 bitflags! {
-    #[derive(Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
     pub struct SMBSessionFlags: u16 {
         const IS_GUEST = 0x01;
         const IS_NULL = 0x02;

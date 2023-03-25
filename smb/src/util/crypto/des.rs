@@ -2,7 +2,7 @@ use des::cipher::BlockEncrypt;
 use des::Des;
 use digest::KeyInit;
 
-use crate::util::error::SMBError;
+use smb_core::error::SMBError;
 
 pub fn des_long_encrypt(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
     if key.len() != 16 || plaintext.len() != 8 { return Err(SMBError::CryptoError.into()); }

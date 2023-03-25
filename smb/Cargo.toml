@@ -12,8 +12,8 @@ required-features = ["anyhow"]
 
 [dependencies]
 bincode = "1.3.3"
-bitflags = "1.3.2"
-der = "0.6.0"
+bitflags = { version = "2.0.2", features = ["serde"] }
+der = "0.7.1"
 num_enum = "0.5.7"
 nom = "7"
 nom-derive = "0.10.0"
@@ -35,4 +35,5 @@ rc4 = "0.1.0"
 sha2 = "0.10.6"
 cmac = "0.7.2"
 aes = "0.8.2"
-smb_derive = { path = "../smb-derive" }
+smb-derive = { path = "../smb-derive" }
+smb-core = { path = "../smb-core" }

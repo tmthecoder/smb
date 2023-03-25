@@ -1,8 +1,11 @@
 use bitflags::bitflags;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+
+use smb_core::{SMBFromBytes, SMBResult};
+use smb_core::error::SMBError;
 
 bitflags! {
-    #[derive(Default, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
     pub struct LegacySMBFlags2: u16 {
         const UNICODE_STRINGS    = 0b1000000000000000;
         const ERROR_CODE_STATUS  = 0b100000000000000; // 32_BIT_STATUS
@@ -22,8 +25,10 @@ bitflags! {
     }
 }
 
-impl LegacySMBFlags2 {
-    pub fn clear(&mut self) {
-        self.bits = 0;
+impl SMBFromBytes for LegacySMBFlags2 {
+    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        let flags = Self::from_bits_truncate(u16::from_le_bytes(<[u8; 2]>::try_from(&input[0..2])
+            .map_err(|_e| SMBError::ParseError("Invalid byte slice".into()))?));
+        Ok((&input[2..], flags))
     }
 }

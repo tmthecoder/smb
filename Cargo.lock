@@ -36,9 +36,12 @@ dependencies = [
 
 [[package]]
 name = "bitflags"
-version = "1.3.2"
+version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
+checksum = "487f1e0fcbe47deb8b0574e646def1c903389d95241dd1bbcc6ce4a715dfc0c1"
+dependencies = [
+    "serde",
+]
 
 [[package]]
 name = "block-buffer"
@@ -141,9 +144,9 @@ dependencies = [
 
 [[package]]
 name = "der"
-version = "0.6.1"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1a467a65c5e759bce6e65eaf91cc29f466cdc57cb65777bd646872a8a1fd4de"
+checksum = "bc906908ea6458456e5eaa160a9c08543ec3d1e6f71e2235cedd660cb65f9df0"
 
 [[package]]
 name = "des"
@@ -442,7 +445,7 @@ name = "smb-core"
 version = "0.1.0"
 
 [[package]]
-name = "smb_derive"
+name = "smb-derive"
 version = "0.0.0"
 dependencies = [
     "darling",
@@ -456,14 +459,14 @@ dependencies = [
 name = "smb_reader"
 version = "0.1.0"
 dependencies = [
- "aes",
- "anyhow",
- "bincode",
- "bitflags",
- "cmac",
- "der",
- "des",
- "digest",
+    "aes",
+    "anyhow",
+    "bincode",
+    "bitflags",
+    "cmac",
+    "der",
+    "des",
+    "digest",
     "hmac",
     "md-5",
     "md4",
@@ -474,7 +477,8 @@ dependencies = [
     "rc4",
     "serde",
     "sha2",
-    "smb_derive",
+    "smb-core",
+    "smb-derive",
     "uuid",
 ]
 

@@ -1,14 +1,19 @@
-use crate::byte_helper::{u16_to_bytes, u64_to_bytes};
 use nom::bytes::complete::take;
 use nom::combinator::map;
+use nom::IResult;
 use nom::number::complete::{le_u16, le_u64};
 use nom::sequence::tuple;
-use nom::IResult;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+use smb_derive::SMBFromBytes;
+
+use crate::byte_helper::{u16_to_bytes, u64_to_bytes};
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes)]
 pub struct SMBExtra {
+    #[direct(start = 0, length = 2)]
     pid_high: u16,
+    #[direct(start = 0, length = 8)]
     signature: u64,
 }
 

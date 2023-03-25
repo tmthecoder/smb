@@ -1,5 +1,6 @@
 use nom::error::ErrorKind;
 
+use smb_core::error::SMBError;
 use smb_reader::protocol::body::{
     Capabilities, FileTime, SecurityMode, SMBBody, SMBDialect, SMBSessionSetupResponse,
 };
@@ -11,7 +12,6 @@ use smb_reader::util::auth::{AuthProvider, User};
 use smb_reader::util::auth::nt_status::NTStatus;
 use smb_reader::util::auth::ntlm::{NTLMAuthContext, NTLMAuthProvider, NTLMMessage};
 use smb_reader::util::auth::spnego::{SPNEGOToken, SPNEGOTokenInitBody, SPNEGOTokenResponseBody};
-use smb_reader::util::error::SMBError;
 
 const NTLM_ID: [u8; 10] = [0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x02, 0x0a];
 const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
@@ -70,15 +70,15 @@ fn main() -> anyhow::Result<()> {
                         );
                         let (status, output) = match spnego_init_buffer {
                             SPNEGOToken::Init(init_msg) => {
-                                let mech_token = init_msg.mech_token.ok_or(SMBError::ParseError(ErrorKind::Fail))?;
+                                let mech_token = init_msg.mech_token.ok_or(SMBError::ParseError("Parse failure".into()))?;
                                 let ntlm_msg =
-                                    NTLMMessage::parse(&mech_token).map_err(SMBError::from)?.1;
+                                    NTLMMessage::parse(&mech_token).map_err(|_e| SMBError::ParseError("Parse failure".into()))?.1;
                                 helper.accept_security_context(&ntlm_msg, &mut ctx)
                             }
                             SPNEGOToken::Response(resp_msg) => {
-                                let response_token = resp_msg.response_token.ok_or(SMBError::ParseError(ErrorKind::Fail))?;
+                                let response_token = resp_msg.response_token.ok_or(SMBError::ParseError("Parse failure".into()))?;
                                 let ntlm_msg =
-                                    NTLMMessage::parse(&response_token).map_err(SMBError::from)?.1;
+                                    NTLMMessage::parse(&response_token).map_err(|_e| SMBError::ParseError("Parse failure".into()))?.1;
                                 println!("NTLM: {:?}", ntlm_msg);
                                 helper.accept_security_context(&ntlm_msg, &mut ctx)
                             }

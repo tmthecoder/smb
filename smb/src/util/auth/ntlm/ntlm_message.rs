@@ -54,7 +54,7 @@ impl AsByteVec for NTLMMessage {
 }
 
 bitflags! {
-    #[derive(Deserialize, Serialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
     pub struct NTLMNegotiateFlags: u32 {
         const UNICODE_ENCODING = 0x01;
         const OEM_ENCODING = 0x02;

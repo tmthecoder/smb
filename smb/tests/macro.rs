@@ -1,9 +1,12 @@
 extern crate smb_derive;
 extern crate smb_reader;
 
-use smb_derive::SMBFromBytes;
-use smb_reader::protocol::traits::SMBFromBytes;
+use num_enum::TryFromPrimitive;
 
+use smb_core::SMBFromBytes;
+use smb_derive::SMBFromBytes;
+
+#[repr(C)]
 #[derive(SMBFromBytes)]
 #[byte_tag(value = 0xFE)]
 #[string_tag(value = "SMB")]
@@ -26,7 +29,34 @@ pub struct SMBSyncHeader {
     signature: Vec<u8>,
 }
 
+#[repr(u16)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy, TryFromPrimitive, SMBFromBytes)]
+pub enum SMBCommandCode {
+    Negotiate = 0x0,
+    SessionSetup,
+    LogOff,
+    TreeConnect,
+    TreeDisconnect,
+    Create,
+    Close,
+    Flush,
+    Read,
+    Write,
+    Lock,
+    IOCTL,
+    Cancel,
+    Echo,
+    QueryDirectory,
+    ChangeNotify,
+    QueryInfo,
+    SetInfo,
+    OplockBreak,
+    LegacyNegotiate,
+}
+
 #[test]
 fn it_works() {
-    SMBSyncHeader::parse_smb_message(&[0]);
+    // SMBSyncHeader::parse_smb_message(&[0]);
+
+    println!("msg: {:?}", SMBCommandCode::parse_smb_message(&[1, 0]))
 }

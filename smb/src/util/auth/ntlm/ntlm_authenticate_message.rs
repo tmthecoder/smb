@@ -19,7 +19,6 @@ use crate::util::auth::ntlm::ntlm_message::{NTLMNegotiateFlags, parse_ntlm_buffe
 use crate::util::auth::User;
 use crate::util::crypto::ntlm_v1_extended::authenticate_v1_extended;
 use crate::util::crypto::ntlm_v2::authenticate_v2;
-use crate::util::error::SMBError;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 pub struct NTLMAuthenticateMessageBody {

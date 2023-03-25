@@ -2,9 +2,11 @@ use aes::Aes128;
 use cmac::Cmac;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+
+use smb_core::error::SMBError;
+
 use crate::protocol::body::SMBDialect;
 use crate::util::crypto::sp800_108;
-use crate::util::error::SMBError;
 
 pub fn calculate_signature(signing_key: &[u8], dialect: SMBDialect, buffer: &[u8], offset: usize, padded_len: usize) -> Result<Vec<u8>, anyhow::Error>{
     let buffer = &buffer[offset..(offset + padded_len)];

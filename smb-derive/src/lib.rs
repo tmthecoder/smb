@@ -2,12 +2,12 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use std::cmp::{min, Ordering};
-use std::fmt::{Display, Error, Formatter, write};
+use std::fmt::{Display, Formatter};
 
 use darling::{FromDeriveInput, FromField, FromMeta};
 use proc_macro2::Ident;
-use quote::{quote, quote_each_token, quote_spanned};
-use syn::{Data, DeriveInput, Field, Fields, parse_macro_input};
+use quote::{format_ident, quote, quote_spanned};
+use syn::{Data, DataStruct, DeriveInput, Field, Fields, Meta, NestedMeta, parse_macro_input};
 use syn::spanned::Spanned;
 
 #[derive(Debug, FromDeriveInput, FromField, Default, PartialEq, Eq)]
@@ -40,6 +40,36 @@ struct ByteTag {
 #[darling(attributes(string_tag))]
 struct StringTag {
     value: String,
+}
+
+#[derive(Debug)]
+// #[darling(attributes(repr))]
+struct Repr {
+    ident: NestedMeta,
+}
+
+impl FromDeriveInput for Repr {
+    fn from_derive_input(input: &DeriveInput) -> darling::Result<Self> {
+        for attr in input.attrs.iter() {
+            if let Ok(Meta::List(l)) = attr.parse_meta() {
+                if let Some(ident) = l.path.get_ident() {
+                    if ident == "repr" && l.nested.len() == 1 {
+                        return Ok(Self {
+                            ident: l.nested[0].clone()
+                        })
+                    }
+                }
+            }
+        }
+        Err(darling::Error::custom("invalid input"))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum SMBFieldMapping<'a> {
+    Named(Vec<SMBField<'a>>),
+    Unnamed(Vec<SMBField<'a>>),
+    Unit,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -91,101 +121,221 @@ impl SMBFieldType {
 pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 
-    let mapped = get_field_mapping(&input.data);
+    // println!("attrs: {:?}", input.attrs);
+
+    let name = input.ident.clone();
+
+    let mapped = match &input.data {
+        Data::Struct(structure) => {
+            let parent_val_type = parent_value_type(&input);
+            get_field_mapping(structure, parent_val_type)
+        },
+        Data::Enum(en) => {
+            let repr_type = Repr::from_derive_input(&input);
+            println!("repr: {:?}", repr_type);
+            if let Ok(ty) = repr_type {
+                let identity = &ty.ident;
+                let quote: TokenStream = quote! {
+                    impl smb_core::SMBFromBytes for #name {
+                        fn parse_smb_message(_input: &[u8]) -> smb_core::SMBResult<&[u8], Self, smb_core::error::SMBError> {
+                            let (remaining, repr_val) = <#identity>::parse_smb_message(_input)?;
+                            let value = Self::try_from(repr_val)
+                                .map_err(|_e| smb_core::error::SMBError::ParseError("Invalid byte slice".into()))?;
+                            Ok((remaining, value))
+                        }
+                    }
+                }.into();
+                println!("quote: {:?}", quote.to_string());
+                return quote;
+            }
+            return quote_spanned! {
+                input.span() => compile_error!("Invalid or unsupported type")
+            }.into()
+        },
+        _ => return quote_spanned! {
+                input.span() => compile_error!("Invalid or unsupported type")
+            }.into()
+    };
+
+    println!("Struct mapping for {:?}, map: {:?}", name, mapped);
 
     if let Err(e) = mapped {
         return match e {
             SMBDeriveError::TypeError(f) => {
                 quote_spanned! {
-                    f.span() => compile_error!("No type set or incorrectly defined type for field")
+                    f.span() => std::compile_error!("No type set or incorrectly defined type for field")
                 }
             },
             SMBDeriveError::InvalidType => {
                 quote_spanned! {
-                    input.span() => compile_error!("Invalid or unsupported type")
+                    input.span() => std::compile_error!("Invalid or unsupported type")
                 }
             }
         }.into()
     }
 
-    let name = input.ident;
-
-    let parser = create_parser(&mapped.unwrap(), name.clone());
+    let parser = create_parser(&mapped.unwrap());
 
     println!("Parser: {:?}", parser.to_string());
 
     let tokens = quote! {
-        impl SMBFromBytes for #name {
-            fn parse_smb_message(input: &[u8]) -> Result<Self, smb_reader::util::error::SMBError> {
+        impl smb_core::SMBFromBytes for #name {
+            fn parse_smb_message(_input: &[u8]) -> smb_core::SMBResult<&[u8], Self, smb_core::error::SMBError> {
                 #parser
             }
         }
     };
 
+    println!("Final: ${:?}", tokens.to_string());
+
     tokens.into()
 }
 
-fn get_field_mapping(data: &Data) -> Result<Vec<SMBField>, SMBDeriveError> {
-    let mut mapped_fields: Vec<SMBField> = match *data {
-        Data::Struct(ref structure) => {
-            match structure.fields {
-                Fields::Named(ref fields) => fields.named.iter().map(|field| {
-                    let val_type = get_value_type(field)?;
-                    Ok(SMBField {
-                        field,
-                        val_type,
-                    })
-                }).collect::<Vec<Result<SMBField, SMBDeriveError>>>()
-                    .into_iter()
-                    .collect::<Result<Vec<SMBField>, SMBDeriveError>>()?,
-                _ => return Err(SMBDeriveError::InvalidType)
-            }
-        },
-        _ => return Err(SMBDeriveError::InvalidType)
+fn get_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBFieldType>) -> Result<SMBFieldMapping, SMBDeriveError> {
+    if structure.fields.len() == 1 {
+        let field = structure.fields.iter().next()
+            .ok_or(SMBDeriveError::InvalidType)?;
+        let field_vec = if let Some(parent) = parent_val_type {
+            vec![SMBField {
+                field,
+                val_type: parent,
+            }]
+        } else {
+            vec![SMBField {
+                field,
+                val_type: SMBFieldType::Direct(Direct {
+                    start: 0,
+                    length: 0,
+                }),
+            }]
+        };
+
+        return if field.ident.is_some() {
+            Ok(SMBFieldMapping::Named(field_vec))
+        } else {
+            Ok(SMBFieldMapping::Unnamed(field_vec))
+        }
+    }
+
+    let mut mapped_fields: Vec<SMBField> = match structure.fields {
+        Fields::Named(ref fields) => map_to_smb_field(fields.named.iter())?,
+        Fields::Unnamed(ref fields) => map_to_smb_field(fields.unnamed.iter())?,
+        Fields::Unit => vec![],
     };
 
     mapped_fields.sort();
 
-    Ok(mapped_fields)
+    let mapping = match structure.fields {
+        Fields::Named(_) => SMBFieldMapping::Named(mapped_fields),
+        Fields::Unnamed(_) => SMBFieldMapping::Unnamed(mapped_fields),
+        Fields::Unit => SMBFieldMapping::Unit
+    };
+
+    Ok(mapping)
 }
 
-fn create_parser(fields: &[SMBField], name: Ident) -> proc_macro2::TokenStream {
-    let recurse = fields.iter().map(|f| {
-        let name = f.field.ident.as_ref().unwrap();
-        let field = f.field;
-        let ty = &f.field.ty;
-        match &f.val_type {
-            SMBFieldType::Direct(direct) => {
-                let start = direct.start;
-                let end = start + direct.length;
-                quote_spanned! { field.span() =>
-                    let #name = <#ty>::parse_smb_message(&input[#start..#end])?;
-                }
-            },
-            SMBFieldType::Buffer(buffer) => {
-                let offset_start = buffer.offset.start;
-                let offset_end = offset_start + buffer.offset.length;
-                let length_start = buffer.length.start;
-                let length_end = length_start + buffer.length.length;
+fn map_to_smb_field<'a, T: Iterator<Item=&'a Field>>(fields: T) -> Result<Vec<SMBField<'a>>, SMBDeriveError> {
+    fields.map(|field| {
+        let val_type = get_value_type(field)?;
+        Ok(SMBField {
+            field,
+            val_type,
+        })
+    }).collect::<Vec<Result<SMBField, SMBDeriveError>>>()
+        .into_iter()
+        .collect::<Result<Vec<SMBField>, SMBDeriveError>>()
+}
 
-                quote_spanned! {field.span() =>
-                    let offset = u32::parse_smb_message(&input[#offset_start..#offset_end])?;
-                    let length = u32::parse_smb_message(&input[#length_start..#length_end])?;
-                    let #name = input[(offset as usize)..(offset as usize + length as usize)].to_vec();
+fn create_parser(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
+    match mapping {
+        SMBFieldMapping::Named(vector) => {
+            let recurse = vector.iter().map(|f| {
+                let name = f.field.ident.as_ref().unwrap();
+                let field = f.field;
+                let ty = &f.field.ty;
+                match &f.val_type {
+                    SMBFieldType::Direct(direct) => {
+                        let start = direct.start;
+                        let name_end = format_ident!("{}_end", name);
+                        quote_spanned! { field.span() =>
+                            let #name_end = #start + std::mem::size_of::<#ty>();
+                            let (_, #name) = <#ty>::parse_smb_message(&_input[#start..#name_end])?;
+                            ending = std::cmp::max(#name_end, ending);
+                        }
+                    },
+                    SMBFieldType::Buffer(buffer) => {
+                        let offset_start = buffer.offset.start;
+                        let offset_end = offset_start + buffer.offset.length;
+                        let length_start = buffer.length.start;
+                        let length_end = length_start + buffer.length.length;
+
+                        quote_spanned! {field.span() =>
+                            let offset = u32::parse_smb_message(&_input[#offset_start..#offset_end])?;
+                            let length = u32::parse_smb_message(&_input[#length_start..#length_end])?;
+                            let #name = _input[(offset as usize)..(offset as usize + length as usize)].to_vec();
+                            ending = std::cmp::max(offset as usize + length as usize, ending);
+                        }
+                    }
                 }
+            });
+            let names = vector.iter().map(|f| {
+                let name = f.field.ident.as_ref().unwrap();
+                let field = f.field;
+                quote_spanned! {field.span() => #name}
+            });
+            quote! {
+                let mut ending = 0_usize;
+                #(#recurse)*
+                Ok((&_input[ending..], Self {
+                    #(#names,)*
+                }))
+            }
+        },
+        SMBFieldMapping::Unnamed(vector) => {
+            let recurse = vector.iter().enumerate().map(|(idx, f)| {
+                let field = f.field;
+                let ty = &f.field.ty;
+                let item = format_ident!("val_{}", idx);
+                match &f.val_type {
+                    SMBFieldType::Direct(direct) => {
+                        let start = direct.start;
+                        let val_end = format_ident!("{}_end", item);
+                        quote_spanned! { field.span() =>
+                            let #val_end = #start + std::mem::size_of::<#ty>();
+                            let (_, #item) = <#ty>::parse_smb_message(&_input[#start..#val_end])?;
+                        }
+                    },
+                    SMBFieldType::Buffer(buffer) => {
+                        let offset_start = buffer.offset.start;
+                        let offset_end = offset_start + buffer.offset.length;
+                        let length_start = buffer.length.start;
+                        let length_end = length_start + buffer.length.length;
+
+                        quote_spanned! {field.span() =>
+                            let offset = u32::parse_smb_message(&_input[#offset_start..#offset_end])?;
+                            let length = u32::parse_smb_message(&_input[#length_start..#length_end])?;
+                            let #item = _input[(offset as usize)..(offset as usize + length as usize)].to_vec();
+                        }
+                    }
+                }
+            });
+            let names = vector.iter().enumerate().map(|(idx, f)| {
+                let item = format_ident!("val_{}", idx);
+                let field = f.field;
+                quote_spanned! {field.span() => #item}
+            });
+            quote! {
+                #(#recurse)*
+                Ok(Self (
+                    #(#names,)*
+                ))
+            }
+        },
+        SMBFieldMapping::Unit => {
+            quote! {
+                std::compile_error!("Invalid struct type")
             }
         }
-    });
-    let names = fields.iter().map(|f| {
-        let name = f.field.ident.as_ref().unwrap();
-        let field = f.field;
-        quote_spanned! {field.span() => #name}
-    });
-    quote! {
-        #(#recurse)*
-        Ok(#name {
-            #(#names,)*
-        })
     }
 }
 
@@ -196,6 +346,16 @@ fn get_value_type(field: &Field) -> Result<SMBFieldType, SMBDeriveError> {
         Ok(SMBFieldType::Direct(direct))
     } else {
         Err(SMBDeriveError::TypeError(field.clone()))
+    }
+}
+
+fn parent_value_type(input: &DeriveInput) -> Option<SMBFieldType> {
+    if let Ok(buffer) = Buffer::from_derive_input(input) {
+        Some(SMBFieldType::Buffer(buffer))
+    } else if let Ok(direct) = Direct::from_derive_input(input) {
+        Some(SMBFieldType::Direct(direct))
+    } else {
+        None
     }
 }
 
