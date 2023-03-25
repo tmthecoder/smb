@@ -1,3 +1,4 @@
+use anyhow::Error;
 use digest::Digest;
 use hmac::{Hmac, Mac};
 use md4::Md4;
@@ -5,7 +6,7 @@ use md5::Md5;
 
 use crate::byte_helper::u16_to_bytes;
 
-pub fn authenticate_v2(domain: &str, account: &str, password: &str, server_challenge: &[u8], lm_response: &[u8], nt_response: &[u8]) -> Result<(bool, Vec<u8>), anyhow::Error> {
+pub fn authenticate_v2(domain: &str, account: &str, password: &str, server_challenge: &[u8], lm_response: &[u8], nt_response: &[u8]) -> Result<(bool, Vec<u8>), Error> {
     let resp = if lm_response.len() == 24 {
         let lm_client_challenge = &lm_response[16..24];
         let expected_resp = compute_lmv2_response(server_challenge, lm_client_challenge, password, account, domain)?;
@@ -30,7 +31,7 @@ pub fn authenticate_v2(domain: &str, account: &str, password: &str, server_chall
     }
 }
 
-fn compute_lmv2_response(server_challenge: &[u8], lm_client_challenge: &[u8], password: &str, account: &str, domain: &str) -> Result<Vec<u8>, anyhow::Error> {
+fn compute_lmv2_response(server_challenge: &[u8], lm_client_challenge: &[u8], password: &str, account: &str, domain: &str) -> Result<Vec<u8>, Error> {
     let key = lmowf_v2(password, account, domain)?;
     let bytes_hmac = <Hmac<Md5>>::new_from_slice(&key)?;
     let bytes_hmac = bytes_hmac
@@ -40,7 +41,7 @@ fn compute_lmv2_response(server_challenge: &[u8], lm_client_challenge: &[u8], pa
     Ok([result.into_bytes().as_slice(), lm_client_challenge].concat())
 }
 
-fn compute_ntlmv2_proof(server_challenge: &[u8], client_structure_padded: &[u8], password: &str, account: &str, domain: &str) -> Result<Vec<u8>, anyhow::Error> {
+fn compute_ntlmv2_proof(server_challenge: &[u8], client_structure_padded: &[u8], password: &str, account: &str, domain: &str) -> Result<Vec<u8>, Error> {
     let key = ntowf_v2(password, account, domain)?;
     let temp = client_structure_padded;
     let bytes_hmac = <Hmac<Md5>>::new_from_slice(&key)?;
@@ -51,11 +52,11 @@ fn compute_ntlmv2_proof(server_challenge: &[u8], client_structure_padded: &[u8],
     Ok(result.into_bytes().as_slice().into())
 }
 
-fn lmowf_v2(password: &str, user: &str, domain: &str) -> Result<Vec<u8>, anyhow::Error> {
+fn lmowf_v2(password: &str, user: &str, domain: &str) -> Result<Vec<u8>, Error> {
     ntowf_v2(password, user, domain)
 }
 
-fn ntowf_v2(password: &str, user: &str, domain: &str) -> Result<Vec<u8>, anyhow::Error> {
+fn ntowf_v2(password: &str, user: &str, domain: &str) -> Result<Vec<u8>, Error> {
     let password = password.encode_utf16().map(u16_to_bytes).collect::<Vec<[u8; 2]>>().concat();
     let password_hash = Md4::digest(&password);
     let text = user.to_uppercase() + domain;

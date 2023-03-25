@@ -1,8 +1,8 @@
-extern crate smb_core;
 extern crate smb_derive;
+extern crate smb_reader;
 
-use smb_core::SMBFromBytes;
 use smb_derive::SMBFromBytes;
+use smb_reader::protocol::traits::SMBFromBytes;
 
 #[derive(SMBFromBytes)]
 #[byte_tag(value = 0xFE)]
@@ -23,7 +23,7 @@ pub struct SMBSyncHeader {
     #[direct(start = 36, length = 8)]
     session_id: u64,
     #[buffer(offset(start = 44, length = 1), length(start = 45, length = 15))]
-    signature: [u8; 16],
+    signature: Vec<u8>,
 }
 
 #[test]

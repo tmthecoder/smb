@@ -1,4 +1,5 @@
 use nom::bytes::complete::{tag, take};
+use nom::character::complete::u16;
 use nom::combinator::{map, map_res};
 use nom::IResult;
 use nom::number::complete::le_u8;

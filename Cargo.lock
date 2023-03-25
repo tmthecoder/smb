@@ -445,10 +445,11 @@ version = "0.1.0"
 name = "smb_derive"
 version = "0.0.0"
 dependencies = [
- "darling",
- "proc-macro2",
- "quote",
- "syn 2.0.9",
+    "darling",
+    "proc-macro2",
+    "quote",
+    "smb-core",
+    "syn 1.0.109",
 ]
 
 [[package]]
@@ -463,17 +464,18 @@ dependencies = [
  "der",
  "des",
  "digest",
- "hmac",
- "md-5",
- "md4",
- "nom",
- "nom-derive",
- "num_enum",
- "rand",
- "rc4",
- "serde",
- "sha2",
- "uuid",
+    "hmac",
+    "md-5",
+    "md4",
+    "nom",
+    "nom-derive",
+    "num_enum",
+    "rand",
+    "rc4",
+    "serde",
+    "sha2",
+    "smb_derive",
+    "uuid",
 ]
 
 [[package]]
