@@ -75,6 +75,7 @@ enum SMBFieldMapping<'a> {
 #[derive(Debug, PartialEq, Eq)]
 struct SMBField<'a> {
     field: &'a Field,
+    name: Ident,
     val_type: SMBFieldType,
 }
 
@@ -195,25 +196,31 @@ fn get_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBFieldTyp
     if structure.fields.len() == 1 {
         let field = structure.fields.iter().next()
             .ok_or(SMBDeriveError::InvalidType)?;
-        let field_vec = if let Some(parent) = parent_val_type {
-            vec![SMBField {
-                field,
-                val_type: parent,
-            }]
+        let (field, val_type) = if let Some(parent) = parent_val_type {
+            (field, parent)
         } else {
-            vec![SMBField {
-                field,
-                val_type: SMBFieldType::Direct(Direct {
-                    start: 0,
-                    length: 0,
-                }),
-            }]
+            (field, SMBFieldType::Direct(Direct {
+                start: 0,
+                length: 0,
+            }))
         };
 
-        return if field.ident.is_some() {
-            Ok(SMBFieldMapping::Named(field_vec))
+        let name = if let Some(x) = &field.ident {
+            x.clone()
         } else {
-            Ok(SMBFieldMapping::Unnamed(field_vec))
+            format_ident!("val_0")
+        };
+
+        let vec = vec![SMBField {
+            name,
+            field,
+            val_type,
+        }];
+
+        return if field.ident.is_some() {
+            Ok(SMBFieldMapping::Named(vec))
+        } else {
+            Ok(SMBFieldMapping::Unnamed(vec))
         }
     }
 
@@ -235,9 +242,15 @@ fn get_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBFieldTyp
 }
 
 fn map_to_smb_field<'a, T: Iterator<Item=&'a Field>>(fields: T) -> Result<Vec<SMBField<'a>>, SMBDeriveError> {
-    fields.map(|field| {
+    fields.enumerate().map(|(idx, field)| {
         let val_type = get_value_type(field)?;
+        let name = if let Some(x) = &field.ident {
+            x.clone()
+        } else {
+            format_ident!("val_{}", idx)
+        };
         Ok(SMBField {
+            name,
             field,
             val_type,
         })
@@ -247,42 +260,52 @@ fn map_to_smb_field<'a, T: Iterator<Item=&'a Field>>(fields: T) -> Result<Vec<SM
 }
 
 fn create_parser(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
-    match mapping {
-        SMBFieldMapping::Named(vector) => {
-            let recurse = vector.iter().map(|f| {
-                let name = f.field.ident.as_ref().unwrap();
-                let field = f.field;
-                let ty = &f.field.ty;
-                match &f.val_type {
-                    SMBFieldType::Direct(direct) => {
-                        let start = direct.start;
-                        let name_end = format_ident!("{}_end", name);
-                        quote_spanned! { field.span() =>
-                            let #name_end = #start + std::mem::size_of::<#ty>();
-                            let (_, #name) = <#ty>::parse_smb_message(&_input[#start..#name_end])?;
-                            ending = std::cmp::max(#name_end, ending);
-                        }
-                    },
-                    SMBFieldType::Buffer(buffer) => {
-                        let offset_start = buffer.offset.start;
-                        let offset_end = offset_start + buffer.offset.length;
-                        let length_start = buffer.length.start;
-                        let length_end = length_start + buffer.length.length;
+    let empty = vec![];
 
-                        quote_spanned! {field.span() =>
-                            let offset = u32::parse_smb_message(&_input[#offset_start..#offset_end])?;
-                            let length = u32::parse_smb_message(&_input[#length_start..#length_end])?;
-                            let #name = _input[(offset as usize)..(offset as usize + length as usize)].to_vec();
-                            ending = std::cmp::max(offset as usize + length as usize, ending);
-                        }
-                    }
+    let vector = match mapping {
+        SMBFieldMapping::Named(vector) => vector,
+        SMBFieldMapping::Unnamed(vector) => vector,
+        SMBFieldMapping::Unit => &empty,
+    };
+
+    let recurse = vector.iter().map(|f| {
+        let name = &f.name;
+        let field = f.field;
+        let ty = &f.field.ty;
+        match &f.val_type {
+            SMBFieldType::Direct(direct) => {
+                let start = direct.start;
+                let name_end = format_ident!("{}_end", name);
+                quote_spanned! { field.span() =>
+                    let #name_end = #start + std::mem::size_of::<#ty>();
+                    let (_, #name) = <#ty>::parse_smb_message(&_input[#start..#name_end])?;
+                    ending = std::cmp::max(#name_end, ending);
                 }
-            });
-            let names = vector.iter().map(|f| {
-                let name = f.field.ident.as_ref().unwrap();
-                let field = f.field;
-                quote_spanned! {field.span() => #name}
-            });
+            },
+            SMBFieldType::Buffer(buffer) => {
+                let offset_start = buffer.offset.start;
+                let offset_end = offset_start + buffer.offset.length;
+                let length_start = buffer.length.start;
+                let length_end = length_start + buffer.length.length;
+
+                quote_spanned! {field.span() =>
+                    let offset = u32::parse_smb_message(&_input[#offset_start..#offset_end])?;
+                    let length = u32::parse_smb_message(&_input[#length_start..#length_end])?;
+                    let #name = _input[(offset as usize)..(offset as usize + length as usize)].to_vec();
+                    ending = std::cmp::max(offset as usize + length as usize, ending);
+                }
+            }
+        }
+    });
+
+    let names = vector.iter().map(|f| {
+        let name = &f.name;
+        let field = f.field;
+        quote_spanned! {field.span() => #name}
+    });
+
+    match mapping {
+        SMBFieldMapping::Named(_) => {
             quote! {
                 let mut ending = 0_usize;
                 #(#recurse)*
@@ -291,39 +314,7 @@ fn create_parser(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
                 }))
             }
         },
-        SMBFieldMapping::Unnamed(vector) => {
-            let recurse = vector.iter().enumerate().map(|(idx, f)| {
-                let field = f.field;
-                let ty = &f.field.ty;
-                let item = format_ident!("val_{}", idx);
-                match &f.val_type {
-                    SMBFieldType::Direct(direct) => {
-                        let start = direct.start;
-                        let val_end = format_ident!("{}_end", item);
-                        quote_spanned! { field.span() =>
-                            let #val_end = #start + std::mem::size_of::<#ty>();
-                            let (_, #item) = <#ty>::parse_smb_message(&_input[#start..#val_end])?;
-                        }
-                    },
-                    SMBFieldType::Buffer(buffer) => {
-                        let offset_start = buffer.offset.start;
-                        let offset_end = offset_start + buffer.offset.length;
-                        let length_start = buffer.length.start;
-                        let length_end = length_start + buffer.length.length;
-
-                        quote_spanned! {field.span() =>
-                            let offset = u32::parse_smb_message(&_input[#offset_start..#offset_end])?;
-                            let length = u32::parse_smb_message(&_input[#length_start..#length_end])?;
-                            let #item = _input[(offset as usize)..(offset as usize + length as usize)].to_vec();
-                        }
-                    }
-                }
-            });
-            let names = vector.iter().enumerate().map(|(idx, f)| {
-                let item = format_ident!("val_{}", idx);
-                let field = f.field;
-                quote_spanned! {field.span() => #item}
-            });
+        SMBFieldMapping::Unnamed(_) => {
             quote! {
                 #(#recurse)*
                 Ok(Self (
