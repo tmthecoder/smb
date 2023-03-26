@@ -11,7 +11,12 @@ use num_enum::TryFromPrimitive;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
+use smb_core::{SMBFromBytes, SMBResult};
+use smb_core::error::SMBError;
+use smb_derive::SMBFromBytes;
+
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
+use crate::util::flags_helper::impl_smb_from_bytes;
 
 macro_rules! ctx_to_bytes {
     ($body: expr) => {{
@@ -355,8 +360,9 @@ impl NetnameNegotiateContextIDBody {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, SMBFromBytes)]
 pub struct TransportCapabilitiesBody {
+    #[direct(start = 0, length = 4)]
     pub(crate) flags: TransportCapabilitiesFlags,
 }
 
@@ -364,6 +370,12 @@ bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
     pub struct TransportCapabilitiesFlags: u32 {
         const ACCEPT_TRANSPORT_LEVEL_SECURITY = 0x01;
+    }
+}
+
+impl SMBFromBytes for TransportCapabilitiesFlags {
+    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        impl_smb_from_bytes!(u32, input, 4)
     }
 }
 

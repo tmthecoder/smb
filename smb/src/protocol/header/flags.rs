@@ -5,6 +5,8 @@ use smb_core::{SMBFromBytes, SMBResult};
 use smb_core::error::SMBError;
 use smb_derive::SMBFromBytes;
 
+use crate::util::flags_helper::impl_smb_from_bytes;
+
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
     pub struct LegacySMBFlags: u8 {
@@ -40,14 +42,12 @@ impl Default for LegacySMBFlags {
 
 impl SMBFromBytes for SMBFlags {
     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
-        let flags = Self::from_bits_truncate(u32::from_le_bytes(<[u8; 4]>::try_from(&input[0..4])
-            .map_err(|_e| SMBError::ParseError("Invalid byte slice".into()))?));
-        Ok((&input[4..], flags))
+        impl_smb_from_bytes!(u32, input, 4)
     }
 }
 
 impl SMBFromBytes for LegacySMBFlags {
     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
-        Ok((&input[1..], Self::from_bits_truncate(input[0])))
+        impl_smb_from_bytes!(u8, input, 1)
     }
 }

@@ -10,60 +10,9 @@ use quote::{format_ident, quote, quote_spanned};
 use syn::{Data, DataStruct, DeriveInput, Field, Fields, Meta, NestedMeta, parse_macro_input};
 use syn::spanned::Spanned;
 
-#[derive(Debug, FromDeriveInput, FromField, Default, PartialEq, Eq)]
-#[darling(attributes(direct))]
-struct Direct {
-    start: usize,
-    length: usize,
-}
+use crate::attrs::{Buffer, Direct, Repr};
 
-#[derive(Debug, FromMeta, Default, PartialEq, Eq)]
-struct DirectInner {
-    start: usize,
-    length: usize,
-}
-
-#[derive(Debug, FromDeriveInput, FromField, Default, PartialEq, Eq)]
-#[darling(attributes(buffer))]
-struct Buffer {
-    offset: DirectInner,
-    length: DirectInner,
-}
-
-#[derive(Debug, FromDeriveInput, FromField, Default)]
-#[darling(attributes(byte_tag))]
-struct ByteTag {
-    value: u8,
-}
-
-#[derive(FromDeriveInput, FromField, Default, Debug)]
-#[darling(attributes(string_tag))]
-struct StringTag {
-    value: String,
-}
-
-#[derive(Debug)]
-// #[darling(attributes(repr))]
-struct Repr {
-    ident: NestedMeta,
-}
-
-impl FromDeriveInput for Repr {
-    fn from_derive_input(input: &DeriveInput) -> darling::Result<Self> {
-        for attr in input.attrs.iter() {
-            if let Ok(Meta::List(l)) = attr.parse_meta() {
-                if let Some(ident) = l.path.get_ident() {
-                    if ident == "repr" && l.nested.len() == 1 {
-                        return Ok(Self {
-                            ident: l.nested[0].clone()
-                        })
-                    }
-                }
-            }
-        }
-        Err(darling::Error::custom("invalid input"))
-    }
-}
+mod attrs;
 
 #[derive(Debug, PartialEq, Eq)]
 enum SMBFieldMapping<'a> {
@@ -126,6 +75,10 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
 
     let name = input.ident.clone();
 
+    let invalid_token: TokenStream = quote_spanned! {
+        input.span() => compile_error!("Invalid or unsupported type")
+    }.into();
+
     let mapped = match &input.data {
         Data::Struct(structure) => {
             let parent_val_type = parent_value_type(&input);
@@ -137,11 +90,11 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
             if let Ok(ty) = repr_type {
                 let identity = &ty.ident;
                 let quote: TokenStream = quote! {
-                    impl smb_core::SMBFromBytes for #name {
-                        fn parse_smb_message(_input: &[u8]) -> smb_core::SMBResult<&[u8], Self, smb_core::error::SMBError> {
+                    impl ::smb_core::SMBFromBytes for #name {
+                        fn parse_smb_message(_input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
                             let (remaining, repr_val) = <#identity>::parse_smb_message(_input)?;
                             let value = Self::try_from(repr_val)
-                                .map_err(|_e| smb_core::error::SMBError::ParseError("Invalid byte slice".into()))?;
+                                .map_err(|_e| ::smb_core::error::SMBError::ParseError("Invalid byte slice".into()))?;
                             Ok((remaining, value))
                         }
                     }
@@ -149,16 +102,10 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
                 println!("quote: {:?}", quote.to_string());
                 return quote;
             }
-            return quote_spanned! {
-                input.span() => compile_error!("Invalid or unsupported type")
-            }.into()
+            return invalid_token
         },
-        _ => return quote_spanned! {
-                input.span() => compile_error!("Invalid or unsupported type")
-            }.into()
+        _ => return invalid_token
     };
-
-    println!("Struct mapping for {:?}, map: {:?}", name, mapped);
 
     if let Err(e) = mapped {
         return match e {
@@ -180,14 +127,12 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
     println!("Parser: {:?}", parser.to_string());
 
     let tokens = quote! {
-        impl smb_core::SMBFromBytes for #name {
-            fn parse_smb_message(_input: &[u8]) -> smb_core::SMBResult<&[u8], Self, smb_core::error::SMBError> {
+        impl ::smb_core::SMBFromBytes for #name {
+            fn parse_smb_message(_input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
                 #parser
             }
         }
     };
-
-    println!("Final: ${:?}", tokens.to_string());
 
     tokens.into()
 }
@@ -201,7 +146,6 @@ fn get_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBFieldTyp
         } else {
             (field, SMBFieldType::Direct(Direct {
                 start: 0,
-                length: 0,
             }))
         };
 

@@ -18,22 +18,22 @@ use crate::protocol::header::{
 #[byte_tag(0xFE)]
 #[string_tag("SMB")]
 pub struct SMBSyncHeader {
-    #[direct(start = 12, length = 2)]
+    #[direct(start = 12)]
     pub command: SMBCommandCode,
-    #[direct(start = 8, length = 4)]
+    #[direct(start = 8)]
     channel_sequence: u32,
     // status in smb2
-    #[direct(start = 16, length = 4)]
+    #[direct(start = 16)]
     flags: SMBFlags,
-    #[direct(start = 20, length = 4)]
+    #[direct(start = 20)]
     next_command: u32,
-    #[direct(start = 24, length = 8)]
+    #[direct(start = 24)]
     message_id: u64,
-    #[direct(start = 36, length = 4)]
+    #[direct(start = 36)]
     tree_id: u32,
-    #[direct(start = 40, length = 4)]
+    #[direct(start = 40)]
     session_id: u64,
-    #[direct(start = 48, length = 16)]
+    #[direct(start = 48)]
     signature: [u8; 16],
 }
 
@@ -41,23 +41,23 @@ pub struct SMBSyncHeader {
 #[byte_tag(0xFE)]
 #[string_tag("SMB")]
 pub struct LegacySMBHeader {
-    #[direct(start = 4, length = 1)]
+    #[direct(start = 4)]
     pub(crate) command: LegacySMBCommandCode,
-    #[direct(start = 5, length = 4)]
+    #[direct(start = 5)]
     status: SMBStatus,
-    #[direct(start = 9, length = 1)]
+    #[direct(start = 9)]
     flags: LegacySMBFlags,
-    #[direct(start = 10, length = 2)]
+    #[direct(start = 10)]
     flags2: LegacySMBFlags2,
-    #[direct(start = 12, length = 10)]
+    #[direct(start = 12)]
     extra: SMBExtra,
-    #[direct(start = 22, length = 2)]
+    #[direct(start = 22)]
     tid: u16,
-    #[direct(start = 22, length = 2)]
+    #[direct(start = 24)]
     pid: u16,
-    #[direct(start = 22, length = 2)]
+    #[direct(start = 26)]
     uid: u16,
-    #[direct(start = 22, length = 2)]
+    #[direct(start = 28)]
     mid: u16,
 }
 

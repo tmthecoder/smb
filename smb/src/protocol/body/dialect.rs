@@ -1,8 +1,10 @@
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 
+use smb_derive::SMBFromBytes;
+
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd, SMBFromBytes)]
 pub enum SMBDialect {
     V2_0_2 = 0x202,
     V2_1_0 = 0x210,
