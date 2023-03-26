@@ -1,19 +1,13 @@
-use des::cipher::{BlockEncrypt, KeyInit};
-use des::Des;
-use digest::Digest;
-use hmac::{Hmac, Mac};
-use md4::Md4;
-use md5::Md5;
-use nom::{AsBytes, IResult};
+use des::cipher::KeyInit;
+use nom::IResult;
 use nom::bytes::complete::take;
 use nom::combinator::{map, map_res};
 use nom::number::complete::le_u32;
 use nom::sequence::tuple;
 use rc4::{Key, Rc4, StreamCipher};
-use rc4::consts::{U128, U16};
+use rc4::consts::U16;
 use serde::{Deserialize, Serialize};
 
-use crate::byte_helper::u16_to_bytes;
 use crate::util::auth::ntlm::ntlm_auth_provider::NTLMAuthContext;
 use crate::util::auth::ntlm::ntlm_message::{NTLMNegotiateFlags, parse_ntlm_buffer_fields};
 use crate::util::auth::User;

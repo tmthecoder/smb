@@ -1,5 +1,3 @@
-use std::io::Read;
-
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 

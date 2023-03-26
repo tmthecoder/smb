@@ -22,7 +22,7 @@ pub fn des_long_encrypt(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, anyhow:
 fn extend_des_key(key: &[u8]) -> Vec<u8> {
     let mut result = vec![0; 8];
 
-    result[0] = (key[0] >> 1);
+    result[0] = key[0] >> 1;
     result[1] = ((key[0] & 0x01) << 6) | (key[1] >> 2);
     result[2] = ((key[1] & 0x03) << 5) | (key[2] >> 3);
     result[3] = ((key[2] & 0x07) << 4) | (key[3] >> 4);

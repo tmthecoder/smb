@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter, Pointer, write};
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum SMBError {

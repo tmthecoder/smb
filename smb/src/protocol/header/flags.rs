@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use smb_core::{SMBFromBytes, SMBResult};
 use smb_core::error::SMBError;
-use smb_derive::SMBFromBytes;
 
 use crate::util::flags_helper::impl_smb_for_bytes_for_bitflag;
 

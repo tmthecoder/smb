@@ -4,10 +4,10 @@ use proc_macro::TokenStream;
 use std::cmp::{min, Ordering};
 use std::fmt::{Display, Formatter};
 
-use darling::{FromDeriveInput, FromField, FromMeta};
+use darling::{FromDeriveInput, FromField};
 use proc_macro2::Ident;
 use quote::{format_ident, quote, quote_spanned};
-use syn::{Data, DataStruct, DeriveInput, Field, Fields, Meta, NestedMeta, parse_macro_input};
+use syn::{Data, DataStruct, DeriveInput, Field, Fields, parse_macro_input};
 use syn::spanned::Spanned;
 
 use crate::attrs::{Buffer, Direct, Repr};
@@ -84,7 +84,7 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
             let parent_val_type = parent_value_type(&input);
             get_field_mapping(structure, parent_val_type)
         },
-        Data::Enum(en) => {
+        Data::Enum(_en) => {
             let repr_type = Repr::from_derive_input(&input);
             println!("repr: {:?}", repr_type);
             if let Ok(ty) = repr_type {

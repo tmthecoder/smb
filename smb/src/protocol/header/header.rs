@@ -1,9 +1,3 @@
-use nom::bytes::complete::{tag, take};
-use nom::combinator::{map, map_res};
-use nom::IResult;
-use nom::number::complete::le_u8;
-use nom::number::streaming::{le_u16, le_u32, le_u64};
-use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 
 use smb_derive::SMBFromBytes;
