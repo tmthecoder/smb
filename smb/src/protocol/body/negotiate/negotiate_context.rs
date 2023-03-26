@@ -16,7 +16,7 @@ use smb_core::error::SMBError;
 use smb_derive::SMBFromBytes;
 
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
-use crate::util::flags_helper::impl_smb_from_bytes;
+use crate::util::flags_helper::impl_smb_for_bytes_for_bitflag;
 
 macro_rules! ctx_to_bytes {
     ($body: expr) => {{
@@ -373,11 +373,7 @@ bitflags! {
     }
 }
 
-impl SMBFromBytes for TransportCapabilitiesFlags {
-    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
-        impl_smb_from_bytes!(u32, input, 4)
-    }
-}
+impl_smb_for_bytes_for_bitflag! {TransportCapabilitiesFlags}
 
 impl TransportCapabilitiesBody {
     fn byte_code(&self) -> u16 {

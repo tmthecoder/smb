@@ -1,5 +1,5 @@
 use darling::{FromDeriveInput, FromField, FromMeta};
-use syn::{DeriveInput, Meta, NestedMeta};
+use syn::{DeriveInput, Meta, NestedMeta, Type};
 
 #[derive(Debug, FromDeriveInput, FromField, Default, PartialEq, Eq)]
 #[darling(attributes(direct))]
@@ -7,17 +7,24 @@ pub struct Direct {
     pub start: usize,
 }
 
-#[derive(Debug, FromMeta, Default, PartialEq, Eq)]
+#[derive(Debug, FromMeta, PartialEq, Eq)]
 pub struct DirectInner {
     pub start: usize,
-    pub length: usize,
+    pub ty: Type,
 }
 
-#[derive(Debug, FromDeriveInput, FromField, Default, PartialEq, Eq)]
+#[derive(Debug, FromDeriveInput, FromField, PartialEq, Eq)]
 #[darling(attributes(buffer))]
 pub struct Buffer {
     pub offset: DirectInner,
     pub length: DirectInner,
+}
+
+#[derive(Debug, FromDeriveInput, FromField, PartialEq, Eq)]
+#[darling(attributes(vector))]
+pub struct Vector {
+    pub count: DirectInner,
+    pub start: usize,
 }
 
 #[derive(Debug, FromDeriveInput, FromField, Default)]

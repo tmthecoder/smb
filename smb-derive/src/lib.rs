@@ -228,13 +228,15 @@ fn create_parser(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
             },
             SMBFieldType::Buffer(buffer) => {
                 let offset_start = buffer.offset.start;
-                let offset_end = offset_start + buffer.offset.length;
+                let offset_type = &buffer.offset.ty;
                 let length_start = buffer.length.start;
-                let length_end = length_start + buffer.length.length;
+                let length_type = &buffer.length.ty;
 
                 quote_spanned! {field.span() =>
-                    let offset = u32::parse_smb_message(&_input[#offset_start..#offset_end])?;
-                    let length = u32::parse_smb_message(&_input[#length_start..#length_end])?;
+                    let offset_end = #offset_start + <#offset_type>::smb_byte_size();
+                    let length_end = #length_start + <#length_type>::smb_byte_size();
+                    let offset = u32::parse_smb_message(&_input[#offset_start..offset_end])?;
+                    let length = u32::parse_smb_message(&_input[#length_start..length_end])?;
                     let #name = _input[(offset as usize)..(offset as usize + length as usize)].to_vec();
                     ending = std::cmp::max(offset as usize + length as usize, ending);
                 }
@@ -310,13 +312,6 @@ impl Display for SMBDeriveError {
 }
 
 impl std::error::Error for SMBDeriveError {}
-
-
-// pub trait SMBFromBytes {
-//
-// }
-
-// pub trait SMBToBytes {}
 
 #[proc_macro_derive(SMBToBytes)]
 pub fn smb_to_bytes(_input: TokenStream) -> TokenStream {

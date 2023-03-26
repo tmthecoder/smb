@@ -5,6 +5,7 @@ pub mod error;
 pub type SMBResult<I, O, E> = Result<(I, O), E>;
 
 pub trait SMBFromBytes {
+    fn smb_byte_size() -> usize;
     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized;
 }
 
@@ -25,8 +26,11 @@ macro_rules! impl_smb_from_bytes_for_slice {(
 ) => (
     $(
         impl SMBFromBytes for [u8; $N] {
-            fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError>
-            {
+            fn smb_byte_size() -> usize {
+                $N
+            }
+
+            fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> {
                 impl_parse_fixed_slice!($N, input)
             }
         }
@@ -38,8 +42,11 @@ macro_rules! impl_parse_unsigned_type {(
 ) => (
     $(
         impl SMBFromBytes for $t {
-             fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError>
-            {
+            fn smb_byte_size() -> usize {
+                std::mem::size_of::<$t>() as usize
+            }
+
+            fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> {
                 const T_SIZE: usize = std::mem::size_of::<$t>();
                 let value = impl_parse_fixed_slice!(T_SIZE, input)?;
                 Ok((value.0, <$t>::from_le_bytes(value.1)))

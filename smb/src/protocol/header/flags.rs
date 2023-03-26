@@ -5,7 +5,7 @@ use smb_core::{SMBFromBytes, SMBResult};
 use smb_core::error::SMBError;
 use smb_derive::SMBFromBytes;
 
-use crate::util::flags_helper::impl_smb_from_bytes;
+use crate::util::flags_helper::impl_smb_for_bytes_for_bitflag;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
@@ -40,14 +40,4 @@ impl Default for LegacySMBFlags {
     }
 }
 
-impl SMBFromBytes for SMBFlags {
-    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
-        impl_smb_from_bytes!(u32, input, 4)
-    }
-}
-
-impl SMBFromBytes for LegacySMBFlags {
-    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
-        impl_smb_from_bytes!(u8, input, 1)
-    }
-}
+impl_smb_for_bytes_for_bitflag! { SMBFlags LegacySMBFlags }

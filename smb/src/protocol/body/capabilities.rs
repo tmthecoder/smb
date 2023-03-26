@@ -1,10 +1,12 @@
+use std::io::Read;
+
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
 use smb_core::{SMBFromBytes, SMBResult};
 use smb_core::error::SMBError;
 
-use crate::util::flags_helper::impl_smb_from_bytes;
+use crate::util::flags_helper::impl_smb_for_bytes_for_bitflag;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
@@ -19,8 +21,4 @@ bitflags! {
    }
 }
 
-impl SMBFromBytes for Capabilities {
-    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
-        impl_smb_from_bytes!(u32, input, 4)
-    }
-}
+impl_smb_for_bytes_for_bitflag! { Capabilities }
