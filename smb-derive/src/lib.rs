@@ -10,7 +10,7 @@ use quote::{format_ident, quote, quote_spanned};
 use syn::{Data, DataStruct, DeriveInput, Field, Fields, parse_macro_input};
 use syn::spanned::Spanned;
 
-use crate::attrs::{Buffer, Direct, Repr};
+use crate::attrs::{Buffer, Direct, Repr, Vector};
 
 mod attrs;
 
@@ -38,11 +38,24 @@ struct SMBField<'a> {
 enum SMBFieldType {
     Direct(Direct),
     Buffer(Buffer),
+    Vector(Vector),
+}
+
+impl SMBFieldType {
+    fn is_vector(&self) -> bool {
+        matches!(self, SMBFieldType::Vector(_x))
+    }
 }
 
 impl PartialOrd for SMBFieldType {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.find_start_val().cmp(&other.find_start_val()))
+        if self.is_vector() && !other.is_vector() {
+            Some(Ordering::Greater)
+        } else if !self.is_vector() && other.is_vector() {
+            Some(Ordering::Less)
+        } else {
+            Some(self.find_start_val().cmp(&other.find_start_val()))
+        }
     }
 }
 
@@ -60,7 +73,7 @@ impl<'a> Ord for SMBField<'a> {
 
 impl Ord for SMBFieldType {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.find_start_val().cmp(&other.find_start_val())
+        self.partial_cmp(other).unwrap()
     }
 }
 
@@ -68,12 +81,13 @@ impl SMBFieldType {
     fn find_start_val(&self) -> usize {
         match self {
             Self::Direct(x) => x.start,
-            Self::Buffer(x) => min(x.length.start, x.offset.start)
+            Self::Buffer(x) => min(x.length.start, x.offset.start),
+            Self::Vector(x) => x.order
         }
     }
 }
 
-#[proc_macro_derive(SMBFromBytes, attributes(direct, buffer, byte_tag, string_tag))]
+#[proc_macro_derive(SMBFromBytes, attributes(direct, buffer, vector, byte_tag, string_tag))]
 pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 
@@ -141,6 +155,7 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
 
     let tokens = quote! {
         impl ::smb_core::SMBFromBytes for #name {
+            #[allow(unused_variables, unused_assignments)]
             fn parse_smb_message(input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
                 #parser
             }
@@ -244,18 +259,39 @@ fn parse_smb_message(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
             },
             SMBFieldType::Buffer(buffer) => {
                 let offset_start = buffer.offset.start;
-                let offset_type = &buffer.offset.ty;
+                let offset_type = format_ident!("{}", &buffer.offset.ty);
                 let length_start = buffer.length.start;
-                let length_type = &buffer.length.ty;
+                let length_type = format_ident!("{}", &buffer.length.ty);
 
-                quote_spanned! {field.span() =>
-                    let (remaining, offset) = #offset_type::parse_smb_message(&remaining[(#offset_start - current_pos)..])?;
+                quote_spanned! { field.span() =>
+                    let (remaining, offset) = <#offset_type>::parse_smb_message(&remaining[(#offset_start - current_pos)..])?;
                     current_pos = offset.smb_byte_size() + #offset_start;
-                    let (remaining, length) = #length_type::parse_smb_message(&remaining[(#length_start - current_pos)..])?;
+                    let (remaining, length) = <#length_type>::parse_smb_message(&remaining[(#length_start - current_pos)..])?;
                     current_pos = length.smb_byte_size() + #length_start;
                     let buf_end = offset as usize + length as usize;
                     let #name = input[(offset as usize)..].to_vec();
-                    let remaining = input[buf_end..];
+                    let remaining = &input[buf_end..];
+                }
+            },
+            SMBFieldType::Vector(vector) => {
+                let count_start = vector.count.start;
+                let count_type = format_ident!("{}", &vector.count.ty);
+                let align = vector.align;
+                let inner_type = &f.field.ty;
+
+                println!("Vector");
+
+                quote_spanned! { field.span() =>
+                    let (remaining, item_count) = <#count_type>::parse_smb_message(&input[#count_start..])?;
+                    if #align > 0 {
+                        current_pos += current_pos % #align;
+                    }
+                    let mut remaining = &input[current_pos..];
+                    let #name: #inner_type = (0..item_count).map(|idx| {
+                        let (_, val) = <#inner_type>::parse_smb_message(remaining)?;
+                        remaining = &input[(current_pos + val.smb_byte_size())..];
+                        Ok(val)
+                    }).collect::<Vec<Result<#inner_type, ::smb_core::error::SMBError>>>().into_iter().collect::<Result<Vec<#inner_type>, ::smb_core::error::SMBError>>()?.concat();
                 }
             }
         }
@@ -320,6 +356,8 @@ fn get_value_type(field: &Field) -> Result<SMBFieldType, SMBDeriveError> {
         Ok(SMBFieldType::Buffer(buffer))
     } else if let Ok(direct) = Direct::from_field(field) {
         Ok(SMBFieldType::Direct(direct))
+    } else if let Ok(vector) = Vector::from_field(field) {
+        Ok(SMBFieldType::Vector(vector))
     } else {
         Err(SMBDeriveError::TypeError(field.clone()))
     }
@@ -330,6 +368,8 @@ fn parent_value_type(input: &DeriveInput) -> Option<SMBFieldType> {
         Some(SMBFieldType::Buffer(buffer))
     } else if let Ok(direct) = Direct::from_derive_input(input) {
         Some(SMBFieldType::Direct(direct))
+    } else if let Ok(vector) = Vector::from_derive_input(input) {
+        Some(SMBFieldType::Vector(vector))
     } else {
         None
     }

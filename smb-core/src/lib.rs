@@ -13,6 +13,17 @@ pub trait SMBToBytes {
     fn smb_to_bytes();
 }
 
+impl<T: SMBFromBytes> SMBFromBytes for Vec<T> {
+    fn smb_byte_size(&self) -> usize {
+        self.iter().fold(0, |prev, x| prev + x.smb_byte_size())
+    }
+
+    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        let (remaining, item) = T::parse_smb_message(input)?;
+        Ok((remaining, vec![item]))
+    }
+}
+
 macro_rules! impl_parse_fixed_slice {
     ($size: expr, $input: expr) => {{
         let res = <[u8; $size]>::try_from(&$input[0..$size])

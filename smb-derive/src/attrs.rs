@@ -10,7 +10,8 @@ pub struct Direct {
 #[derive(Debug, FromMeta, PartialEq, Eq)]
 pub struct DirectInner {
     pub start: usize,
-    pub ty: Type,
+    #[darling(rename = "type")]
+    pub ty: String,
 }
 
 #[derive(Debug, FromDeriveInput, FromField, PartialEq, Eq)]
@@ -24,7 +25,9 @@ pub struct Buffer {
 #[darling(attributes(vector))]
 pub struct Vector {
     pub count: DirectInner,
-    pub start: usize,
+    pub order: usize,
+    #[darling(default)]
+    pub align: usize,
 }
 
 #[derive(Debug, FromDeriveInput, FromField, Default)]
