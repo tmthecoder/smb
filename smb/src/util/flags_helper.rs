@@ -3,8 +3,8 @@ macro_rules! impl_smb_for_bytes_for_bitflag {(
 ) => (
     $(
         impl SMBFromBytes for $t {
-            fn smb_byte_size() -> usize {
-                std::mem::size_of::<<$t as bitflags::BitFlags>::Bits>()
+            fn smb_byte_size(&self) -> usize {
+                std::mem::size_of_val(&self.bits())
             }
 
             fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> {

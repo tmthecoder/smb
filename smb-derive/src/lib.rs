@@ -15,9 +15,15 @@ use crate::attrs::{Buffer, Direct, Repr};
 mod attrs;
 
 #[derive(Debug, PartialEq, Eq)]
-enum SMBFieldMapping<'a> {
-    Named(Vec<SMBField<'a>>),
-    Unnamed(Vec<SMBField<'a>>),
+struct SMBFieldMapping<'a> {
+    fields: Vec<SMBField<'a>>,
+    mapping_type: SMBFieldMappingType,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum SMBFieldMappingType {
+    Named,
+    Unnamed,
     Unit,
 }
 
@@ -97,6 +103,9 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
                                 .map_err(|_e| ::smb_core::error::SMBError::ParseError("Invalid byte slice".into()))?;
                             Ok((remaining, value))
                         }
+                        fn smb_byte_size(&self) -> usize {
+                            ::std::mem::size_of_val(self)
+                        }
                     }
                 }.into();
                 println!("quote: {:?}", quote.to_string());
@@ -122,14 +131,21 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
         }.into()
     }
 
-    let parser = create_parser(&mapped.unwrap());
+    let mapped = mapped.unwrap();
+
+    let parser = parse_smb_message(&mapped);
+
+    let size = smb_byte_size(&mapped);
 
     println!("Parser: {:?}", parser.to_string());
 
     let tokens = quote! {
         impl ::smb_core::SMBFromBytes for #name {
-            fn parse_smb_message(_input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
+            fn parse_smb_message(input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
                 #parser
+            }
+            fn smb_byte_size(&self) -> usize {
+                #size
             }
         }
     };
@@ -155,16 +171,22 @@ fn get_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBFieldTyp
             format_ident!("val_0")
         };
 
-        let vec = vec![SMBField {
+        let fields = vec![SMBField {
             name,
             field,
             val_type,
         }];
 
         return if field.ident.is_some() {
-            Ok(SMBFieldMapping::Named(vec))
+            Ok(SMBFieldMapping {
+                fields,
+                mapping_type: SMBFieldMappingType::Named,
+            })
         } else {
-            Ok(SMBFieldMapping::Unnamed(vec))
+            Ok(SMBFieldMapping {
+                fields,
+                mapping_type: SMBFieldMappingType::Unnamed,
+            })
         }
     }
 
@@ -176,13 +198,16 @@ fn get_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBFieldTyp
 
     mapped_fields.sort();
 
-    let mapping = match structure.fields {
-        Fields::Named(_) => SMBFieldMapping::Named(mapped_fields),
-        Fields::Unnamed(_) => SMBFieldMapping::Unnamed(mapped_fields),
-        Fields::Unit => SMBFieldMapping::Unit
+    let mapping_type = match structure.fields {
+        Fields::Named(_) => SMBFieldMappingType::Named,
+        Fields::Unnamed(_) => SMBFieldMappingType::Unnamed,
+        Fields::Unit => SMBFieldMappingType::Unit
     };
 
-    Ok(mapping)
+    Ok(SMBFieldMapping {
+        fields: mapped_fields,
+        mapping_type,
+    })
 }
 
 fn map_to_smb_field<'a, T: Iterator<Item=&'a Field>>(fields: T) -> Result<Vec<SMBField<'a>>, SMBDeriveError> {
@@ -203,15 +228,8 @@ fn map_to_smb_field<'a, T: Iterator<Item=&'a Field>>(fields: T) -> Result<Vec<SM
         .collect::<Result<Vec<SMBField>, SMBDeriveError>>()
 }
 
-fn create_parser(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
-    let empty = vec![];
-
-    let vector = match mapping {
-        SMBFieldMapping::Named(vector) => vector,
-        SMBFieldMapping::Unnamed(vector) => vector,
-        SMBFieldMapping::Unit => &empty,
-    };
-
+fn parse_smb_message(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
+    let vector = &mapping.fields;
     let recurse = vector.iter().map(|f| {
         let name = &f.name;
         let field = f.field;
@@ -219,11 +237,9 @@ fn create_parser(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
         match &f.val_type {
             SMBFieldType::Direct(direct) => {
                 let start = direct.start;
-                let name_end = format_ident!("{}_end", name);
                 quote_spanned! { field.span() =>
-                    let #name_end = #start + std::mem::size_of::<#ty>();
-                    let (_, #name) = <#ty>::parse_smb_message(&_input[#start..#name_end])?;
-                    ending = std::cmp::max(#name_end, ending);
+                    let (remaining, #name) = <#ty>::parse_smb_message(&remaining[(#start - current_pos)..])?;
+                    current_pos = #name.smb_byte_size() + #start;
                 }
             },
             SMBFieldType::Buffer(buffer) => {
@@ -233,12 +249,13 @@ fn create_parser(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
                 let length_type = &buffer.length.ty;
 
                 quote_spanned! {field.span() =>
-                    let offset_end = #offset_start + <#offset_type>::smb_byte_size();
-                    let length_end = #length_start + <#length_type>::smb_byte_size();
-                    let offset = u32::parse_smb_message(&_input[#offset_start..offset_end])?;
-                    let length = u32::parse_smb_message(&_input[#length_start..length_end])?;
-                    let #name = _input[(offset as usize)..(offset as usize + length as usize)].to_vec();
-                    ending = std::cmp::max(offset as usize + length as usize, ending);
+                    let (remaining, offset) = #offset_type::parse_smb_message(&remaining[(#offset_start - current_pos)..])?;
+                    current_pos = offset.smb_byte_size() + #offset_start;
+                    let (remaining, length) = #length_type::parse_smb_message(&remaining[(#length_start - current_pos)..])?;
+                    current_pos = length.smb_byte_size() + #length_start;
+                    let buf_end = offset as usize + length as usize;
+                    let #name = input[(offset as usize)..].to_vec();
+                    let remaining = input[buf_end..];
                 }
             }
         }
@@ -250,29 +267,51 @@ fn create_parser(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
         quote_spanned! {field.span() => #name}
     });
 
-    match mapping {
-        SMBFieldMapping::Named(_) => {
+    let expanded_stream = match mapping.mapping_type {
+        SMBFieldMappingType::Named => {
             quote! {
-                let mut ending = 0_usize;
                 #(#recurse)*
-                Ok((&_input[ending..], Self {
+                Ok((remaining, Self {
                     #(#names,)*
                 }))
             }
         },
-        SMBFieldMapping::Unnamed(_) => {
+        SMBFieldMappingType::Unnamed => {
             quote! {
                 #(#recurse)*
-                Ok(Self (
+                Ok((remaining, Self (
                     #(#names,)*
-                ))
+                )))
             }
         },
-        SMBFieldMapping::Unit => {
+        SMBFieldMappingType::Unit => {
             quote! {
                 std::compile_error!("Invalid struct type")
             }
         }
+    };
+    quote! {
+        let mut current_pos = 0;
+        let remaining = input;
+        #expanded_stream
+    }
+}
+
+fn smb_byte_size(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
+    let idents = match mapping.mapping_type {
+        SMBFieldMappingType::Named => mapping.fields.iter().map(|f| (f, f.name.clone())).collect(),
+        SMBFieldMappingType::Unnamed => mapping.fields.iter().enumerate().map(|(idx, f)| (f, format_ident!("{}", idx))).collect(),
+        SMBFieldMappingType::Unit => vec![]
+    };
+
+    let size = idents.into_iter().map(|(field, name)| {
+        quote_spanned! {field.field.span() =>
+            ::smb_core::SMBFromBytes::smb_byte_size(&self.#name)
+        }
+    });
+
+    quote! {
+        0 #(+ #size)*
     }
 }
 

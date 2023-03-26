@@ -5,7 +5,7 @@ pub mod error;
 pub type SMBResult<I, O, E> = Result<(I, O), E>;
 
 pub trait SMBFromBytes {
-    fn smb_byte_size() -> usize;
+    fn smb_byte_size(&self) -> usize;
     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized;
 }
 
@@ -26,7 +26,7 @@ macro_rules! impl_smb_from_bytes_for_slice {(
 ) => (
     $(
         impl SMBFromBytes for [u8; $N] {
-            fn smb_byte_size() -> usize {
+            fn smb_byte_size(&self) -> usize {
                 $N
             }
 
@@ -42,8 +42,8 @@ macro_rules! impl_parse_unsigned_type {(
 ) => (
     $(
         impl SMBFromBytes for $t {
-            fn smb_byte_size() -> usize {
-                std::mem::size_of::<$t>() as usize
+            fn smb_byte_size(&self) -> usize {
+                std::mem::size_of_val(self)
             }
 
             fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> {

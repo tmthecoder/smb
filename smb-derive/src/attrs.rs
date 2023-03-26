@@ -57,6 +57,6 @@ impl FromDeriveInput for Repr {
                 }
             }
         }
-        Err(darling::Error::custom("invalid input"))
+        Err(darling::Error::custom("Could not derive 'repr' type"))
     }
 }
