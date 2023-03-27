@@ -7,6 +7,8 @@ use nom::multi::many1;
 use nom::number::complete::le_u8;
 use serde::{Deserialize, Serialize};
 
+use smb_core::SMBFromBytes;
+
 use crate::protocol::body::Body;
 use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
 use crate::protocol::body::session_setup::{SMBSessionSetupRequestBody, SMBSessionSetupResponseBody};
@@ -31,6 +33,8 @@ impl Body<SMBSyncHeader> for SMBBody {
         match command_code {
             SMBCommandCode::Negotiate => {
                 let (remaining, body) = SMBNegotiateRequest::parse(bytes)?;
+                println!("Test: {:?}", SMBNegotiateRequest::parse_smb_message(bytes).unwrap());
+                println!("Actu: {:?}", body);
                 Ok((remaining, SMBBody::NegotiateRequest(body)))
             },
             SMBCommandCode::SessionSetup => {

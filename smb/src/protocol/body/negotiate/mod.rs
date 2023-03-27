@@ -1,7 +1,7 @@
 mod negotiate_context;
 mod negotiate;
 
-pub type SMBNegotiateRequest = negotiate::SMBNegotiateRequestBody;
+pub type SMBNegotiateRequest = negotiate::SMBNegotiateRequest;
 pub type SMBNegotiateResponse = negotiate::SMBNegotiateResponseBody;
 
 pub type NegotiateContext = negotiate_context::NegotiateContext;

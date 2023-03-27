@@ -10,7 +10,7 @@ use quote::{format_ident, quote, quote_spanned};
 use syn::{Data, DataStruct, DeriveInput, Field, Fields, parse_macro_input};
 use syn::spanned::Spanned;
 
-use crate::attrs::{Buffer, Direct, Repr, Vector};
+use crate::attrs::{Buffer, Direct, Repr, Skip, Vector};
 
 mod attrs;
 
@@ -39,6 +39,7 @@ enum SMBFieldType {
     Direct(Direct),
     Buffer(Buffer),
     Vector(Vector),
+    Skip(Skip)
 }
 
 impl SMBFieldType {
@@ -82,12 +83,13 @@ impl SMBFieldType {
         match self {
             Self::Direct(x) => x.start,
             Self::Buffer(x) => min(x.length.start, x.offset.start),
-            Self::Vector(x) => x.order
+            Self::Vector(x) => x.order,
+            Self::Skip(x) => x.start
         }
     }
 }
 
-#[proc_macro_derive(SMBFromBytes, attributes(direct, buffer, vector, byte_tag, string_tag))]
+#[proc_macro_derive(SMBFromBytes, attributes(direct, buffer, vector, skip, byte_tag, string_tag))]
 pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 
@@ -260,14 +262,27 @@ fn parse_smb_message(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
             SMBFieldType::Buffer(buffer) => {
                 let offset_start = buffer.offset.start;
                 let offset_type = format_ident!("{}", &buffer.offset.ty);
+
+                let offset_block = if &buffer.offset.ty != "direct" {
+                    quote! {
+                        let (remaining, offset) = <#offset_type>::parse_smb_message(&input[#offset_start..])?;
+                        current_pos = offset.smb_byte_size() + #offset_start;
+                    }
+                } else {
+                    quote! {
+                        let offset = current_pos;
+                    }
+                };
+
                 let length_start = buffer.length.start;
                 let length_type = format_ident!("{}", &buffer.length.ty);
 
                 quote_spanned! { field.span() =>
-                    let (remaining, offset) = <#offset_type>::parse_smb_message(&remaining[(#offset_start - current_pos)..])?;
-                    current_pos = offset.smb_byte_size() + #offset_start;
-                    let (remaining, length) = <#length_type>::parse_smb_message(&remaining[(#length_start - current_pos)..])?;
+                    // let (remaining, offset) = <#offset_type>::parse_smb_message(&remaining[(#offset_start - current_pos)..])?;
+                    // current_pos = offset.smb_byte_size() + #offset_start;
+                    let (remaining, length) = <#length_type>::parse_smb_message(&input[#length_start..])?;
                     current_pos = length.smb_byte_size() + #length_start;
+                    #offset_block
                     let buf_end = offset as usize + length as usize;
                     let #name = input[(offset as usize)..].to_vec();
                     let remaining = &input[buf_end..];
@@ -282,16 +297,31 @@ fn parse_smb_message(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
                 println!("Vector");
 
                 quote_spanned! { field.span() =>
+                    println!("vec time");
                     let (remaining, item_count) = <#count_type>::parse_smb_message(&input[#count_start..])?;
                     if #align > 0 {
                         current_pos += current_pos % #align;
                     }
                     let mut remaining = &input[current_pos..];
+                    println!("count: {}, pos: {:?}", item_count, current_pos);
                     let #name: #inner_type = (0..item_count).map(|idx| {
+                        println!("Inner loop {} {:?}", idx, remaining);
                         let (_, val) = <#inner_type>::parse_smb_message(remaining)?;
                         remaining = &input[(current_pos + val.smb_byte_size())..];
+                        println!("inner loop {}: {:?}", idx, val);
                         Ok(val)
-                    }).collect::<Vec<Result<#inner_type, ::smb_core::error::SMBError>>>().into_iter().collect::<Result<Vec<#inner_type>, ::smb_core::error::SMBError>>()?.concat();
+                    }).collect::<Vec<Result<#inner_type, ::smb_core::error::SMBError>>>().into_iter().collect::<Result<Vec<#inner_type>, ::smb_core::error::SMBError>>()?
+                        .iter_mut().map(|v| v.remove(0)).collect::<#inner_type>();
+                }
+            },
+            SMBFieldType::Skip(skip) => {
+                let start = skip.start;
+                let length = skip.length;
+
+                quote_spanned! {field.span() =>
+                    current_pos = #start + #length;
+                    let remaining = &input[current_pos..];
+                    let #name = ::std::marker::PhantomData;
                 }
             }
         }
@@ -358,6 +388,8 @@ fn get_value_type(field: &Field) -> Result<SMBFieldType, SMBDeriveError> {
         Ok(SMBFieldType::Direct(direct))
     } else if let Ok(vector) = Vector::from_field(field) {
         Ok(SMBFieldType::Vector(vector))
+    } else if let Ok(skip) = Skip::from_field(field) {
+        Ok(SMBFieldType::Skip(skip))
     } else {
         Err(SMBDeriveError::TypeError(field.clone()))
     }

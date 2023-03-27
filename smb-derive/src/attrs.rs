@@ -47,6 +47,13 @@ pub struct Repr {
     pub ident: NestedMeta,
 }
 
+#[derive(Debug, FromDeriveInput, FromField, PartialEq, Eq)]
+#[darling(attributes(skip))]
+pub struct Skip {
+    pub start: usize,
+    pub length: usize,
+}
+
 impl FromDeriveInput for Repr {
     fn from_derive_input(input: &DeriveInput) -> darling::Result<Self> {
         for attr in input.attrs.iter() {

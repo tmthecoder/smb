@@ -1,3 +1,7 @@
+use std::marker::PhantomData;
+
+use uuid::Uuid;
+
 use error::SMBError;
 
 pub mod error;
@@ -23,6 +27,55 @@ impl<T: SMBFromBytes> SMBFromBytes for Vec<T> {
         Ok((remaining, vec![item]))
     }
 }
+
+impl<T: SMBFromBytes> SMBFromBytes for PhantomData<T> {
+    fn smb_byte_size(&self) -> usize {
+        0
+    }
+
+    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        let (remaining, _) = T::parse_smb_message(input)?;
+        Ok((remaining, PhantomData))
+    }
+}
+
+impl SMBFromBytes for String {
+    fn smb_byte_size(&self) -> usize {
+        self.as_bytes().len()
+    }
+
+    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        let (remaining, vec) = <Vec<u8>>::parse_smb_message(input)?;
+        let str = String::from_utf8(vec)
+            .map_err(|_e| SMBError::ParseError("Invalid byte slice".into()))?;
+        Ok((remaining, str))
+    }
+}
+
+impl SMBFromBytes for Uuid {
+    fn smb_byte_size(&self) -> usize {
+        16
+    }
+
+    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        let uuid = Uuid::from_slice(&input[0..16])
+            .map_err(|_e| SMBError::ParseError("Invalid byte slice".into()))?;
+        let remaining = &input[uuid.smb_byte_size()..];
+        Ok((remaining, uuid))
+    }
+}
+
+// impl<'a, T> SMBFromBytes for T where T: From<&'a [u8]> {
+//     fn smb_byte_size(&self) -> usize {
+//         self.into().len()
+//     }
+//
+//     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+//         let val = T::from(input);
+//         let remaining = &input[val.smb_byte_size()..];
+//         Ok((remaining, val))
+//     }
+// }
 
 macro_rules! impl_parse_fixed_slice {
     ($size: expr, $input: expr) => {{

@@ -1,25 +1,37 @@
-use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
-use crate::protocol::body::negotiate::NegotiateContext;
-use crate::protocol::body::{Capabilities, FileTime, SMBDialect, SecurityMode};
+use std::marker::PhantomData;
+
 use nom::bytes::complete::take;
 use nom::combinator::{map, map_res};
+use nom::IResult;
 use nom::multi::count;
 use nom::number::complete::{le_u16, le_u32, le_u8};
 use nom::sequence::tuple;
-use nom::IResult;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub struct SMBNegotiateRequestBody {
+use smb_derive::SMBFromBytes;
+
+use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
+use crate::protocol::body::{Capabilities, FileTime, SecurityMode, SMBDialect};
+use crate::protocol::body::negotiate::NegotiateContext;
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes)]
+pub struct SMBNegotiateRequest {
+    #[direct(start = 4)]
     security_mode: SecurityMode,
+    #[direct(start = 8)]
     capabilities: Capabilities,
+    #[direct(start = 12)]
     client_uuid: Uuid,
+    #[skip(start = 28, length = 8)]
+    reserved: PhantomData<Vec<u8>>,
+    #[vector(order = 1, count(start = 2, type = "u16"))]
     dialects: Vec<SMBDialect>,
+    #[vector(order = 2, align = 8, count(start = 32, type = "u16"))]
     negotiate_contexts: Vec<NegotiateContext>,
 }
 
-impl SMBNegotiateRequestBody {
+impl SMBNegotiateRequest {
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, (_, dialect_count, security_mode, _, capabilities, client_uuid)) =
             tuple((
@@ -57,6 +69,7 @@ impl SMBNegotiateRequestBody {
                 client_uuid,
                 dialects,
                 negotiate_contexts,
+                reserved: PhantomData
             },
         ))
     }
@@ -103,7 +116,7 @@ impl SMBNegotiateResponseBody {
         }
     }
 
-    pub fn from_request(request: SMBNegotiateRequestBody, token: Vec<u8>) -> Option<Self> {
+    pub fn from_request(request: SMBNegotiateRequest, token: Vec<u8>) -> Option<Self> {
         let mut dialects = request.dialects.clone();
         dialects.sort();
         let mut negotiate_contexts = Vec::new();

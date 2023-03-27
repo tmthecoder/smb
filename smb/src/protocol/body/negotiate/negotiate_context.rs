@@ -1,5 +1,8 @@
+use std::ops::Neg;
+
 use bitflags::bitflags;
 use nom::bytes::complete::take;
+use nom::character::complete::u16;
 use nom::combinator::{map, map_res};
 use nom::Err::Error;
 use nom::error::ErrorKind;
@@ -18,6 +21,14 @@ use smb_derive::SMBFromBytes;
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
 use crate::util::flags_helper::impl_smb_for_bytes_for_bitflag;
 
+const PRE_AUTH_INTEGRITY_CAPABILITIES_TAG: u16 = 0x01;
+const ENCRYPTION_CAPABILITIES_TAG: u16 = 0x02;
+const COMPRESSION_CAPABILITIES_TAG: u16 = 0x03;
+const NETNAME_NEGOTIATE_CONTEXT_ID_TAG: u16 = 0x05;
+const TRANSPORT_CAPABILITIES_TAG: u16 = 0x06;
+const RDMA_TRANSFORM_CAPABILITIES_TAG: u16 = 0x07;
+const SIGNING_CAPABILITIES_TAG: u16 = 0x08;
+
 macro_rules! ctx_to_bytes {
     ($body: expr) => {{
         let bytes = $body.as_bytes();
@@ -33,13 +44,30 @@ macro_rules! ctx_to_bytes {
 
 macro_rules! ctx_parse_enumify {
     ($enumType: expr, $bodyType: expr, $data: expr, $len: expr) => {{
-        let (_, body) = $bodyType($data).unwrap();
+        let (_, body) = $bodyType($data)?;
         let padding = if $len % 8 == 0 || (6 + $len) as usize >= $data.len() {
             0
         } else {
             8 - $len % 8
         };
         let (remaining, _) = take(6 + $len + padding)($data)?;
+        Ok((remaining, $enumType(body)))
+    }};
+}
+
+macro_rules! ctx_parse_smb_message_enumify {
+    ($enumType: expr, $bodyType: expr, $data: expr, $len: expr) => {{
+        let (_, body) = $bodyType($data)?;
+        let padding = if $len % 8 == 0 || (6 + $len) as usize >= $data.len() {
+            0
+        } else {
+            8 - $len % 8
+        };
+        let remove_size = (6 + $len + padding) as usize;
+        if remove_size >= $data.len() {
+            return Err(SMBError::ParseError("Invalid padding block".into()));
+        }
+        let remaining = &$data[remove_size..];
         Ok((remaining, $enumType(body)))
     }};
 }
@@ -61,13 +89,79 @@ macro_rules! enum_iter_to_bytes {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum NegotiateContext {
-    PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilitiesBody),
-    EncryptionCapabilities(EncryptionCapabilitiesBody),
-    CompressionCapabilities(CompressionCapabilitiesBody),
-    NetnameNegotiateContextID(NetnameNegotiateContextIDBody),
-    TransportCapabilities(TransportCapabilitiesBody),
-    RDMATransformCapabilities(RDMATransformCapabilitiesBody),
-    SigningCapabilities(SigningCapabilitiesBody),
+    PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilities),
+    EncryptionCapabilities(EncryptionCapabilities),
+    CompressionCapabilities(CompressionCapabilities),
+    NetnameNegotiateContextID(NetnameNegotiateContextID),
+    TransportCapabilities(TransportCapabilities),
+    RDMATransformCapabilities(RDMATransformCapabilities),
+    SigningCapabilities(SigningCapabilities),
+}
+
+impl SMBFromBytes for NegotiateContext {
+    fn smb_byte_size(&self) -> usize {
+        match self {
+            NegotiateContext::PreAuthIntegrityCapabilities(x) => x.smb_byte_size(),
+            NegotiateContext::EncryptionCapabilities(x) => x.smb_byte_size(),
+            NegotiateContext::CompressionCapabilities(x) => x.smb_byte_size(),
+            NegotiateContext::NetnameNegotiateContextID(x) => x.smb_byte_size(),
+            NegotiateContext::TransportCapabilities(x) => x.smb_byte_size(),
+            NegotiateContext::RDMATransformCapabilities(x) => x.smb_byte_size(),
+            NegotiateContext::SigningCapabilities(x) => x.smb_byte_size(),
+        }
+    }
+
+    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        if input.len() < 4 { return Err(SMBError::ParseError("Input too small".into())) }
+        let (remaining, ctx_type) = u16::parse_smb_message(input)?;
+        let (_, ctx_len) = u16::parse_smb_message(&remaining)?;
+
+        match ctx_type {
+            0x01 => ctx_parse_smb_message_enumify!(
+                Self::PreAuthIntegrityCapabilities,
+                PreAuthIntegrityCapabilities::parse_smb_message,
+                remaining,
+                ctx_len
+            ),
+            0x02 => ctx_parse_smb_message_enumify!(
+                Self::EncryptionCapabilities,
+                EncryptionCapabilities::parse_smb_message,
+                remaining,
+                ctx_len
+            ),
+            0x03 => ctx_parse_smb_message_enumify!(
+                Self::CompressionCapabilities,
+                CompressionCapabilities::parse_smb_message,
+                remaining,
+                ctx_len
+            ),
+            0x05 => ctx_parse_smb_message_enumify!(
+                Self::NetnameNegotiateContextID,
+                NetnameNegotiateContextID::parse_smb_message,
+                remaining,
+                ctx_len
+            ),
+            0x06 => ctx_parse_smb_message_enumify!(
+                Self::TransportCapabilities,
+                TransportCapabilities::parse_smb_message,
+                remaining,
+                ctx_len
+            ),
+            0x07 => ctx_parse_smb_message_enumify!(
+                Self::RDMATransformCapabilities,
+                RDMATransformCapabilities::parse_smb_message,
+                remaining,
+                ctx_len
+            ),
+            0x08 => ctx_parse_smb_message_enumify!(
+                Self::SigningCapabilities,
+                SigningCapabilities::parse_smb_message,
+                remaining,
+                ctx_len
+            ),
+            _ => Err(SMBError::ParseError("Invalid negotiate context type".into()))
+        }
+    }
 }
 
 impl NegotiateContext {
@@ -77,43 +171,43 @@ impl NegotiateContext {
         match ctx_type_num {
             0x01 => ctx_parse_enumify!(
                 Self::PreAuthIntegrityCapabilities,
-                PreAuthIntegrityCapabilitiesBody::parse,
+                PreAuthIntegrityCapabilities::parse,
                 remaining,
                 ctx_len
             ),
             0x02 => ctx_parse_enumify!(
                 Self::EncryptionCapabilities,
-                EncryptionCapabilitiesBody::parse,
+                EncryptionCapabilities::parse,
                 remaining,
                 ctx_len
             ),
             0x03 => ctx_parse_enumify!(
                 Self::CompressionCapabilities,
-                CompressionCapabilitiesBody::parse,
+                CompressionCapabilities::parse,
                 remaining,
                 ctx_len
             ),
             0x05 => ctx_parse_enumify!(
                 Self::NetnameNegotiateContextID,
-                NetnameNegotiateContextIDBody::parse,
+                NetnameNegotiateContextID::parse,
                 remaining,
                 ctx_len
             ),
             0x06 => ctx_parse_enumify!(
                 Self::TransportCapabilities,
-                TransportCapabilitiesBody::parse,
+                TransportCapabilities::parse,
                 remaining,
                 ctx_len
             ),
             0x07 => ctx_parse_enumify!(
                 Self::RDMATransformCapabilities,
-                RDMATransformCapabilitiesBody::parse,
+                RDMATransformCapabilities::parse,
                 remaining,
                 ctx_len
             ),
             0x08 => ctx_parse_enumify!(
                 Self::SigningCapabilities,
-                SigningCapabilitiesBody::parse,
+                SigningCapabilities::parse,
                 remaining,
                 ctx_len
             ),
@@ -140,7 +234,7 @@ impl NegotiateContext {
                 let mut salt = vec![0_u8; 32];
                 rand::rngs::ThreadRng::default().fill_bytes(&mut salt);
                 Some(NegotiateContext::PreAuthIntegrityCapabilities(
-                    PreAuthIntegrityCapabilitiesBody {
+                    PreAuthIntegrityCapabilities {
                         hash_algorithms,
                         salt,
                     },
@@ -149,59 +243,61 @@ impl NegotiateContext {
             NegotiateContext::EncryptionCapabilities(body) => {
                 let ciphers = vector_with_only_last!(body.ciphers.clone());
                 Some(NegotiateContext::EncryptionCapabilities(
-                    EncryptionCapabilitiesBody { ciphers },
+                    EncryptionCapabilities { ciphers },
                 ))
             }
             NegotiateContext::CompressionCapabilities(body) => {
                 let compression_algorithms =
                     vector_with_only_last!(body.compression_algorithms.clone());
                 Some(NegotiateContext::CompressionCapabilities(
-                    CompressionCapabilitiesBody {
+                    CompressionCapabilities {
                         compression_algorithms,
                         flags: body.flags,
                     },
                 ))
             }
             NegotiateContext::NetnameNegotiateContextID(_) => Some(
-                NegotiateContext::NetnameNegotiateContextID(NetnameNegotiateContextIDBody {
+                NegotiateContext::NetnameNegotiateContextID(NetnameNegotiateContextID {
                     netname: "fakeserver".into(),
                 }),
             ),
             NegotiateContext::TransportCapabilities(_) => Some(
-                NegotiateContext::TransportCapabilities(TransportCapabilitiesBody {
+                NegotiateContext::TransportCapabilities(TransportCapabilities {
                     flags: TransportCapabilitiesFlags::empty(),
                 }),
             ),
             NegotiateContext::RDMATransformCapabilities(_) => Some(
-                NegotiateContext::RDMATransformCapabilities(RDMATransformCapabilitiesBody {
+                NegotiateContext::RDMATransformCapabilities(RDMATransformCapabilities {
                     transform_ids: vec![RDMATransformID::None],
                 }),
             ),
             NegotiateContext::SigningCapabilities(body) => {
                 let signing_algorithms = vector_with_only_last!(body.signing_algorithms.clone());
                 Some(NegotiateContext::SigningCapabilities(
-                    SigningCapabilitiesBody { signing_algorithms },
+                    SigningCapabilities { signing_algorithms },
                 ))
             }
         }
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
-pub struct PreAuthIntegrityCapabilitiesBody {
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
+pub struct PreAuthIntegrityCapabilities {
+    #[vector(order = 1, count(start = 2, type = "u16"))]
     pub(crate) hash_algorithms: Vec<HashAlgorithm>,
+    #[vector(order = 2, count(start = 4, type = "u16"))]
     pub(crate) salt: Vec<u8>,
 }
 
 #[repr(u16)]
 #[derive(
-    Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd,
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd, SMBFromBytes
 )]
 pub enum HashAlgorithm {
     SHA512 = 0x01,
 }
 
-impl PreAuthIntegrityCapabilitiesBody {
+impl PreAuthIntegrityCapabilities {
     fn byte_code(&self) -> u16 {
         0x01
     }
@@ -231,14 +327,15 @@ impl PreAuthIntegrityCapabilitiesBody {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
-pub struct EncryptionCapabilitiesBody {
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
+pub struct EncryptionCapabilities {
+    #[vector(order = 1, count(start = 2, type = "u16"))]
     pub(crate) ciphers: Vec<EncryptionCipher>,
 }
 
 #[repr(u16)]
 #[derive(
-    Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy,
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes
 )]
 pub enum EncryptionCipher {
     AES128GCM = 0x01,
@@ -247,7 +344,7 @@ pub enum EncryptionCipher {
     AES256CCM,
 }
 
-impl EncryptionCapabilitiesBody {
+impl EncryptionCapabilities {
     fn byte_code(&self) -> u16 {
         0x02
     }
@@ -271,15 +368,17 @@ impl EncryptionCapabilitiesBody {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
-pub struct CompressionCapabilitiesBody {
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
+pub struct CompressionCapabilities {
+    #[direct(start = 6)]
     pub(crate) flags: CompressionCapabilitiesFlags,
+    #[vector(order = 1, count(start = 2, type = "u16"))]
     pub(crate) compression_algorithms: Vec<CompressionAlgorithm>,
 }
 
 #[repr(u32)]
 #[derive(
-    Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy,
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes
 )]
 pub enum CompressionCapabilitiesFlags {
     None = 0x0,
@@ -288,7 +387,7 @@ pub enum CompressionCapabilitiesFlags {
 
 #[repr(u16)]
 #[derive(
-    Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy,
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes
 )]
 pub enum CompressionAlgorithm {
     None = 0x0,
@@ -298,7 +397,7 @@ pub enum CompressionAlgorithm {
     PatternV1,
 }
 
-impl CompressionCapabilitiesBody {
+impl CompressionCapabilities {
     fn byte_code(&self) -> u16 {
         0x03
     }
@@ -334,12 +433,13 @@ impl CompressionCapabilitiesBody {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
-pub struct NetnameNegotiateContextIDBody {
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
+pub struct NetnameNegotiateContextID {
+    #[buffer(offset(start = 0, type = "direct"), length(start = 0, type = "u16"))]
     pub(crate) netname: String,
 }
 
-impl NetnameNegotiateContextIDBody {
+impl NetnameNegotiateContextID {
     fn byte_code(&self) -> u16 {
         0x05
     }
@@ -361,7 +461,7 @@ impl NetnameNegotiateContextIDBody {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, SMBFromBytes)]
-pub struct TransportCapabilitiesBody {
+pub struct TransportCapabilities {
     #[direct(start = 0, length = 4)]
     pub(crate) flags: TransportCapabilitiesFlags,
 }
@@ -375,7 +475,7 @@ bitflags! {
 
 impl_smb_for_bytes_for_bitflag! {TransportCapabilitiesFlags}
 
-impl TransportCapabilitiesBody {
+impl TransportCapabilities {
     fn byte_code(&self) -> u16 {
         0x06
     }
@@ -391,20 +491,21 @@ impl TransportCapabilitiesBody {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
-pub struct RDMATransformCapabilitiesBody {
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
+pub struct RDMATransformCapabilities {
+    #[vector(order = 1, count(start = 2, type = "u16"))]
     pub(crate) transform_ids: Vec<RDMATransformID>,
 }
 
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy, SMBFromBytes)]
 pub enum RDMATransformID {
     None = 0x0,
     Encryption,
     Signing,
 }
 
-impl RDMATransformCapabilitiesBody {
+impl RDMATransformCapabilities {
     fn byte_code(&self) -> u16 {
         0x07
     }
@@ -428,14 +529,15 @@ impl RDMATransformCapabilitiesBody {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
-pub struct SigningCapabilitiesBody {
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
+pub struct SigningCapabilities {
+    #[vector(order = 1, count(start = 2, type = "u16"))]
     pub(crate) signing_algorithms: Vec<SigningAlgorithm>,
 }
 
 #[repr(u16)]
 #[derive(
-    Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy,
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes
 )]
 pub enum SigningAlgorithm {
     HmacSha256 = 0x0,
@@ -443,7 +545,7 @@ pub enum SigningAlgorithm {
     AesGmac,
 }
 
-impl SigningCapabilitiesBody {
+impl SigningCapabilities {
     fn byte_code(&self) -> u16 {
         0x08
     }
