@@ -93,8 +93,6 @@ impl SMBFieldType {
 pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 
-    // println!("attrs: {:?}", input.attrs);
-
     let name = input.ident.clone();
 
     let invalid_token: TokenStream = quote_spanned! {
@@ -108,7 +106,6 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
         },
         Data::Enum(_en) => {
             let repr_type = Repr::from_derive_input(&input);
-            println!("repr: {:?}", repr_type);
             if let Ok(ty) = repr_type {
                 let identity = &ty.ident;
                 let quote: TokenStream = quote! {
@@ -124,7 +121,6 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
                         }
                     }
                 }.into();
-                println!("quote: {:?}", quote.to_string());
                 return quote;
             }
             return invalid_token
@@ -152,8 +148,6 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
     let parser = parse_smb_message(&mapped);
 
     let size = smb_byte_size(&mapped);
-
-    println!("Parser: {:?}", parser.to_string());
 
     let tokens = quote! {
         impl ::smb_core::SMBFromBytes for #name {
