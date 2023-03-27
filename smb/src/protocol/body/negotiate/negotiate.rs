@@ -171,7 +171,7 @@ impl SMBNegotiateResponseBody {
             &u16_to_bytes(self.dialect as u16),
             &u16_to_bytes(self.negotiate_contexts.len() as u16),
             self.guid.as_bytes(),
-            &u32_to_bytes(self.capabilities.bits() as u32),
+            &u32_to_bytes(self.capabilities.bits()),
             &u32_to_bytes(self.max_transact_size),
             &u32_to_bytes(self.max_read_size),
             &u32_to_bytes(self.max_write_size),

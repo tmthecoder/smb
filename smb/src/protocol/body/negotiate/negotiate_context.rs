@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::ops::Neg;
 
 use bitflags::bitflags;
@@ -64,7 +65,7 @@ macro_rules! ctx_parse_smb_message_enumify {
             8 - $len % 8
         };
         let remove_size = (6 + $len + padding) as usize;
-        if remove_size >= $data.len() {
+        if remove_size > $data.len() {
             return Err(SMBError::ParseError("Invalid padding block".into()));
         }
         let remaining = &$data[remove_size..];
@@ -237,13 +238,14 @@ impl NegotiateContext {
                     PreAuthIntegrityCapabilities {
                         hash_algorithms,
                         salt,
+                        reserved: PhantomData
                     },
                 ))
             }
             NegotiateContext::EncryptionCapabilities(body) => {
                 let ciphers = vector_with_only_last!(body.ciphers.clone());
                 Some(NegotiateContext::EncryptionCapabilities(
-                    EncryptionCapabilities { ciphers },
+                    EncryptionCapabilities { reserved: PhantomData, ciphers },
                 ))
             }
             NegotiateContext::CompressionCapabilities(body) => {
@@ -258,6 +260,7 @@ impl NegotiateContext {
             }
             NegotiateContext::NetnameNegotiateContextID(_) => Some(
                 NegotiateContext::NetnameNegotiateContextID(NetnameNegotiateContextID {
+                    reserved: PhantomData,
                     netname: "fakeserver".into(),
                 }),
             ),
@@ -268,13 +271,14 @@ impl NegotiateContext {
             ),
             NegotiateContext::RDMATransformCapabilities(_) => Some(
                 NegotiateContext::RDMATransformCapabilities(RDMATransformCapabilities {
+                    reserved: PhantomData,
                     transform_ids: vec![RDMATransformID::None],
                 }),
             ),
             NegotiateContext::SigningCapabilities(body) => {
                 let signing_algorithms = vector_with_only_last!(body.signing_algorithms.clone());
                 Some(NegotiateContext::SigningCapabilities(
-                    SigningCapabilities { signing_algorithms },
+                    SigningCapabilities { reserved: PhantomData, signing_algorithms },
                 ))
             }
         }
@@ -283,9 +287,11 @@ impl NegotiateContext {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
 pub struct PreAuthIntegrityCapabilities {
-    #[vector(order = 1, count(start = 2, type = "u16"))]
+    #[skip(start = 0, length = 10)]
+    reserved: PhantomData<Vec<u8>>,
+    #[vector(order = 1, count(start = 6, type = "u16"))]
     pub(crate) hash_algorithms: Vec<HashAlgorithm>,
-    #[vector(order = 2, count(start = 4, type = "u16"))]
+    #[vector(order = 2, count(start = 8, type = "u16"))]
     pub(crate) salt: Vec<u8>,
 }
 
@@ -312,6 +318,7 @@ impl PreAuthIntegrityCapabilities {
             Self {
                 hash_algorithms,
                 salt,
+                reserved: PhantomData
             },
         ))
     }
@@ -329,7 +336,9 @@ impl PreAuthIntegrityCapabilities {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
 pub struct EncryptionCapabilities {
-    #[vector(order = 1, count(start = 2, type = "u16"))]
+    #[skip(start = 0, length = 8)]
+    reserved: PhantomData<Vec<u8>>,
+    #[vector(order = 1, count(start = 6, type = "u16"))]
     pub(crate) ciphers: Vec<EncryptionCipher>,
 }
 
@@ -356,7 +365,7 @@ impl EncryptionCapabilities {
             map_res(le_u16, EncryptionCipher::try_from),
             cipher_cnt as usize,
         )(remaining)?;
-        Ok((remaining, Self { ciphers }))
+        Ok((remaining, Self { reserved: PhantomData, ciphers }))
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -370,9 +379,9 @@ impl EncryptionCapabilities {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
 pub struct CompressionCapabilities {
-    #[direct(start = 6)]
+    #[direct(start = 10)]
     pub(crate) flags: CompressionCapabilitiesFlags,
-    #[vector(order = 1, count(start = 2, type = "u16"))]
+    #[vector(order = 1, count(start = 6, type = "u16"))]
     pub(crate) compression_algorithms: Vec<CompressionAlgorithm>,
 }
 
@@ -435,7 +444,9 @@ impl CompressionCapabilities {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
 pub struct NetnameNegotiateContextID {
-    #[buffer(offset(start = 0, type = "direct"), length(start = 0, type = "u16"))]
+    #[skip(start = 0, length = 6)]
+    reserved: PhantomData<Vec<u8>>,
+    #[vector(order = 1, count(start = 0, type = "u16"))]
     pub(crate) netname: String,
 }
 
@@ -452,7 +463,7 @@ impl NetnameNegotiateContextID {
             vec.retain(|x| *x != 0_u8);
             String::from_utf8(vec)
         })(remaining)?;
-        Ok((remaining, Self { netname }))
+        Ok((remaining, Self { reserved: PhantomData, netname }))
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -493,7 +504,9 @@ impl TransportCapabilities {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
 pub struct RDMATransformCapabilities {
-    #[vector(order = 1, count(start = 2, type = "u16"))]
+    #[skip(start = 0, length = 14)]
+    reserved: PhantomData<Vec<u8>>,
+    #[vector(order = 1, count(start = 6, type = "u16"))]
     pub(crate) transform_ids: Vec<RDMATransformID>,
 }
 
@@ -516,7 +529,7 @@ impl RDMATransformCapabilities {
             map_res(le_u16, RDMATransformID::try_from),
             transform_cnt as usize,
         )(remaining)?;
-        Ok((remaining, Self { transform_ids }))
+        Ok((remaining, Self { reserved: PhantomData, transform_ids }))
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -531,7 +544,9 @@ impl RDMATransformCapabilities {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
 pub struct SigningCapabilities {
-    #[vector(order = 1, count(start = 2, type = "u16"))]
+    #[skip(start = 0, length = 8)]
+    reserved: PhantomData<Vec<u8>>,
+    #[vector(order = 1, count(start = 6, type = "u16"))]
     pub(crate) signing_algorithms: Vec<SigningAlgorithm>,
 }
 
@@ -556,7 +571,7 @@ impl SigningCapabilities {
             map_res(le_u16, SigningAlgorithm::try_from),
             signing_alg_cnt as usize,
         )(remaining)?;
-        Ok((remaining, Self { signing_algorithms }))
+        Ok((remaining, Self { reserved: PhantomData, signing_algorithms }))
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {

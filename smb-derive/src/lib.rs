@@ -294,21 +294,17 @@ fn parse_smb_message(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
                 let align = vector.align;
                 let inner_type = &f.field.ty;
 
-                println!("Vector");
 
                 quote_spanned! { field.span() =>
-                    println!("vec time");
                     let (remaining, item_count) = <#count_type>::parse_smb_message(&input[#count_start..])?;
-                    if #align > 0 {
-                        current_pos += current_pos % #align;
+                    if #align > 0 && current_pos % #align != 0 {
+                        current_pos += 8 - (current_pos % #align);
                     }
                     let mut remaining = &input[current_pos..];
-                    println!("count: {}, pos: {:?}", item_count, current_pos);
                     let #name: #inner_type = (0..item_count).map(|idx| {
-                        println!("Inner loop {} {:?}", idx, remaining);
-                        let (_, val) = <#inner_type>::parse_smb_message(remaining)?;
-                        remaining = &input[(current_pos + val.smb_byte_size())..];
-                        println!("inner loop {}: {:?}", idx, val);
+                        let (r, val) = <#inner_type>::parse_smb_message(remaining)?;
+                        current_pos += val.smb_byte_size();
+                        remaining = r;
                         Ok(val)
                     }).collect::<Vec<Result<#inner_type, ::smb_core::error::SMBError>>>().into_iter().collect::<Result<Vec<#inner_type>, ::smb_core::error::SMBError>>()?
                         .iter_mut().map(|v| v.remove(0)).collect::<#inner_type>();
