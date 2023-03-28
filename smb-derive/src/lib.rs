@@ -1,36 +1,40 @@
 extern crate proc_macro;
 
-use proc_macro::TokenStream;
+use proc_macro::{token_stream, TokenStream};
 use std::cmp::{min, Ordering};
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
+use std::process::id;
 
 use darling::{FromDeriveInput, FromField};
 use proc_macro2::Ident;
 use quote::{format_ident, quote, quote_spanned};
-use syn::{Data, DataStruct, DeriveInput, Field, Fields, parse_macro_input};
+use syn::{Attribute, Data, DataEnum, DataStruct, DeriveInput, Field, Fields, parse_macro_input, Type};
 use syn::spanned::Spanned;
+use syn::token::Token;
 
 use crate::attrs::{Buffer, Direct, Repr, Skip, Vector};
 
 mod attrs;
 
 #[derive(Debug, PartialEq, Eq)]
-struct SMBFieldMapping<'a> {
-    fields: Vec<SMBField<'a>>,
+struct SMBFieldMapping<'a, T: Spanned + PartialEq + Eq> {
+    fields: Vec<SMBField<'a, T>>,
     mapping_type: SMBFieldMappingType,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum SMBFieldMappingType {
-    Named,
-    Unnamed,
+    NamedStruct,
+    UnnamedStruct,
+    Enum,
     Unit,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct SMBField<'a> {
-    field: &'a Field,
+struct SMBField<'a, T: Spanned> {
+    spannable: &'a T,
     name: Ident,
+    ty: Type,
     val_type: SMBFieldType,
 }
 
@@ -60,13 +64,13 @@ impl PartialOrd for SMBFieldType {
     }
 }
 
-impl<'a> PartialOrd for SMBField<'a> {
+impl<'a, T: Spanned + PartialEq + Eq> PartialOrd for SMBField<'a, T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.val_type.partial_cmp(&other.val_type)
     }
 }
 
-impl<'a> Ord for SMBField<'a> {
+impl<'a, T: Spanned + PartialEq + Eq> Ord for SMBField<'a, T> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.val_type.cmp(&other.val_type)
     }
@@ -93,78 +97,36 @@ impl SMBFieldType {
 pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 
-    let name = input.ident.clone();
+    let name = &input.ident;
 
-    let invalid_token: TokenStream = quote_spanned! {
+    let invalid_token: proc_macro2::TokenStream = quote_spanned! {
         input.span() => compile_error!("Invalid or unsupported type")
-    }.into();
+    };
 
-    let mapped = match &input.data {
+    let parse_token = match &input.data {
         Data::Struct(structure) => {
             let parent_val_type = parent_value_type(&input);
-            get_field_mapping(structure, parent_val_type)
+            let mapping = get_struct_field_mapping(structure, parent_val_type);
+            create_parser_impl(mapping, name)
+                .unwrap_or_else(|e| match e {
+                    SMBDeriveError::TypeError(f) => quote_spanned! {f.span()=>::std::compile_error!("Invalid field for SMB message parsing")},
+                    SMBDeriveError::InvalidType => invalid_token
+                })
         },
-        Data::Enum(_en) => {
-            let repr_type = Repr::from_derive_input(&input);
-            if let Ok(ty) = repr_type {
-                let identity = &ty.ident;
-                let quote: TokenStream = quote! {
-                    impl ::smb_core::SMBFromBytes for #name {
-                        fn parse_smb_message(_input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
-                            let (remaining, repr_val) = <#identity>::parse_smb_message(_input)?;
-                            let value = Self::try_from(repr_val)
-                                .map_err(|_e| ::smb_core::error::SMBError::ParseError("Invalid byte slice".into()))?;
-                            Ok((remaining, value))
-                        }
-                        fn smb_byte_size(&self) -> usize {
-                            ::std::mem::size_of_val(self)
-                        }
-                    }
-                }.into();
-                return quote;
-            }
-            return invalid_token
+        Data::Enum(en) => {
+            let mapping = get_enum_field_mapping(en, &input.attrs, &input);
+            create_parser_impl(mapping, name)
+                .unwrap_or_else(|_e| quote_spanned! {input.span()=>
+                    ::std::compile_error!("Invalid enum for SMB message parsing")
+                })
         },
-        _ => return invalid_token
+        _ => invalid_token
     };
 
-    if let Err(e) = mapped {
-        return match e {
-            SMBDeriveError::TypeError(f) => {
-                quote_spanned! {
-                    f.span() => std::compile_error!("No type set or incorrectly defined type for field")
-                }
-            },
-            SMBDeriveError::InvalidType => {
-                quote_spanned! {
-                    input.span() => std::compile_error!("Invalid or unsupported type")
-                }
-            }
-        }.into()
-    }
-
-    let mapped = mapped.unwrap();
-
-    let parser = parse_smb_message(&mapped);
-
-    let size = smb_byte_size(&mapped);
-
-    let tokens = quote! {
-        impl ::smb_core::SMBFromBytes for #name {
-            #[allow(unused_variables, unused_assignments)]
-            fn parse_smb_message(input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
-                #parser
-            }
-            fn smb_byte_size(&self) -> usize {
-                #size
-            }
-        }
-    };
-
-    tokens.into()
+    parse_token.into()
 }
 
-fn get_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBFieldType>) -> Result<SMBFieldMapping, SMBDeriveError> {
+fn get_struct_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBFieldType>) -> Result<SMBFieldMapping<Field>, SMBDeriveError<Field>> {
     if structure.fields.len() == 1 {
         let field = structure.fields.iter().next()
             .ok_or(SMBDeriveError::InvalidType)?;
@@ -182,26 +144,28 @@ fn get_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBFieldTyp
             format_ident!("val_0")
         };
 
+
         let fields = vec![SMBField {
             name,
-            field,
+            spannable: field,
+            ty: field.ty.clone(),
             val_type,
         }];
 
         return if field.ident.is_some() {
             Ok(SMBFieldMapping {
                 fields,
-                mapping_type: SMBFieldMappingType::Named,
+                mapping_type: SMBFieldMappingType::NamedStruct,
             })
         } else {
             Ok(SMBFieldMapping {
                 fields,
-                mapping_type: SMBFieldMappingType::Unnamed,
+                mapping_type: SMBFieldMappingType::UnnamedStruct,
             })
         }
     }
 
-    let mut mapped_fields: Vec<SMBField> = match structure.fields {
+    let mut mapped_fields: Vec<SMBField<Field>> = match structure.fields {
         Fields::Named(ref fields) => map_to_smb_field(fields.named.iter())?,
         Fields::Unnamed(ref fields) => map_to_smb_field(fields.unnamed.iter())?,
         Fields::Unit => vec![],
@@ -210,8 +174,8 @@ fn get_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBFieldTyp
     mapped_fields.sort();
 
     let mapping_type = match structure.fields {
-        Fields::Named(_) => SMBFieldMappingType::Named,
-        Fields::Unnamed(_) => SMBFieldMappingType::Unnamed,
+        Fields::Named(_) => SMBFieldMappingType::NamedStruct,
+        Fields::Unnamed(_) => SMBFieldMappingType::UnnamedStruct,
         Fields::Unit => SMBFieldMappingType::Unit
     };
 
@@ -221,7 +185,27 @@ fn get_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBFieldTyp
     })
 }
 
-fn map_to_smb_field<'a, T: Iterator<Item=&'a Field>>(fields: T) -> Result<Vec<SMBField<'a>>, SMBDeriveError> {
+fn get_enum_field_mapping<'a>(enum_type: &DataEnum, enum_attributes: &[Attribute], input: &'a DeriveInput) -> Result<SMBFieldMapping<'a, DeriveInput>, SMBDeriveError<DeriveInput>> {
+    let repr_type = Repr::from_attributes(enum_attributes)
+        .map_err(|_e| SMBDeriveError::TypeError(input.clone()))?;
+    let identity = &repr_type.ident;
+    let ty = syn::parse_str::<Type>(&quote! {core::primitive::#identity}.to_string())
+        .map_err(|_e| SMBDeriveError::TypeError(input.clone()))?;
+    let smb_field = SMBField {
+        spannable: input,
+        name: format_ident!("enum_field"),
+        ty,
+        val_type: SMBFieldType::Direct(Direct {
+            start: 0
+        }),
+    };
+    Ok(SMBFieldMapping {
+        fields: vec![smb_field],
+        mapping_type: SMBFieldMappingType::Enum,
+    })
+}
+
+fn map_to_smb_field<'a, T: Iterator<Item=&'a Field>>(fields: T) -> Result<Vec<SMBField<'a, Field>>, SMBDeriveError<Field>> {
     fields.enumerate().map(|(idx, field)| {
         let val_type = get_value_type(field)?;
         let name = if let Some(x) = &field.ident {
@@ -231,20 +215,39 @@ fn map_to_smb_field<'a, T: Iterator<Item=&'a Field>>(fields: T) -> Result<Vec<SM
         };
         Ok(SMBField {
             name,
-            field,
+            spannable: field,
+            ty: field.ty.clone(),
             val_type,
         })
-    }).collect::<Vec<Result<SMBField, SMBDeriveError>>>()
+    }).collect::<Vec<Result<SMBField<Field>, SMBDeriveError<Field>>>>()
         .into_iter()
-        .collect::<Result<Vec<SMBField>, SMBDeriveError>>()
+        .collect::<Result<Vec<SMBField<Field>>, SMBDeriveError<Field>>>()
 }
 
-fn parse_smb_message(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
+fn create_parser_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: Result<SMBFieldMapping<T>, SMBDeriveError<T>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<T>> {
+    let mapping = mapping?;
+    let parser = parse_smb_message(&mapping);
+    let size = smb_byte_size(&mapping);
+
+    Ok(quote! {
+        impl ::smb_core::SMBFromBytes for #name {
+            #[allow(unused_variables, unused_assignments)]
+            fn parse_smb_message(input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
+                #parser
+            }
+            fn smb_byte_size(&self) -> usize {
+                #size
+            }
+        }
+    })
+}
+
+fn parse_smb_message<T: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
     let recurse = vector.iter().map(|f| {
         let name = &f.name;
-        let field = f.field;
-        let ty = &f.field.ty;
+        let field = f.spannable;
+        let ty = &f.ty;
         match &f.val_type {
             SMBFieldType::Direct(direct) => {
                 let start = direct.start;
@@ -286,7 +289,7 @@ fn parse_smb_message(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
                 let count_start = vector.count.start;
                 let count_type = format_ident!("{}", &vector.count.ty);
                 let align = vector.align;
-                let inner_type = &f.field.ty;
+                let inner_type = &f.ty;
 
 
                 quote_spanned! { field.span() =>
@@ -319,12 +322,12 @@ fn parse_smb_message(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
 
     let names = vector.iter().map(|f| {
         let name = &f.name;
-        let field = f.field;
+        let field = f.spannable;
         quote_spanned! {field.span() => #name}
     });
 
     let expanded_stream = match mapping.mapping_type {
-        SMBFieldMappingType::Named => {
+        SMBFieldMappingType::NamedStruct => {
             quote! {
                 #(#recurse)*
                 Ok((remaining, Self {
@@ -332,12 +335,19 @@ fn parse_smb_message(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
                 }))
             }
         },
-        SMBFieldMappingType::Unnamed => {
+        SMBFieldMappingType::UnnamedStruct => {
             quote! {
                 #(#recurse)*
                 Ok((remaining, Self (
                     #(#names,)*
                 )))
+            }
+        },
+        SMBFieldMappingType::Enum => {
+            quote! {
+                #(#recurse)*
+                let value = Self::try_from(#(#names)*).map_err(|_e| ::smb_core::error::SMBError::ParseError("Invalid primitive value".into()))?;
+                Ok((remaining, value))
             }
         },
         SMBFieldMappingType::Unit => {
@@ -353,16 +363,34 @@ fn parse_smb_message(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
     }
 }
 
-fn smb_byte_size(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
+fn smb_byte_size<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
+    let err_stream = |span: &T| quote_spanned! {span.span()=>
+        ::std::compile_error!("Error generating byte size for field")
+    };
     let idents = match mapping.mapping_type {
-        SMBFieldMappingType::Named => mapping.fields.iter().map(|f| (f, f.name.clone())).collect(),
-        SMBFieldMappingType::Unnamed => mapping.fields.iter().enumerate().map(|(idx, f)| (f, format_ident!("{}", idx))).collect(),
+        SMBFieldMappingType::NamedStruct => mapping.fields.iter().map(|f| {
+            let token_stream: proc_macro2::TokenStream = format!("self.{}", f.name.to_string()).parse()
+                .unwrap_or_else(|_e| err_stream(f.spannable));
+            (f, token_stream)
+        }).collect(),
+        SMBFieldMappingType::UnnamedStruct => mapping.fields.iter().enumerate().map(|(idx, f)| {
+            let token_stream: proc_macro2::TokenStream = format!("self.{}", idx).parse()
+                .unwrap_or_else(|_e| err_stream(f.spannable));
+            (f, token_stream)
+        }).collect(),
+        SMBFieldMappingType::Enum => mapping.fields.iter().map(|f| {
+            let ty = &f.ty;
+            let token_stream = quote! {
+                (*self as #ty)
+            };
+            (f, token_stream)
+        }).collect(),
         SMBFieldMappingType::Unit => vec![]
     };
 
-    let size = idents.into_iter().map(|(field, name)| {
-        quote_spanned! {field.field.span() =>
-            ::smb_core::SMBFromBytes::smb_byte_size(&self.#name)
+    let size = idents.into_iter().map(|(field, tokens)| {
+        quote_spanned! {field.spannable.span() =>
+            ::smb_core::SMBFromBytes::smb_byte_size(&#tokens)
         }
     });
 
@@ -371,7 +399,7 @@ fn smb_byte_size(mapping: &SMBFieldMapping) -> proc_macro2::TokenStream {
     }
 }
 
-fn get_value_type(field: &Field) -> Result<SMBFieldType, SMBDeriveError> {
+fn get_value_type(field: &Field) -> Result<SMBFieldType, SMBDeriveError<Field>> {
     if let Ok(buffer) = Buffer::from_field(field) {
         Ok(SMBFieldType::Buffer(buffer))
     } else if let Ok(direct) = Direct::from_field(field) {
@@ -398,21 +426,21 @@ fn parent_value_type(input: &DeriveInput) -> Option<SMBFieldType> {
 }
 
 #[derive(Debug)]
-enum SMBDeriveError {
-    TypeError(Field),
+enum SMBDeriveError<T: Spanned + Debug> {
+    TypeError(T),
     InvalidType,
 }
 
-impl Display for SMBDeriveError {
+impl<T: Spanned + Debug> Display for SMBDeriveError<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TypeError(field) => write!(f, "No type annotation for field ${:?} (must be buffer or direct)", field.ident),
+            Self::TypeError(span) => write!(f, "No type annotation for spannable ${:?} (must be buffer or direct)", span),
             Self::InvalidType => write!(f, "Unsupported or invalid type"),
         }
     }
 }
 
-impl std::error::Error for SMBDeriveError {}
+impl<T: Spanned + Debug> std::error::Error for SMBDeriveError<T> {}
 
 #[proc_macro_derive(SMBToBytes)]
 pub fn smb_to_bytes(_input: TokenStream) -> TokenStream {

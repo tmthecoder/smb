@@ -1,5 +1,5 @@
 use darling::{FromDeriveInput, FromField, FromMeta};
-use syn::{DeriveInput, Meta, NestedMeta, Type};
+use syn::{Attribute, DeriveInput, Meta, NestedMeta, Type};
 
 #[derive(Debug, FromDeriveInput, FromField, Default, PartialEq, Eq)]
 #[darling(attributes(direct))]
@@ -56,7 +56,13 @@ pub struct Skip {
 
 impl FromDeriveInput for Repr {
     fn from_derive_input(input: &DeriveInput) -> darling::Result<Self> {
-        for attr in input.attrs.iter() {
+        Self::from_attributes(&input.attrs)
+    }
+}
+
+impl Repr {
+    pub fn from_attributes(attrs: &[Attribute]) -> darling::Result<Self> {
+        for attr in attrs.iter() {
             if let Ok(Meta::List(l)) = attr.parse_meta() {
                 if let Some(ident) = l.path.get_ident() {
                     if ident == "repr" && l.nested.len() == 1 {
