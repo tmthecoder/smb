@@ -284,7 +284,6 @@ fn parse_smb_message<T: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T>) 
                     let length = length - (#length_subtract as #length_type);
                     #offset_block
                     let offset = offset - (#offset_subtract as #offset_type);
-                    println!("{:?}, {:?}", offset, length);
                     let buf_end = offset as usize + length as usize;
                     let #name = input[(offset as usize)..].to_vec();
                     let remaining = &input[buf_end..];
