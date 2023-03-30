@@ -52,6 +52,34 @@ impl SMBFromBytes for String {
     }
 }
 
+pub trait SMBVecFromBytes {
+    fn parse_smb_message_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self, SMBError> where Self: Sized;
+}
+
+impl<T: SMBFromBytes> SMBVecFromBytes for Vec<T> {
+    fn parse_smb_message_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        let mut remaining = input;
+        let mut done_cnt = 0;
+        let mut msg_vec = Vec::<T>::new();
+        while done_cnt < count {
+            let (r, val) = T::parse_smb_message(remaining)?;
+            msg_vec.push(val);
+            remaining = r;
+            done_cnt += 1;
+        }
+        Ok((remaining, msg_vec))
+    }
+}
+
+impl SMBVecFromBytes for String {
+    fn parse_smb_message_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        let (remaining, vec) = <Vec<u16>>::parse_smb_message_vec(input, count / 2)?;
+        let string = String::from_utf16(&vec)
+            .map_err(|_e| SMBError::ParseError("Invalid string"))?;
+        Ok((remaining, string))
+    }
+}
+
 // impl<T> SMBFromBytes for T where T: Into<String> + TryFrom<String> + Clone {
 //     fn smb_byte_size(&self) -> usize {
 //         Into::into(self.clone()).as_bytes().len()
