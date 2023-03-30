@@ -6,19 +6,28 @@ use nom::number::complete::{le_u16, le_u32, le_u64, le_u8};
 use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 
-use crate::byte_helper::u16_to_bytes;
-use crate::protocol::body::{Capabilities, SecurityMode};
+use smb_derive::SMBFromBytes;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub struct SMBSessionSetupRequestBody {
+use crate::byte_helper::u16_to_bytes;
+use crate::protocol::body::Capabilities;
+use crate::protocol::body::session_setup::SessionSetupSecurityMode;
+use crate::util::flags_helper::impl_smb_for_bytes_for_bitflag;
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes)]
+pub struct SMBSessionSetupRequest {
+    #[direct(start = 2)]
     flags: SMBSessionSetupFlags,
-    security_mode: SecurityMode,
+    #[direct(start = 3)]
+    security_mode: SessionSetupSecurityMode,
+    #[direct(start = 4)]
     capabilities: Capabilities,
+    #[direct(start = 16)]
     previous_session_id: u64,
+    #[buffer(offset(start = 12, type = "u16", subtract = 64), length(start = 14, type = "u16"))]
     buffer: Vec<u8>,
 }
 
-impl SMBSessionSetupRequestBody {
+impl SMBSessionSetupRequest {
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (
             _,
@@ -35,7 +44,7 @@ impl SMBSessionSetupRequestBody {
         ) = tuple((
             take(2_usize),
             map(le_u8, SMBSessionSetupFlags::from_bits_truncate),
-            map(le_u8, |b: u8| SecurityMode::from_bits_truncate(b.into())),
+            map(le_u8, SessionSetupSecurityMode::from_bits_truncate),
             map(le_u32, Capabilities::from_bits_truncate),
             take(4_usize),
             map(le_u16, |x| x - 64),
@@ -63,12 +72,12 @@ impl SMBSessionSetupRequestBody {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-pub struct SMBSessionSetupResponseBody {
+pub struct SMBSessionSetupResponse {
     session_flags: SMBSessionFlags,
     buffer: Vec<u8>,
 }
 
-impl SMBSessionSetupResponseBody {
+impl SMBSessionSetupResponse {
     pub fn new(session_flags: SMBSessionFlags, buffer: Vec<u8>) -> Self {
         Self {
             session_flags,
@@ -76,7 +85,7 @@ impl SMBSessionSetupResponseBody {
         }
     }
 
-    pub fn from_request(request: SMBSessionSetupRequestBody, token: Vec<u8>) -> Option<Self> {
+    pub fn from_request(request: SMBSessionSetupRequest, token: Vec<u8>) -> Option<Self> {
         Some(Self {
             session_flags: SMBSessionFlags::empty(),
             buffer: token,
@@ -84,7 +93,7 @@ impl SMBSessionSetupResponseBody {
     }
 }
 
-impl SMBSessionSetupResponseBody {
+impl SMBSessionSetupResponse {
     pub fn as_bytes(&self) -> Vec<u8> {
         let security_offset = 72_u16;
         [
@@ -94,7 +103,7 @@ impl SMBSessionSetupResponseBody {
             &u16_to_bytes(self.buffer.len() as u16),
             &*self.buffer,
         ]
-        .concat()
+            .concat()
     }
 }
 
@@ -114,3 +123,4 @@ bitflags! {
     }
 }
 
+impl_smb_for_bytes_for_bitflag! {SMBSessionSetupFlags SMBSessionFlags}

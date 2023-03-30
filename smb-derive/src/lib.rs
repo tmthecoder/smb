@@ -1,16 +1,14 @@
 extern crate proc_macro;
 
-use proc_macro::{token_stream, TokenStream};
+use proc_macro::TokenStream;
 use std::cmp::{min, Ordering};
 use std::fmt::{Debug, Display, Formatter};
-use std::process::id;
 
 use darling::{FromDeriveInput, FromField};
 use proc_macro2::Ident;
 use quote::{format_ident, quote, quote_spanned};
-use syn::{Attribute, Data, DataEnum, DataStruct, DeriveInput, Field, Fields, parse_macro_input, Type};
+use syn::{Attribute, Data, DataStruct, DeriveInput, Field, Fields, parse_macro_input, Type};
 use syn::spanned::Spanned;
-use syn::token::Token;
 
 use crate::attrs::{Buffer, Direct, Repr, Skip, Vector};
 
@@ -54,12 +52,10 @@ impl SMBFieldType {
 
 impl PartialOrd for SMBFieldType {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.is_vector() && !other.is_vector() {
-            Some(Ordering::Greater)
-        } else if !self.is_vector() && other.is_vector() {
-            Some(Ordering::Less)
-        } else {
+        if self.weight_of_enum() == other.weight_of_enum() {
             Some(self.find_start_val().cmp(&other.find_start_val()))
+        } else {
+            Some(self.weight_of_enum().cmp(&other.weight_of_enum()))
         }
     }
 }
@@ -91,6 +87,13 @@ impl SMBFieldType {
             Self::Skip(x) => x.start
         }
     }
+
+    fn weight_of_enum(&self) -> usize {
+        match self {
+            Self::Direct(_) | Self::Skip(_) => 0,
+            Self::Buffer(_) | Self::Vector(_) => 1,
+        }
+    }
 }
 
 #[proc_macro_derive(SMBFromBytes, attributes(direct, buffer, vector, skip, byte_tag, string_tag))]
@@ -113,8 +116,8 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
                     SMBDeriveError::InvalidType => invalid_token
                 })
         },
-        Data::Enum(en) => {
-            let mapping = get_enum_field_mapping(en, &input.attrs, &input);
+        Data::Enum(_en) => {
+            let mapping = get_enum_field_mapping(&input.attrs, &input);
             create_parser_impl(mapping, name)
                 .unwrap_or_else(|_e| quote_spanned! {input.span()=>
                     ::std::compile_error!("Invalid enum for SMB message parsing")
@@ -185,7 +188,7 @@ fn get_struct_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBF
     })
 }
 
-fn get_enum_field_mapping<'a>(enum_type: &DataEnum, enum_attributes: &[Attribute], input: &'a DeriveInput) -> Result<SMBFieldMapping<'a, DeriveInput>, SMBDeriveError<DeriveInput>> {
+fn get_enum_field_mapping<'a>(enum_attributes: &[Attribute], input: &'a DeriveInput) -> Result<SMBFieldMapping<'a, DeriveInput>, SMBDeriveError<DeriveInput>> {
     let repr_type = Repr::from_attributes(enum_attributes)
         .map_err(|_e| SMBDeriveError::TypeError(input.clone()))?;
     let identity = &repr_type.ident;
@@ -252,14 +255,14 @@ fn parse_smb_message<T: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T>) 
             SMBFieldType::Direct(direct) => {
                 let start = direct.start;
                 quote_spanned! { field.span() =>
-                    let (remaining, #name) = <#ty>::parse_smb_message(&remaining[(#start - current_pos)..])?;
+                    let (remaining, #name) = <#ty>::parse_smb_message(&input[#start..])?;
                     current_pos = #name.smb_byte_size() + #start;
                 }
             },
             SMBFieldType::Buffer(buffer) => {
                 let offset_start = buffer.offset.start;
                 let offset_type = format_ident!("{}", &buffer.offset.ty);
-
+                let offset_subtract = buffer.offset.subtract;
                 let offset_block = if &buffer.offset.ty != "direct" {
                     quote! {
                         let (remaining, offset) = <#offset_type>::parse_smb_message(&input[#offset_start..])?;
@@ -273,13 +276,15 @@ fn parse_smb_message<T: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T>) 
 
                 let length_start = buffer.length.start;
                 let length_type = format_ident!("{}", &buffer.length.ty);
+                let length_subtract = buffer.length.subtract;
 
                 quote_spanned! { field.span() =>
-                    // let (remaining, offset) = <#offset_type>::parse_smb_message(&remaining[(#offset_start - current_pos)..])?;
-                    // current_pos = offset.smb_byte_size() + #offset_start;
                     let (remaining, length) = <#length_type>::parse_smb_message(&input[#length_start..])?;
                     current_pos = length.smb_byte_size() + #length_start;
+                    let length = length - (#length_subtract as #length_type);
                     #offset_block
+                    let offset = offset - (#offset_subtract as #offset_type);
+                    println!("{:?}, {:?}", offset, length);
                     let buf_end = offset as usize + length as usize;
                     let #name = input[(offset as usize)..].to_vec();
                     let remaining = &input[buf_end..];

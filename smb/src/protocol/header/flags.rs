@@ -1,9 +1,6 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBFromBytes, SMBResult};
-use smb_core::error::SMBError;
-
 use crate::util::flags_helper::impl_smb_for_bytes_for_bitflag;
 
 bitflags! {

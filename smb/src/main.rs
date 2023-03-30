@@ -2,9 +2,10 @@ use nom::error::ErrorKind;
 
 use smb_core::error::SMBError;
 use smb_reader::protocol::body::{
-    Capabilities, FileTime, SecurityMode, SMBBody, SMBDialect, SMBSessionSetupResponse,
+    Capabilities, FileTime, SMBBody, SMBDialect,
 };
-use smb_reader::protocol::body::negotiate::SMBNegotiateResponse;
+use smb_reader::protocol::body::negotiate::{NegotiateSecurityMode, SMBNegotiateResponse};
+use smb_reader::protocol::body::session_setup::SMBSessionSetupResponse;
 use smb_reader::protocol::header::{SMBCommandCode, SMBFlags, SMBSyncHeader};
 use smb_reader::protocol::message::SMBMessage;
 use smb_reader::SMBListener;
@@ -26,7 +27,7 @@ fn main() -> anyhow::Result<()> {
             match message.header.command {
                 SMBCommandCode::LegacyNegotiate => {
                     let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::new(
-                        SecurityMode::empty(),
+                        NegotiateSecurityMode::empty(),
                         SMBDialect::V2_X_X,
                         Capabilities::empty(),
                         100,

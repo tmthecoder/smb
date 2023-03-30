@@ -11,7 +11,7 @@ use smb_core::SMBFromBytes;
 
 use crate::protocol::body::Body;
 use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
-use crate::protocol::body::session_setup::{SMBSessionSetupRequestBody, SMBSessionSetupResponseBody};
+use crate::protocol::body::session_setup::{SMBSessionSetupRequest, SMBSessionSetupResponse};
 use crate::protocol::header::LegacySMBCommandCode;
 use crate::protocol::header::LegacySMBHeader;
 use crate::protocol::header::SMBCommandCode;
@@ -22,9 +22,9 @@ pub enum SMBBody {
     None,
     NegotiateRequest(SMBNegotiateRequest),
     NegotiateResponse(SMBNegotiateResponse),
-    SessionSetupRequest(SMBSessionSetupRequestBody),
-    SessionSetupResponse(SMBSessionSetupResponseBody),
-    LegacyCommand(LegacySMBBody)
+    SessionSetupRequest(SMBSessionSetupRequest),
+    SessionSetupResponse(SMBSessionSetupResponse),
+    LegacyCommand(LegacySMBBody),
 }
 
 impl Body<SMBSyncHeader> for SMBBody {
@@ -38,7 +38,9 @@ impl Body<SMBSyncHeader> for SMBBody {
                 Ok((remaining, SMBBody::NegotiateRequest(body)))
             },
             SMBCommandCode::SessionSetup => {
-                let (remaining, body) = SMBSessionSetupRequestBody::parse(bytes)?;
+                let (remaining, body) = SMBSessionSetupRequest::parse(bytes)?;
+                println!("Actu: {:?} {:?}", remaining, body);
+                println!("Test: {:?}", SMBSessionSetupRequest::parse_smb_message(bytes).unwrap());
                 Ok((remaining, SMBBody::SessionSetupRequest(body)))
             }
             _ => Err(nom::Err::Error(nom::error::Error::new(bytes, ErrorKind::Fail))),

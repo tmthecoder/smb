@@ -1,9 +1,7 @@
 use std::marker::PhantomData;
-use std::ops::Neg;
 
 use bitflags::bitflags;
 use nom::bytes::complete::take;
-use nom::character::complete::u16;
 use nom::combinator::{map, map_res};
 use nom::Err::Error;
 use nom::error::ErrorKind;
@@ -115,46 +113,46 @@ impl SMBFromBytes for NegotiateContext {
     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
         if input.len() < 4 { return Err(SMBError::ParseError("Input too small".into())) }
         let (remaining, ctx_type) = u16::parse_smb_message(input)?;
-        let (_, ctx_len) = u16::parse_smb_message(&remaining)?;
+        let (_, ctx_len) = u16::parse_smb_message(remaining)?;
 
         match ctx_type {
-            0x01 => ctx_parse_smb_message_enumify!(
+            PRE_AUTH_INTEGRITY_CAPABILITIES_TAG => ctx_parse_smb_message_enumify!(
                 Self::PreAuthIntegrityCapabilities,
                 PreAuthIntegrityCapabilities::parse_smb_message,
                 remaining,
                 ctx_len
             ),
-            0x02 => ctx_parse_smb_message_enumify!(
+            ENCRYPTION_CAPABILITIES_TAG => ctx_parse_smb_message_enumify!(
                 Self::EncryptionCapabilities,
                 EncryptionCapabilities::parse_smb_message,
                 remaining,
                 ctx_len
             ),
-            0x03 => ctx_parse_smb_message_enumify!(
+            COMPRESSION_CAPABILITIES_TAG => ctx_parse_smb_message_enumify!(
                 Self::CompressionCapabilities,
                 CompressionCapabilities::parse_smb_message,
                 remaining,
                 ctx_len
             ),
-            0x05 => ctx_parse_smb_message_enumify!(
+            NETNAME_NEGOTIATE_CONTEXT_ID_TAG => ctx_parse_smb_message_enumify!(
                 Self::NetnameNegotiateContextID,
                 NetnameNegotiateContextID::parse_smb_message,
                 remaining,
                 ctx_len
             ),
-            0x06 => ctx_parse_smb_message_enumify!(
+            TRANSPORT_CAPABILITIES_TAG => ctx_parse_smb_message_enumify!(
                 Self::TransportCapabilities,
                 TransportCapabilities::parse_smb_message,
                 remaining,
                 ctx_len
             ),
-            0x07 => ctx_parse_smb_message_enumify!(
+            RDMA_TRANSFORM_CAPABILITIES_TAG => ctx_parse_smb_message_enumify!(
                 Self::RDMATransformCapabilities,
                 RDMATransformCapabilities::parse_smb_message,
                 remaining,
                 ctx_len
             ),
-            0x08 => ctx_parse_smb_message_enumify!(
+            SIGNING_CAPABILITIES_TAG => ctx_parse_smb_message_enumify!(
                 Self::SigningCapabilities,
                 SigningCapabilities::parse_smb_message,
                 remaining,

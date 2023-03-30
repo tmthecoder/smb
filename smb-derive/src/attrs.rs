@@ -1,5 +1,5 @@
 use darling::{FromDeriveInput, FromField, FromMeta};
-use syn::{Attribute, DeriveInput, Meta, NestedMeta, Type};
+use syn::{Attribute, DeriveInput, Meta, NestedMeta};
 
 #[derive(Debug, FromDeriveInput, FromField, Default, PartialEq, Eq)]
 #[darling(attributes(direct))]
@@ -12,6 +12,8 @@ pub struct DirectInner {
     pub start: usize,
     #[darling(rename = "type")]
     pub ty: String,
+    #[darling(default)]
+    pub subtract: usize,
 }
 
 #[derive(Debug, FromDeriveInput, FromField, PartialEq, Eq)]

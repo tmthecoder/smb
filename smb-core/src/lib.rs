@@ -52,6 +52,20 @@ impl SMBFromBytes for String {
     }
 }
 
+// impl<T> SMBFromBytes for T where T: Into<String> + TryFrom<String> + Clone {
+//     fn smb_byte_size(&self) -> usize {
+//         Into::into(self.clone()).as_bytes().len()
+//     }
+//
+//     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+//         let string = String::from_utf8(input.into())
+//             .map_err(|_e| SMBError::ParseError("Invalid slice".into()))?;
+//         let value = T::try_from(string)
+//             .map_err(|_e| SMBError::ParseError("Invalid string".into()));
+//         Ok((&input[string.len()..], ))
+//     }
+// }
+
 impl SMBFromBytes for Uuid {
     fn smb_byte_size(&self) -> usize {
         16

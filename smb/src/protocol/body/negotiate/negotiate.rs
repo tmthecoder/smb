@@ -12,13 +12,13 @@ use uuid::Uuid;
 use smb_derive::SMBFromBytes;
 
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
-use crate::protocol::body::{Capabilities, FileTime, SecurityMode, SMBDialect};
-use crate::protocol::body::negotiate::NegotiateContext;
+use crate::protocol::body::{Capabilities, FileTime, SMBDialect};
+use crate::protocol::body::negotiate::{NegotiateContext, NegotiateSecurityMode};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes)]
 pub struct SMBNegotiateRequest {
     #[direct(start = 4)]
-    security_mode: SecurityMode,
+    security_mode: NegotiateSecurityMode,
     #[direct(start = 8)]
     capabilities: Capabilities,
     #[direct(start = 12)]
@@ -37,8 +37,8 @@ impl SMBNegotiateRequest {
             tuple((
                 map(le_u16, |x| x == 36),
                 le_u16,
-                map(le_u8, |x| SecurityMode::from_bits_truncate(x as u16)),
-                take(3_usize),
+                map(le_u16, NegotiateSecurityMode::from_bits_truncate),
+                take(2_usize),
                 map(le_u32, Capabilities::from_bits_truncate),
                 map_res(take(16_usize), Uuid::from_slice),
             ))(bytes)?;
@@ -77,7 +77,7 @@ impl SMBNegotiateRequest {
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct SMBNegotiateResponseBody {
-    security_mode: SecurityMode,
+    security_mode: NegotiateSecurityMode,
     dialect: SMBDialect,
     guid: Uuid,
     capabilities: Capabilities,
@@ -92,7 +92,7 @@ pub struct SMBNegotiateResponseBody {
 
 impl SMBNegotiateResponseBody {
     pub fn new(
-        security_mode: SecurityMode,
+        security_mode: NegotiateSecurityMode,
         dialect: SMBDialect,
         capabilities: Capabilities,
         max_transact_size: u32,
@@ -127,7 +127,7 @@ impl SMBNegotiateResponseBody {
             }
         }
         Some(Self {
-            security_mode: request.security_mode | SecurityMode::NEGOTIATE_SIGNING_REQUIRED,
+            security_mode: request.security_mode | NegotiateSecurityMode::NEGOTIATE_SIGNING_REQUIRED,
             dialect: *dialects.last()?,
             guid: Uuid::new_v4(),
             capabilities: request.capabilities,
@@ -171,7 +171,7 @@ impl SMBNegotiateResponseBody {
             &u16_to_bytes(self.dialect as u16),
             &u16_to_bytes(self.negotiate_contexts.len() as u16),
             self.guid.as_bytes(),
-            &u32_to_bytes(self.capabilities.bits()),
+            &u32_to_bytes(self.capabilities.bits() as u32),
             &u32_to_bytes(self.max_transact_size),
             &u32_to_bytes(self.max_read_size),
             &u32_to_bytes(self.max_write_size),
