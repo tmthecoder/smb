@@ -11,9 +11,9 @@ use crate::byte_helper::{u16_to_bytes, u64_to_bytes};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes)]
 pub struct SMBExtra {
-    #[direct(start = 0)]
+    #[smb_direct(start = 0)]
     pid_high: u16,
-    #[direct(start = 2)]
+    #[smb_direct(start = 2)]
     signature: u64,
 }
 

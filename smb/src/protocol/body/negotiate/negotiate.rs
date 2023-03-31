@@ -17,17 +17,17 @@ use crate::protocol::body::negotiate::{NegotiateContext, NegotiateSecurityMode};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes)]
 pub struct SMBNegotiateRequest {
-    #[direct(start = 4)]
+    #[smb_direct(start = 4)]
     security_mode: NegotiateSecurityMode,
-    #[direct(start = 8)]
+    #[smb_direct(start = 8)]
     capabilities: Capabilities,
-    #[direct(start = 12)]
+    #[smb_direct(start = 12)]
     client_uuid: Uuid,
-    #[skip(start = 28, length = 8)]
+    #[smb_skip(start = 28, length = 8)]
     reserved: PhantomData<Vec<u8>>,
-    #[vector(order = 1, count(start = 2, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 2, type = "u16"))]
     dialects: Vec<SMBDialect>,
-    #[vector(order = 2, align = 8, count(start = 32, type = "u16"))]
+    #[smb_vector(order = 2, align = 8, count(start = 32, type = "u16"))]
     negotiate_contexts: Vec<NegotiateContext>,
 }
 

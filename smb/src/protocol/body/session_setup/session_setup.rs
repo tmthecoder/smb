@@ -15,15 +15,15 @@ use crate::util::flags_helper::impl_smb_for_bytes_for_bitflag;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes)]
 pub struct SMBSessionSetupRequest {
-    #[direct(start = 2)]
+    #[smb_direct(start = 2)]
     flags: SMBSessionSetupFlags,
-    #[direct(start = 3)]
+    #[smb_direct(start = 3)]
     security_mode: SessionSetupSecurityMode,
-    #[direct(start = 4)]
+    #[smb_direct(start = 4)]
     capabilities: Capabilities,
-    #[direct(start = 16)]
+    #[smb_direct(start = 16)]
     previous_session_id: u64,
-    #[buffer(offset(start = 12, type = "u16", subtract = 64), length(start = 14, type = "u16"))]
+    #[smb_buffer(offset(start = 12, type = "u16", subtract = 64), length(start = 14, type = "u16"))]
     buffer: Vec<u8>,
 }
 

@@ -5,7 +5,7 @@ use syn::{Attribute, DeriveInput, Meta, NestedMeta, Path, Type, TypePath};
 use syn::spanned::Spanned;
 
 #[derive(Debug, FromDeriveInput, FromField, Default, PartialEq, Eq)]
-#[darling(attributes(direct))]
+#[darling(attributes(smb_direct))]
 pub struct Direct {
     pub start: usize,
 }
@@ -60,7 +60,7 @@ impl DirectInner {
 }
 
 #[derive(Debug, FromDeriveInput, FromField, PartialEq, Eq)]
-#[darling(attributes(buffer))]
+#[darling(attributes(smb_buffer))]
 pub struct Buffer {
     pub offset: DirectInner,
     pub length: DirectInner,
@@ -82,7 +82,7 @@ impl Buffer {
 }
 
 #[derive(Debug, FromDeriveInput, FromField, PartialEq, Eq)]
-#[darling(attributes(vector))]
+#[darling(attributes(smb_vector))]
 pub struct Vector {
     pub count: DirectInner,
     pub order: usize,
@@ -107,13 +107,13 @@ impl Vector {
 }
 
 #[derive(Debug, FromDeriveInput, FromField, Default)]
-#[darling(attributes(byte_tag))]
+#[darling(attributes(smb_byte_tag))]
 pub struct ByteTag {
     pub value: u8,
 }
 
 #[derive(FromDeriveInput, FromField, Default, Debug)]
-#[darling(attributes(string_tag))]
+#[darling(attributes(smb_string_tag))]
 pub struct StringTag {
     pub value: String,
 }
@@ -124,7 +124,7 @@ pub struct Repr {
 }
 
 #[derive(Debug, FromDeriveInput, FromField, PartialEq, Eq)]
-#[darling(attributes(skip))]
+#[darling(attributes(smb_skip))]
 pub struct Skip {
     pub start: usize,
     pub length: usize,

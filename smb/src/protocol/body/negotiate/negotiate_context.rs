@@ -285,11 +285,11 @@ impl NegotiateContext {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
 pub struct PreAuthIntegrityCapabilities {
-    #[skip(start = 0, length = 10)]
+    #[smb_skip(start = 0, length = 10)]
     reserved: PhantomData<Vec<u8>>,
-    #[vector(order = 1, count(start = 6, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 6, type = "u16"))]
     pub(crate) hash_algorithms: Vec<HashAlgorithm>,
-    #[vector(order = 2, count(start = 8, type = "u16"))]
+    #[smb_vector(order = 2, count(start = 8, type = "u16"))]
     pub(crate) salt: Vec<u8>,
 }
 
@@ -334,9 +334,9 @@ impl PreAuthIntegrityCapabilities {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
 pub struct EncryptionCapabilities {
-    #[skip(start = 0, length = 8)]
+    #[smb_skip(start = 0, length = 8)]
     reserved: PhantomData<Vec<u8>>,
-    #[vector(order = 1, count(start = 6, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 6, type = "u16"))]
     pub(crate) ciphers: Vec<EncryptionCipher>,
 }
 
@@ -377,9 +377,9 @@ impl EncryptionCapabilities {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
 pub struct CompressionCapabilities {
-    #[direct(start = 10)]
+    #[smb_direct(start = 10)]
     pub(crate) flags: CompressionCapabilitiesFlags,
-    #[vector(order = 1, count(start = 6, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 6, type = "u16"))]
     pub(crate) compression_algorithms: Vec<CompressionAlgorithm>,
 }
 
@@ -442,9 +442,9 @@ impl CompressionCapabilities {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
 pub struct NetnameNegotiateContextID {
-    #[skip(start = 0, length = 6)]
+    #[smb_skip(start = 0, length = 6)]
     reserved: PhantomData<Vec<u8>>,
-    #[vector(order = 1, count(start = 0, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 0, type = "u16"))]
     pub(crate) netname: String,
 }
 
@@ -471,7 +471,7 @@ impl NetnameNegotiateContextID {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, SMBFromBytes)]
 pub struct TransportCapabilities {
-    #[direct(start = 0, length = 4)]
+    #[smb_direct(start = 0, length = 4)]
     pub(crate) flags: TransportCapabilitiesFlags,
 }
 
@@ -502,9 +502,9 @@ impl TransportCapabilities {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
 pub struct RDMATransformCapabilities {
-    #[skip(start = 0, length = 14)]
+    #[smb_skip(start = 0, length = 14)]
     reserved: PhantomData<Vec<u8>>,
-    #[vector(order = 1, count(start = 6, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 6, type = "u16"))]
     pub(crate) transform_ids: Vec<RDMATransformID>,
 }
 
@@ -542,9 +542,9 @@ impl RDMATransformCapabilities {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
 pub struct SigningCapabilities {
-    #[skip(start = 0, length = 8)]
+    #[smb_skip(start = 0, length = 8)]
     reserved: PhantomData<Vec<u8>>,
-    #[vector(order = 1, count(start = 6, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 6, type = "u16"))]
     pub(crate) signing_algorithms: Vec<SigningAlgorithm>,
 }
 
