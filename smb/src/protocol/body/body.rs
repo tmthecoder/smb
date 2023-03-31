@@ -1,13 +1,12 @@
 use std::str;
 
 use nom::bytes::complete::{take, take_till};
-use nom::error::ErrorKind;
-use nom::IResult;
 use nom::multi::many1;
 use nom::number::complete::le_u8;
 use serde::{Deserialize, Serialize};
 
-use smb_core::SMBFromBytes;
+use smb_core::{SMBFromBytes, SMBResult};
+use smb_core::error::SMBError;
 
 use crate::protocol::body::Body;
 use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
@@ -28,22 +27,21 @@ pub enum SMBBody {
 }
 
 impl Body<SMBSyncHeader> for SMBBody {
-
-    fn parse_with_cc(bytes: &[u8], command_code: SMBCommandCode) -> IResult<&[u8], Self> {
+    fn parse_with_cc(bytes: &[u8], command_code: SMBCommandCode) -> SMBResult<&[u8], Self, SMBError> {
         match command_code {
             SMBCommandCode::Negotiate => {
-                let (remaining, body) = SMBNegotiateRequest::parse(bytes)?;
-                println!("Test: {:?}", SMBNegotiateRequest::parse_smb_payload(bytes).unwrap());
-                println!("Actu: {:?}", body);
+                let (remaining, body) = SMBNegotiateRequest::parse_smb_payload(bytes)?;
+                // println!("Test: {:?}", SMBNegotiateRequest::parse_smb_payload(bytes).unwrap());
+                // println!("Actu: {:?}", body);
                 Ok((remaining, SMBBody::NegotiateRequest(body)))
             },
             SMBCommandCode::SessionSetup => {
-                let (remaining, body) = SMBSessionSetupRequest::parse(bytes)?;
-                println!("Actu: {:?} {:?}", remaining, body);
-                println!("Test: {:?}", SMBSessionSetupRequest::parse_smb_payload(bytes).unwrap());
+                let (remaining, body) = SMBSessionSetupRequest::parse_smb_payload(bytes)?;
+                // println!("Actu: {:?} {:?}", remaining, body);
+                // println!("Test: {:?}", SMBSessionSetupRequest::parse_smb_payload(bytes).unwrap());
                 Ok((remaining, SMBBody::SessionSetupRequest(body)))
             }
-            _ => Err(nom::Err::Error(nom::error::Error::new(bytes, ErrorKind::Fail))),
+            _ => Err(SMBError::ParseError("Unknown body parse failure")),
         }
     }
 
@@ -67,23 +65,26 @@ pub enum LegacySMBBody {
 }
 
 impl Body<LegacySMBHeader> for LegacySMBBody {
-    fn parse_with_cc(bytes: &[u8], command_code: LegacySMBCommandCode) -> IResult<&[u8], Self> where Self: Sized {
-       match command_code {
-           LegacySMBCommandCode::Negotiate => {
-               let (remaining, cnt) = le_u8(bytes)?;
-               let (_, protocol_vecs) = many1(take_till(|n: u8| n == 0x02))(remaining)?;
-               let mut protocol_strs = Vec::new();
+    fn parse_with_cc(bytes: &[u8], command_code: LegacySMBCommandCode) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        match command_code {
+            LegacySMBCommandCode::Negotiate => {
+                let (remaining, cnt) = le_u8(bytes)
+                    .map_err(|_: nom::Err<nom::error::Error<&[u8]>>| SMBError::ParseError("Invalid count"))?;
+                let (_, protocol_vecs) = many1(take_till(|n: u8| n == 0x02))(remaining)
+                    .map_err(|_: nom::Err<nom::error::Error<&[u8]>>| SMBError::ParseError("No valid payload"))?;
+                let mut protocol_strs = Vec::new();
                 for slice in protocol_vecs {
                     let mut vec = slice.to_vec();
                     vec.retain(|x| *x != 0);
                     protocol_strs.push(String::from_utf8(vec).map_err(
-                        |_| nom::Err::Error(nom::error::Error::new(bytes, ErrorKind::Fail))
+                        |_| SMBError::ParseError("Could not map protocol to string")
                     )?);
                 }
-               let (remaining, _) = take(cnt as usize)(bytes)?;
-               Ok((remaining, LegacySMBBody::Negotiate(protocol_strs)))
-           }
-           _ => Err(nom::Err::Error(nom::error::Error::new(bytes, ErrorKind::Fail))),
+                let (remaining, _) = take(cnt as usize)(bytes)
+                    .map_err(|_: nom::Err<nom::error::Error<&[u8]>>| SMBError::ParseError("Size too small for parse length"))?;
+                Ok((remaining, LegacySMBBody::Negotiate(protocol_strs)))
+            }
+            _ => Err(SMBError::ParseError("Unknown parse error for LegacySMBBody")),
        }
     }
 
