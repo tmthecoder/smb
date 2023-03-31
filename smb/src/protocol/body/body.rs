@@ -33,14 +33,14 @@ impl Body<SMBSyncHeader> for SMBBody {
         match command_code {
             SMBCommandCode::Negotiate => {
                 let (remaining, body) = SMBNegotiateRequest::parse(bytes)?;
-                println!("Test: {:?}", SMBNegotiateRequest::parse_smb_message(bytes).unwrap());
+                println!("Test: {:?}", SMBNegotiateRequest::parse_smb_payload(bytes).unwrap());
                 println!("Actu: {:?}", body);
                 Ok((remaining, SMBBody::NegotiateRequest(body)))
             },
             SMBCommandCode::SessionSetup => {
                 let (remaining, body) = SMBSessionSetupRequest::parse(bytes)?;
                 println!("Actu: {:?} {:?}", remaining, body);
-                println!("Test: {:?}", SMBSessionSetupRequest::parse_smb_message(bytes).unwrap());
+                println!("Test: {:?}", SMBSessionSetupRequest::parse_smb_payload(bytes).unwrap());
                 Ok((remaining, SMBBody::SessionSetupRequest(body)))
             }
             _ => Err(nom::Err::Error(nom::error::Error::new(bytes, ErrorKind::Fail))),

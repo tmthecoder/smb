@@ -14,7 +14,7 @@ impl Direct {
     pub(crate) fn get_smb_message_info<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
         let start = self.start;
         quote_spanned! { spanned.span() =>
-            let (remaining, #name) = <#ty>::parse_smb_message(&input[#start..])?;
+            let (remaining, #name) = <#ty>::parse_smb_payload(&input[#start..])?;
             current_pos = #name.smb_byte_size() + #start;
         }
     }
@@ -41,7 +41,7 @@ impl DirectInner {
                 path: Path::from(Ident::new(ty, spanned.span())),
             });
             let chunk = quote! {
-                let (remaining, #name) = <#ty>::parse_smb_message(&input[#start..])?;
+                let (remaining, #name) = <#ty>::parse_smb_payload(&input[#start..])?;
             };
             (ty, chunk)
         } else {
@@ -100,7 +100,7 @@ impl Vector {
             if #align > 0 && current_pos % #align != 0 {
                 current_pos += 8 - (current_pos % #align);
             }
-            let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytes::parse_smb_message_vec(&input[current_pos..], item_count as usize)?;
+            let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytes::parse_smb_payload_vec(&input[current_pos..], item_count as usize)?;
             current_pos += #name.smb_byte_size();
         }
     }

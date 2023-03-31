@@ -10,7 +10,7 @@ pub type SMBResult<I, O, E> = Result<(I, O), E>;
 
 pub trait SMBFromBytes {
     fn smb_byte_size(&self) -> usize;
-    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized;
+    fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized;
 }
 
 pub trait SMBToBytes {
@@ -22,8 +22,8 @@ impl<T: SMBFromBytes> SMBFromBytes for Vec<T> {
         self.iter().fold(0, |prev, x| prev + x.smb_byte_size())
     }
 
-    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
-        let (remaining, item) = T::parse_smb_message(input)?;
+    fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        let (remaining, item) = T::parse_smb_payload(input)?;
         Ok((remaining, vec![item]))
     }
 }
@@ -33,8 +33,8 @@ impl<T: SMBFromBytes> SMBFromBytes for PhantomData<T> {
         0
     }
 
-    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
-        let (remaining, _) = T::parse_smb_message(input)?;
+    fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        let (remaining, _) = T::parse_smb_payload(input)?;
         Ok((remaining, PhantomData))
     }
 }
@@ -44,8 +44,8 @@ impl SMBFromBytes for String {
         self.as_bytes().len()
     }
 
-    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
-        let (remaining, vec) = <Vec<u8>>::parse_smb_message(input)?;
+    fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        let (remaining, vec) = <Vec<u8>>::parse_smb_payload(input)?;
         let str = String::from_utf8(vec)
             .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
         Ok((remaining, str))
@@ -53,16 +53,16 @@ impl SMBFromBytes for String {
 }
 
 pub trait SMBVecFromBytes {
-    fn parse_smb_message_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self, SMBError> where Self: Sized;
+    fn parse_smb_payload_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self, SMBError> where Self: Sized;
 }
 
 impl<T: SMBFromBytes> SMBVecFromBytes for Vec<T> {
-    fn parse_smb_message_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+    fn parse_smb_payload_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
         let mut remaining = input;
         let mut done_cnt = 0;
         let mut msg_vec = Vec::<T>::new();
         while done_cnt < count {
-            let (r, val) = T::parse_smb_message(remaining)?;
+            let (r, val) = T::parse_smb_payload(remaining)?;
             msg_vec.push(val);
             remaining = r;
             done_cnt += 1;
@@ -72,8 +72,8 @@ impl<T: SMBFromBytes> SMBVecFromBytes for Vec<T> {
 }
 
 impl SMBVecFromBytes for String {
-    fn parse_smb_message_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
-        let (remaining, vec) = <Vec<u16>>::parse_smb_message_vec(input, count / 2)?;
+    fn parse_smb_payload_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+        let (remaining, vec) = <Vec<u16>>::parse_smb_payload_vec(input, count / 2)?;
         let string = String::from_utf16(&vec)
             .map_err(|_e| SMBError::ParseError("Invalid string"))?;
         Ok((remaining, string))
@@ -85,7 +85,7 @@ impl SMBVecFromBytes for String {
 //         Into::into(self.clone()).as_bytes().len()
 //     }
 //
-//     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+//     fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
 //         let string = String::from_utf8(input.into())
 //             .map_err(|_e| SMBError::ParseError("Invalid slice"))?;
 //         let value = T::try_from(string)
@@ -99,7 +99,7 @@ impl SMBFromBytes for Uuid {
         16
     }
 
-    fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+    fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
         let uuid = Uuid::from_slice(&input[0..16])
             .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
         let remaining = &input[uuid.smb_byte_size()..];
@@ -112,7 +112,7 @@ impl SMBFromBytes for Uuid {
 //         self.into().len()
 //     }
 //
-//     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+//     fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
 //         let val = T::from(input);
 //         let remaining = &input[val.smb_byte_size()..];
 //         Ok((remaining, val))
@@ -136,7 +136,7 @@ macro_rules! impl_smb_from_bytes_for_slice {(
                 $N
             }
 
-            fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> {
+            fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> {
                 impl_parse_fixed_slice!($N, input)
             }
         }
@@ -152,7 +152,7 @@ macro_rules! impl_parse_unsigned_type {(
                 std::mem::size_of_val(self)
             }
 
-            fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> {
+            fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> {
                 const T_SIZE: usize = std::mem::size_of::<$t>();
                 let value = impl_parse_fixed_slice!(T_SIZE, input)?;
                 Ok((value.0, <$t>::from_le_bytes(value.1)))

@@ -31,5 +31,5 @@ pub struct SMBSyncHeader {
 
 #[test]
 fn it_works() {
-    SMBSyncHeader::parse_smb_message(&[0]);
+    SMBSyncHeader::parse_smb_payload(&[0]);
 }

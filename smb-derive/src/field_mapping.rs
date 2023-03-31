@@ -126,7 +126,7 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_val_type: 
 }
 
 
-pub(crate) fn parse_smb_message<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
+pub(crate) fn parse_smb_payload<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
     let recurse = vector.iter().map(SMBField::get_smb_message_info);
 

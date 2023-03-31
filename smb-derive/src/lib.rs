@@ -11,7 +11,7 @@ use syn::spanned::Spanned;
 
 use crate::attrs::{Buffer, Direct, Skip, Vector};
 use crate::field::SMBFieldType;
-use crate::field_mapping::{get_enum_field_mapping, get_struct_field_mapping, parse_smb_message, SMBFieldMapping};
+use crate::field_mapping::{get_enum_field_mapping, get_struct_field_mapping, parse_smb_payload, SMBFieldMapping};
 
 mod attrs;
 mod field_mapping;
@@ -53,7 +53,7 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
 
 fn create_parser_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: Result<SMBFieldMapping<T>, SMBDeriveError<T>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<T>> {
     let mapping = mapping?;
-    let parser = parse_smb_message(&mapping);
+    let parser = parse_smb_payload(&mapping);
     let size = smb_byte_size(&mapping);
 
     Ok(quote! {
@@ -62,7 +62,7 @@ fn create_parser_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: Result<SMBFi
                 #size
             }
             #[allow(unused_variables, unused_assignments)]
-            fn parse_smb_message(input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
+            fn parse_smb_payload(input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
                 #parser
             }
         }
