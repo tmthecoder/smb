@@ -71,15 +71,15 @@ fn main() -> anyhow::Result<()> {
                         );
                         let (status, output) = match spnego_init_buffer {
                             SPNEGOToken::Init(init_msg) => {
-                                let mech_token = init_msg.mech_token.ok_or(SMBError::ParseError("Parse failure".into()))?;
+                                let mech_token = init_msg.mech_token.ok_or(SMBError::ParseError("Parse failure"))?;
                                 let ntlm_msg =
-                                    NTLMMessage::parse(&mech_token).map_err(|_e| SMBError::ParseError("Parse failure".into()))?.1;
+                                    NTLMMessage::parse(&mech_token).map_err(|_e| SMBError::ParseError("Parse failure"))?.1;
                                 helper.accept_security_context(&ntlm_msg, &mut ctx)
                             }
                             SPNEGOToken::Response(resp_msg) => {
-                                let response_token = resp_msg.response_token.ok_or(SMBError::ParseError("Parse failure".into()))?;
+                                let response_token = resp_msg.response_token.ok_or(SMBError::ParseError("Parse failure"))?;
                                 let ntlm_msg =
-                                    NTLMMessage::parse(&response_token).map_err(|_e| SMBError::ParseError("Parse failure".into()))?.1;
+                                    NTLMMessage::parse(&response_token).map_err(|_e| SMBError::ParseError("Parse failure"))?.1;
                                 println!("NTLM: {:?}", ntlm_msg);
                                 helper.accept_security_context(&ntlm_msg, &mut ctx)
                             }

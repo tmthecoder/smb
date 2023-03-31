@@ -47,7 +47,7 @@ impl SMBFromBytes for String {
     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
         let (remaining, vec) = <Vec<u8>>::parse_smb_message(input)?;
         let str = String::from_utf8(vec)
-            .map_err(|_e| SMBError::ParseError("Invalid byte slice".into()))?;
+            .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
         Ok((remaining, str))
     }
 }
@@ -87,9 +87,9 @@ impl SMBVecFromBytes for String {
 //
 //     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
 //         let string = String::from_utf8(input.into())
-//             .map_err(|_e| SMBError::ParseError("Invalid slice".into()))?;
+//             .map_err(|_e| SMBError::ParseError("Invalid slice"))?;
 //         let value = T::try_from(string)
-//             .map_err(|_e| SMBError::ParseError("Invalid string".into()));
+//             .map_err(|_e| SMBError::ParseError("Invalid string"));
 //         Ok((&input[string.len()..], ))
 //     }
 // }
@@ -101,7 +101,7 @@ impl SMBFromBytes for Uuid {
 
     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
         let uuid = Uuid::from_slice(&input[0..16])
-            .map_err(|_e| SMBError::ParseError("Invalid byte slice".into()))?;
+            .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
         let remaining = &input[uuid.smb_byte_size()..];
         Ok((remaining, uuid))
     }
@@ -122,7 +122,7 @@ impl SMBFromBytes for Uuid {
 macro_rules! impl_parse_fixed_slice {
     ($size: expr, $input: expr) => {{
         let res = <[u8; $size]>::try_from(&$input[0..$size])
-            .map_err(|_e| SMBError::ParseError("Invalid byte slice".into()))?;
+            .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
         Ok((&$input[$size..], res))
     }}
 }

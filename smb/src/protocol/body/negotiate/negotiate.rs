@@ -4,7 +4,7 @@ use nom::bytes::complete::take;
 use nom::combinator::{map, map_res};
 use nom::IResult;
 use nom::multi::count;
-use nom::number::complete::{le_u16, le_u32, le_u8};
+use nom::number::complete::{le_u16, le_u32};
 use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

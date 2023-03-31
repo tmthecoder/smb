@@ -1,19 +1,17 @@
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use std::cmp::{min, Ordering};
 use std::fmt::{Debug, Display, Formatter};
-use std::ops::Add;
 
 use darling::{FromDeriveInput, FromField};
 use proc_macro2::Ident;
 use quote::{quote, quote_spanned};
-use syn::{Data, DeriveInput, Field, Fields, parse_macro_input, Type};
+use syn::{Data, DeriveInput, Field, parse_macro_input};
 use syn::spanned::Spanned;
 
 use crate::attrs::{Buffer, Direct, Skip, Vector};
 use crate::field::SMBFieldType;
-use crate::field_mapping::{get_enum_field_mapping, get_struct_field_mapping, parse_smb_message, SMBFieldMapping, SMBFieldMappingType};
+use crate::field_mapping::{get_enum_field_mapping, get_struct_field_mapping, parse_smb_message, SMBFieldMapping};
 
 mod attrs;
 mod field_mapping;

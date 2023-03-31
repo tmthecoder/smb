@@ -41,7 +41,7 @@ impl SMBStatus {
        bits::<_, _, nom::error::Error<(&[u8], usize)>, _, _>(tuple((take(4_usize), take(4_usize))))(bytes)
             .and_then(|(_, (_, nibble)): (&[u8], (u8, u8))| {
                 if nibble == 0x0 || nibble == 0x4 || nibble == 0x8 || nibble == 0xC {
-                    let level = NTStatusLevel::try_from(nibble >> 2).map_err(|e| Error(nom::error::Error::new(bytes, ErrorKind::Fail)))?;
+                    let level = NTStatusLevel::try_from(nibble >> 2).map_err(|_e| Error(nom::error::Error::new(bytes, ErrorKind::Fail)))?;
                     let (remaining, facility) = map(nom::bytes::complete::take(2_usize), |s: &[u8]| [s[0] << 4, s[1]])(bytes)?;
                     let (remaining, error_code) = le_u16(remaining)?;
                     Ok((remaining, Self::NTStatus(NTStatusCode {
@@ -66,7 +66,7 @@ impl SMBFromBytes for SMBStatus {
     }
 
     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
-        Self::parse(input).map_err(|_e| SMBError::ParseError("Invalid format".into()))
+        Self::parse(input).map_err(|_e| SMBError::ParseError("Invalid format"))
     }
 }
 

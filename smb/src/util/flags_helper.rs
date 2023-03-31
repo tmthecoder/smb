@@ -10,7 +10,7 @@ macro_rules! impl_smb_for_bytes_for_bitflag {(
             fn parse_smb_message(input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
                 const SIZE: usize = std::mem::size_of::<<$t as bitflags::BitFlags>::Bits>();
                 if input.len() < SIZE {
-                    return Err(::smb_core::error::SMBError::ParseError("Byte slice too small".into()));
+                    return Err(::smb_core::error::SMBError::ParseError("Byte slice too small"));
                 }
                 let bits = <<$t as bitflags::BitFlags>::Bits>::from_le_bytes(
                     <[u8; SIZE]>::parse_smb_message(&input[0..SIZE])?.1

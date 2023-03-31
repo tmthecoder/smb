@@ -1,7 +1,7 @@
 use darling::{FromDeriveInput, FromField, FromMeta};
 use proc_macro2::Ident;
-use quote::{format_ident, quote, quote_spanned, ToTokens};
-use syn::{Attribute, DeriveInput, Meta, NestedMeta, parse_str, Path, Type, TypePath};
+use quote::{format_ident, quote, quote_spanned};
+use syn::{Attribute, DeriveInput, Meta, NestedMeta, Path, Type, TypePath};
 use syn::spanned::Spanned;
 
 #[derive(Debug, FromDeriveInput, FromField, Default, PartialEq, Eq)]
@@ -68,24 +68,6 @@ pub struct Buffer {
 
 impl Buffer {
     pub(crate) fn get_smb_message_info<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
-        // let offset_start = self.offset.start;
-        // let offset_type = format_ident!("{}", &self.offset.ty);
-        // let offset_subtract = self.offset.subtract;
-        // let offset_block = if &self.offset.ty != "direct" {
-        //     quote! {
-        //         let (remaining, offset) = <#offset_type>::parse_smb_message(&input[#offset_start..])?;
-        //         current_pos = offset.smb_byte_size() + #offset_start;
-        //     }
-        // } else {
-        //     quote! {
-        //         let offset = current_pos;
-        //     }
-        // };
-        //
-        // let length_start = self.length.start;
-        // let length_type = format_ident!("{}", &self.length.ty);
-        // let length_subtract = self.length.subtract;
-
         let offset = self.offset.get_smb_message_info("offset", spanned);
         let length = self.length.get_smb_message_info("length", spanned);
 
@@ -118,8 +100,7 @@ impl Vector {
             if #align > 0 && current_pos % #align != 0 {
                 current_pos += 8 - (current_pos % #align);
             }
-            let mut remaining = &input[current_pos..];
-            let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytes::parse_smb_message_vec(remaining, item_count as usize)?;
+            let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytes::parse_smb_message_vec(&input[current_pos..], item_count as usize)?;
             current_pos += #name.smb_byte_size();
         }
     }

@@ -1,13 +1,13 @@
 use std::fmt::Debug;
 
 use proc_macro2::Ident;
-use quote::{format_ident, quote, quote_spanned};
+use quote::{format_ident, quote};
 use syn::{Attribute, DataStruct, DeriveInput, Field, Fields, Path, Type, TypePath};
 use syn::spanned::Spanned;
 
-use crate::SMBDeriveError;
 use crate::attrs::{Direct, Repr};
 use crate::field::{SMBField, SMBFieldType};
+use crate::SMBDeriveError;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SMBFieldMapping<'a, T: Spanned + PartialEq + Eq> {
@@ -152,7 +152,7 @@ pub(crate) fn parse_smb_message<T: Spanned + PartialEq + Eq + Debug>(mapping: &S
         SMBFieldMappingType::Enum => {
             quote! {
                 #(#recurse)*
-                let value = Self::try_from(#(#names)*).map_err(|_e| ::smb_core::error::SMBError::ParseError("Invalid primitive value".into()))?;
+                let value = Self::try_from(#(#names)*).map_err(|_e| ::smb_core::error::SMBError::ParseError("Invalid primitive value"))?;
                 Ok((remaining, value))
             }
         }

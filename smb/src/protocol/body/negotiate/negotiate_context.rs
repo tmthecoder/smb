@@ -64,7 +64,7 @@ macro_rules! ctx_parse_smb_message_enumify {
         };
         let remove_size = (6 + $len + padding) as usize;
         if remove_size > $data.len() {
-            return Err(SMBError::ParseError("Invalid padding block".into()));
+            return Err(SMBError::ParseError("Invalid padding block"));
         }
         let remaining = &$data[remove_size..];
         Ok((remaining, $enumType(body)))
@@ -111,7 +111,7 @@ impl SMBFromBytes for NegotiateContext {
     }
 
     fn parse_smb_message(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
-        if input.len() < 4 { return Err(SMBError::ParseError("Input too small".into())) }
+        if input.len() < 4 { return Err(SMBError::ParseError("Input too small")) }
         let (remaining, ctx_type) = u16::parse_smb_message(input)?;
         let (_, ctx_len) = u16::parse_smb_message(remaining)?;
 
@@ -158,7 +158,7 @@ impl SMBFromBytes for NegotiateContext {
                 remaining,
                 ctx_len
             ),
-            _ => Err(SMBError::ParseError("Invalid negotiate context type".into()))
+            _ => Err(SMBError::ParseError("Invalid negotiate context type"))
         }
     }
 }
