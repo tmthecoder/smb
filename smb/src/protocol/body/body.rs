@@ -27,7 +27,7 @@ pub enum SMBBody {
 }
 
 impl Body<SMBSyncHeader> for SMBBody {
-    fn parse_with_cc(bytes: &[u8], command_code: SMBCommandCode) -> SMBResult<&[u8], Self, SMBError> {
+    fn parse_with_cc(bytes: &[u8], command_code: SMBCommandCode) -> SMBResult<&[u8], Self> {
         match command_code {
             SMBCommandCode::Negotiate => {
                 let (remaining, body) = SMBNegotiateRequest::parse_smb_payload(bytes)?;
@@ -65,7 +65,7 @@ pub enum LegacySMBBody {
 }
 
 impl Body<LegacySMBHeader> for LegacySMBBody {
-    fn parse_with_cc(bytes: &[u8], command_code: LegacySMBCommandCode) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+    fn parse_with_cc(bytes: &[u8], command_code: LegacySMBCommandCode) -> SMBResult<&[u8], Self> where Self: Sized {
         match command_code {
             LegacySMBCommandCode::Negotiate => {
                 let (remaining, cnt) = le_u8(bytes)

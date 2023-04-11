@@ -110,7 +110,7 @@ impl SMBFromBytes for NegotiateContext {
         }
     }
 
-    fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+    fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
         if input.len() < 4 { return Err(SMBError::ParseError("Input too small")) }
         let (remaining, ctx_type) = u16::parse_smb_payload(input)?;
         let (_, ctx_len) = u16::parse_smb_payload(remaining)?;

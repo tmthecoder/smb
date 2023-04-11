@@ -22,6 +22,6 @@ pub type FileTime = filetime::FileTime;
 pub type SMBDialect = dialect::SMBDialect;
 
 pub trait Body<S: Header> {
-    fn parse_with_cc(bytes: &[u8], command_code: S::CommandCode) -> SMBResult<&[u8], Self, SMBError> where Self: Sized;
+    fn parse_with_cc(bytes: &[u8], command_code: S::CommandCode) -> SMBResult<&[u8], Self> where Self: Sized;
     fn as_bytes(&self) -> Vec<u8>;
 }

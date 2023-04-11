@@ -65,7 +65,7 @@ impl SMBFromBytes for SMBStatus {
         std::mem::size_of::<u32>()
     }
 
-    fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized {
+    fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
         Self::parse(input).map_err(|_e| SMBError::ParseError("Invalid format"))
     }
 }

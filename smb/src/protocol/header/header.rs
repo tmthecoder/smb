@@ -16,7 +16,6 @@ pub struct SMBSyncHeader {
     pub command: SMBCommandCode,
     #[smb_direct(start = 8)]
     channel_sequence: u32,
-    // status in smb2
     #[smb_direct(start = 16)]
     flags: SMBFlags,
     #[smb_direct(start = 20)]

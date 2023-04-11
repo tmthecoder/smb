@@ -31,7 +31,7 @@ impl<S: Header, T: Body<S>> SMBMessage<S, T> {
 
 pub trait Message {
     fn as_bytes(&self) -> Vec<u8>;
-    fn parse(bytes: &[u8]) -> SMBResult<&[u8], Self, SMBError> where Self: Sized;
+    fn parse(bytes: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized;
 }
 
 impl SMBMessage<SMBSyncHeader, SMBBody> {
@@ -50,7 +50,7 @@ impl<S: Header + Debug + SMBFromBytes, T: Body<S>> Message for SMBMessage<S, T> 
         [[0, 0].to_vec(), len_bytes.to_vec(), self.header.as_bytes(), self.body.as_bytes()].concat()
     }
 
-    fn parse(bytes: &[u8]) -> SMBResult<&[u8], Self, SMBError> {
+    fn parse(bytes: &[u8]) -> SMBResult<&[u8], Self> {
         let (remaining, header) = S::parse_smb_payload(bytes)?;
         let (remaining, body) = T::parse_with_cc(remaining, header.command_code())?;
         Ok((remaining, Self { header, body }))

@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter};
 pub enum SMBError<'a> {
     ParseError(&'a str),
     CryptoError,
-    PreconditionFailed(String),
+    PreconditionFailed(&'a str),
 }
 
 impl Display for SMBError<'_> {
