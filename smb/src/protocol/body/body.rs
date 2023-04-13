@@ -30,15 +30,15 @@ impl Body<SMBSyncHeader> for SMBBody {
     fn parse_with_cc(bytes: &[u8], command_code: SMBCommandCode) -> SMBResult<&[u8], Self> {
         match command_code {
             SMBCommandCode::Negotiate => {
-                let (remaining, body) = SMBNegotiateRequest::parse_smb_payload(bytes)?;
-                // println!("Test: {:?}", SMBNegotiateRequest::parse_smb_payload(bytes).unwrap());
+                let (remaining, body) = SMBNegotiateRequest::smb_from_bytes(bytes)?;
+                // println!("Test: {:?}", SMBNegotiateRequest::smb_from_bytes(bytes).unwrap());
                 // println!("Actu: {:?}", body);
                 Ok((remaining, SMBBody::NegotiateRequest(body)))
             },
             SMBCommandCode::SessionSetup => {
-                let (remaining, body) = SMBSessionSetupRequest::parse_smb_payload(bytes)?;
+                let (remaining, body) = SMBSessionSetupRequest::smb_from_bytes(bytes)?;
                 // println!("Actu: {:?} {:?}", remaining, body);
-                // println!("Test: {:?}", SMBSessionSetupRequest::parse_smb_payload(bytes).unwrap());
+                // println!("Test: {:?}", SMBSessionSetupRequest::smb_from_bytes(bytes).unwrap());
                 Ok((remaining, SMBBody::SessionSetupRequest(body)))
             }
             _ => Err(SMBError::ParseError("Unknown body parse failure")),

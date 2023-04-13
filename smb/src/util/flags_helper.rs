@@ -14,13 +14,13 @@ macro_rules! impl_smb_from_bytes_for_bitflag {(
 ) => (
     $(
         impl ::smb_core::SMBFromBytes for $t {
-            fn parse_smb_payload(input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
+            fn smb_from_bytes(input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
                 const SIZE: usize = std::mem::size_of::<<$t as bitflags::BitFlags>::Bits>();
                 if input.len() < SIZE {
                     return Err(::smb_core::error::SMBError::ParseError("Byte slice too small"));
                 }
                 let bits = <<$t as bitflags::BitFlags>::Bits>::from_le_bytes(
-                    <[u8; SIZE]>::parse_smb_payload(&input[0..SIZE])?.1
+                    <[u8; SIZE]>::smb_from_bytes(&input[0..SIZE])?.1
                 );
                 let flags = Self::from_bits_truncate(bits);
                 Ok((&input[SIZE..], flags))

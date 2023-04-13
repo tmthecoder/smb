@@ -126,9 +126,9 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_val_type: 
 }
 
 
-pub(crate) fn parse_smb_payload<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
+pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
-    let recurse = vector.iter().map(SMBField::get_smb_message_info);
+    let recurse = vector.iter().map(SMBField::smb_from_bytes);
 
     let names = vector.iter().map(SMBField::get_name);
 
@@ -166,5 +166,17 @@ pub(crate) fn parse_smb_payload<T: Spanned + PartialEq + Eq + Debug>(mapping: &S
         let mut current_pos = 0;
         let remaining = input;
         #expanded_stream
+    }
+}
+
+pub(crate) fn smb_to_bytes<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
+    let vector = &mapping.fields;
+    let recurse = vector.iter().map(SMBField::smb_to_bytes);
+
+    quote! {
+        let mut current_pos = 0;
+        let item = vec![0; ::smb_core::SMBByteSize::smb_byte_size(&self)];
+        #(#recurse)*
+        item
     }
 }

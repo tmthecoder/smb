@@ -27,7 +27,7 @@ pub trait Header {
     fn command_code(&self) -> Self::CommandCode;
 
     fn parse(bytes: &[u8]) -> IResult<&[u8], (Self, Self::CommandCode)> where Self: Sized + SMBFromBytes {
-        let (remaining, message) = Self::parse_smb_payload(bytes)
+        let (remaining, message) = Self::smb_from_bytes(bytes)
             .map_err(|_e| nom::Err::Error(nom::error::ParseError::from_error_kind(bytes, ErrorKind::MapRes)))?;
         let command = message.command_code();
         // .map_err(|_e| );

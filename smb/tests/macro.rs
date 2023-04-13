@@ -1,13 +1,12 @@
 extern crate smb_derive;
 extern crate smb_reader;
 
-use smb_core::SMBFromBytes;
 use smb_derive::SMBFromBytes;
 
 #[repr(C)]
 #[derive(SMBFromBytes)]
-#[byte_tag(value = 0xFE)]
-#[string_tag(value = "SMB")]
+#[smb_byte_tag(value = 0xFE)]
+#[smb_string_tag(value = "SMB")]
 pub struct SMBSyncHeader {
     #[smb_direct(start = 8)]
     pub command: u16,
@@ -23,7 +22,7 @@ pub struct SMBSyncHeader {
     tree_id: u32,
     #[smb_direct(start = 36)]
     session_id: u64,
-    #[smb_buffer(offset(start = 0, type = "direct"), length(start = 0, type = "u16"))]
+    #[smb_buffer(offset(start = 0, type = "direct"), length(start = 0, type = "direct", subtract = - 16))]
     signature: Vec<u8>,
     #[smb_vector(order = 1, align = 8, count(start = 1, type = "u32"))]
     test: Vec<u32>,
@@ -31,5 +30,5 @@ pub struct SMBSyncHeader {
 
 #[test]
 fn it_works() {
-    SMBSyncHeader::parse_smb_payload(&[0]);
+    SMBSyncHeader::smb_from_bytes(&[0]);
 }

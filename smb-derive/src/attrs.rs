@@ -11,11 +11,21 @@ pub struct Direct {
 }
 
 impl Direct {
-    pub(crate) fn get_smb_message_info<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
         let start = self.start;
         quote_spanned! { spanned.span() =>
-            let (remaining, #name) = <#ty>::parse_smb_payload(&input[#start..])?;
+            let (remaining, #name) = <#ty>::smb_from_bytes(&input[#start..])?;
             current_pos = ::smb_core::SMBByteSize::smb_byte_size(&#name) + #start;
+        }
+    }
+
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
+        quote_spanned! { spanned.span()=>
+            let size = ::smb_core::SMBByteSize::smb_byte_size(&name);
+            let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&self.#name);
+            for i in start..(start + size) {
+                item[i] = bytes[i - start];
+            }
         }
     }
 }
@@ -30,31 +40,65 @@ pub struct DirectInner {
 }
 
 impl DirectInner {
-    fn get_smb_message_info<T: Spanned>(&self, name: &str, spanned: &T) -> proc_macro2::TokenStream {
-        let start = self.start;
-        let subtract = self.subtract;
-        let name = format_ident!("{}", name);
+    fn get_type<T: Spanned>(&self, spanned: &T) -> Type {
         let ty = &self.ty;
-        let (ty, chunk) = if self.ty != "direct" {
+        if self.ty != "direct" {
             let ty = Type::Path(TypePath {
                 qself: None,
                 path: Path::from(Ident::new(ty, spanned.span())),
             });
-            let chunk = quote! {
-                let (remaining, #name) = <#ty>::parse_smb_payload(&input[#start..])?;
-            };
-            (ty, chunk)
+            ty
         } else {
-            let chunk = quote! { let #name = current_pos };
             let ty = Type::Path(TypePath {
                 qself: None,
                 path: Path::from(Ident::new("usize", spanned.span())),
             });
-            (ty, chunk)
+            ty
+        }
+    }
+
+    fn smb_from_bytes<T: Spanned>(&self, name: &str, spanned: &T) -> proc_macro2::TokenStream {
+        let start = self.start;
+        let subtract = self.subtract;
+        let name = format_ident!("{}", name);
+        let ty = self.get_type(spanned);
+        let chunk = if self.ty != "direct" {
+            quote! {
+                let (remaining, #name) = <#ty>::smb_from_bytes(&input[#start..])?;
+            }
+        } else {
+            quote! { let #name = current_pos }
         };
         quote_spanned! {spanned.span()=>
             #chunk
             let #name = #name - #subtract as #ty;
+        }
+    }
+
+    fn smb_to_bytes<T: Spanned>(&self, name: &str, spanned: &T) -> proc_macro2::TokenStream {
+        let start = self.start;
+        let subtract = self.subtract;
+        let name = format_ident!("{}", name);
+        let ty = &self.get_type(spanned);
+        let name_start = format_ident!("{}_start", name);
+        let name_len = format_ident!("{}_len", name);
+        let name_add = format_ident!("{}_add", name);
+        let name_bytes = format_ident!("{}_bytes", name);
+        let end = if self.ty == "direct" {
+            quote! {0}
+        } else {
+            quote! { ::smb_core::SMBByteSize::smb_byte_size(&(0 as #ty)) }
+        };
+
+        quote_spanned! {spanned.span()=>
+            let #name_start = #start;
+            let #name_add = #subtract;
+            let #name_len = #end;
+            let #name = #name_add + current_pos;
+            let #name_bytes = ::smb_core::SMBToBytes::smb_to_bytes(#name as #ty)
+            for i in #name_start..(#name_start + #name_len) {
+                item[i] = #name_bytes[i - #name_start];
+            }
         }
     }
 }
@@ -67,16 +111,33 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub(crate) fn get_smb_message_info<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
-        let offset = self.offset.get_smb_message_info("offset", spanned);
-        let length = self.length.get_smb_message_info("length", spanned);
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
+        let offset = self.offset.smb_from_bytes("offset", spanned);
+        let length = self.length.smb_from_bytes("length", spanned);
 
         quote_spanned! { spanned.span() =>
             #offset
             #length
             let buf_end = offset as usize + length as usize;
-            let #name = input[(offset as usize)..].to_vec();
+            let #name = input[(offset as usize)..(offset as usize + length as usize)].to_vec();
             let remaining = &input[buf_end..];
+        }
+    }
+
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
+        let offset_info = self.offset.smb_to_bytes("offset", spanned);
+        let length_info = self.length.smb_to_bytes("length", spanned);
+
+
+        quote_spanned! {spanned.span()=>
+            #offset_info
+            #length_info
+
+            let length = ::smb_core::SMBByteSize::smb_byte_size(&self.#name);
+            let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&self.#name);
+            for i in current_pos..(current_pos + length) {
+                item[i] = bytes[i - current_pos];
+            }
         }
     }
 }
@@ -91,8 +152,8 @@ pub struct Vector {
 }
 
 impl Vector {
-    pub(crate) fn get_smb_message_info<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
-        let count = self.count.get_smb_message_info("item_count", spanned);
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
+        let count = self.count.smb_from_bytes("item_count", spanned);
         let align = self.align;
 
         quote_spanned! { spanned.span() =>
@@ -100,8 +161,27 @@ impl Vector {
             if #align > 0 && current_pos % #align != 0 {
                 current_pos += 8 - (current_pos % #align);
             }
-            let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytes::parse_smb_payload_vec(&input[current_pos..], item_count as usize)?;
+            let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytes::smb_from_bytes_vec(&input[current_pos..], item_count as usize)?;
             current_pos += ::smb_core::SMBByteSize::smb_byte_size(&#name);
+        }
+    }
+
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
+        let count_info = self.count.smb_to_bytes("item_count", spanned);
+        let align = self.align;
+
+        quote_spanned! { spanned.span()=>
+            #count_info
+            if #align > 0 && current_pos % #align != 0 {
+                current_pos += 8 - (current_pos % #align);
+            }
+            for entry in &self.#name {
+                let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(&entry);
+                for i in current_pos..(current_pos + item_bytes.len()) {
+                    item[i] = item_bytes[i - current_pos];
+                }
+                current_pos += item_bytes.len();
+            }
         }
     }
 }
@@ -131,7 +211,7 @@ pub struct Skip {
 }
 
 impl Skip {
-    pub(crate) fn get_smb_message_info<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
         let start = self.start;
         let length = self.length;
 
@@ -140,6 +220,13 @@ impl Skip {
             let remaining = &input[current_pos..];
             let #name = ::std::marker::PhantomData;
         }
+    }
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
+        let start = self.start;
+        let length = self.length;
+        quote_spanned! {spanned.span() => {
+            current_pos = #start + #length;
+        }}
     }
 }
 

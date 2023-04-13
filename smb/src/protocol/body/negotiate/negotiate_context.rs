@@ -55,7 +55,7 @@ macro_rules! ctx_parse_enumify {
     }};
 }
 
-macro_rules! ctx_parse_smb_payload_enumify {
+macro_rules! ctx_smb_from_bytes_enumify {
     ($enumType: expr, $bodyType: expr, $data: expr, $len: expr) => {{
         let (_, body) = $bodyType($data)?;
         let padding = if $len % 8 == 0 || (6 + $len) as usize >= $data.len() {
@@ -113,51 +113,51 @@ impl SMBByteSize for NegotiateContext {
 }
 
 impl SMBFromBytes for NegotiateContext {
-    fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
+    fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
         if input.len() < 4 { return Err(SMBError::ParseError("Input too small")) }
-        let (remaining, ctx_type) = u16::parse_smb_payload(input)?;
-        let (_, ctx_len) = u16::parse_smb_payload(remaining)?;
+        let (remaining, ctx_type) = u16::smb_from_bytes(input)?;
+        let (_, ctx_len) = u16::smb_from_bytes(remaining)?;
 
         match ctx_type {
-            PRE_AUTH_INTEGRITY_CAPABILITIES_TAG => ctx_parse_smb_payload_enumify!(
+            PRE_AUTH_INTEGRITY_CAPABILITIES_TAG => ctx_smb_from_bytes_enumify!(
                 Self::PreAuthIntegrityCapabilities,
-                PreAuthIntegrityCapabilities::parse_smb_payload,
+                PreAuthIntegrityCapabilities::smb_from_bytes,
                 remaining,
                 ctx_len
             ),
-            ENCRYPTION_CAPABILITIES_TAG => ctx_parse_smb_payload_enumify!(
+            ENCRYPTION_CAPABILITIES_TAG => ctx_smb_from_bytes_enumify!(
                 Self::EncryptionCapabilities,
-                EncryptionCapabilities::parse_smb_payload,
+                EncryptionCapabilities::smb_from_bytes,
                 remaining,
                 ctx_len
             ),
-            COMPRESSION_CAPABILITIES_TAG => ctx_parse_smb_payload_enumify!(
+            COMPRESSION_CAPABILITIES_TAG => ctx_smb_from_bytes_enumify!(
                 Self::CompressionCapabilities,
-                CompressionCapabilities::parse_smb_payload,
+                CompressionCapabilities::smb_from_bytes,
                 remaining,
                 ctx_len
             ),
-            NETNAME_NEGOTIATE_CONTEXT_ID_TAG => ctx_parse_smb_payload_enumify!(
+            NETNAME_NEGOTIATE_CONTEXT_ID_TAG => ctx_smb_from_bytes_enumify!(
                 Self::NetnameNegotiateContextID,
-                NetnameNegotiateContextID::parse_smb_payload,
+                NetnameNegotiateContextID::smb_from_bytes,
                 remaining,
                 ctx_len
             ),
-            TRANSPORT_CAPABILITIES_TAG => ctx_parse_smb_payload_enumify!(
+            TRANSPORT_CAPABILITIES_TAG => ctx_smb_from_bytes_enumify!(
                 Self::TransportCapabilities,
-                TransportCapabilities::parse_smb_payload,
+                TransportCapabilities::smb_from_bytes,
                 remaining,
                 ctx_len
             ),
-            RDMA_TRANSFORM_CAPABILITIES_TAG => ctx_parse_smb_payload_enumify!(
+            RDMA_TRANSFORM_CAPABILITIES_TAG => ctx_smb_from_bytes_enumify!(
                 Self::RDMATransformCapabilities,
-                RDMATransformCapabilities::parse_smb_payload,
+                RDMATransformCapabilities::smb_from_bytes,
                 remaining,
                 ctx_len
             ),
-            SIGNING_CAPABILITIES_TAG => ctx_parse_smb_payload_enumify!(
+            SIGNING_CAPABILITIES_TAG => ctx_smb_from_bytes_enumify!(
                 Self::SigningCapabilities,
-                SigningCapabilities::parse_smb_payload,
+                SigningCapabilities::smb_from_bytes,
                 remaining,
                 ctx_len
             ),

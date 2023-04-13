@@ -51,7 +51,7 @@ impl<S: Header + Debug + SMBFromBytes, T: Body<S>> Message for SMBMessage<S, T> 
     }
 
     fn parse(bytes: &[u8]) -> SMBResult<&[u8], Self> {
-        let (remaining, header) = S::parse_smb_payload(bytes)?;
+        let (remaining, header) = S::smb_from_bytes(bytes)?;
         let (remaining, body) = T::parse_with_cc(remaining, header.command_code())?;
         Ok((remaining, Self { header, body }))
     }

@@ -1,13 +1,14 @@
 use std::cmp::{min, Ordering};
 use std::fmt::Debug;
 
+use darling::FromField;
 use proc_macro2::Ident;
 use quote::{format_ident, quote, quote_spanned};
 use syn::{Field, Type};
 use syn::spanned::Spanned;
 
-use crate::{get_value_type, SMBDeriveError};
 use crate::attrs::{Buffer, Direct, Skip, Vector};
+use crate::SMBDeriveError;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SMBField<'a, T: Spanned> {
@@ -35,11 +36,17 @@ impl<'a, T: Spanned> SMBField<'a, T> {
         }
     }
 
-    pub(crate) fn get_smb_message_info(&self) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_from_bytes(&self) -> proc_macro2::TokenStream {
         let name = &self.name;
         let field = self.spanned;
         let ty = &self.ty;
-        self.val_type.get_smb_message_info(name, field, ty)
+        self.val_type.smb_from_bytes(name, field, ty)
+    }
+
+    pub(crate) fn smb_to_bytes(&self) -> proc_macro2::TokenStream {
+        let name = &self.name;
+        let field = self.spanned;
+        self.val_type.smb_to_bytes(name, field)
     }
 
     pub(crate) fn get_name(&self) -> proc_macro2::TokenStream {
@@ -102,12 +109,20 @@ impl<'a> SMBField<'a, Field> {
 }
 
 impl SMBFieldType {
-    fn get_smb_message_info<T: Spanned>(&self, name: &Ident, field: &T, ty: &Type) -> proc_macro2::TokenStream {
+    fn smb_from_bytes<T: Spanned>(&self, name: &Ident, field: &T, ty: &Type) -> proc_macro2::TokenStream {
         match self {
-            SMBFieldType::Direct(direct) => direct.get_smb_message_info(field, name, ty),
-            SMBFieldType::Buffer(buffer) => buffer.get_smb_message_info(field, name),
-            SMBFieldType::Vector(vector) => vector.get_smb_message_info(field, name, ty),
-            SMBFieldType::Skip(skip) => skip.get_smb_message_info(field, name)
+            SMBFieldType::Direct(direct) => direct.smb_from_bytes(field, name, ty),
+            SMBFieldType::Buffer(buffer) => buffer.smb_from_bytes(field, name),
+            SMBFieldType::Vector(vector) => vector.smb_from_bytes(field, name, ty),
+            SMBFieldType::Skip(skip) => skip.smb_from_bytes(field, name)
+        }
+    }
+    fn smb_to_bytes<T: Spanned>(&self, name: &Ident, field: &T) -> proc_macro2::TokenStream {
+        match self {
+            SMBFieldType::Direct(direct) => direct.smb_to_bytes(field, name),
+            SMBFieldType::Buffer(buffer) => buffer.smb_to_bytes(field, name),
+            SMBFieldType::Vector(vector) => vector.smb_to_bytes(field, name),
+            SMBFieldType::Skip(skip) => skip.smb_to_bytes(field, name),
         }
     }
 }
@@ -155,5 +170,20 @@ impl SMBFieldType {
             Self::Direct(_) | Self::Skip(_) => 0,
             Self::Buffer(_) | Self::Vector(_) => 1,
         }
+    }
+}
+
+
+fn get_value_type(field: &Field) -> Result<SMBFieldType, SMBDeriveError<Field>> {
+    if let Ok(buffer) = Buffer::from_field(field) {
+        Ok(SMBFieldType::Buffer(buffer))
+    } else if let Ok(direct) = Direct::from_field(field) {
+        Ok(SMBFieldType::Direct(direct))
+    } else if let Ok(vector) = Vector::from_field(field) {
+        Ok(SMBFieldType::Vector(vector))
+    } else if let Ok(skip) = Skip::from_field(field) {
+        Ok(SMBFieldType::Skip(skip))
+    } else {
+        Err(SMBDeriveError::TypeError(field.clone()))
     }
 }
