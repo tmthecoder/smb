@@ -15,7 +15,7 @@ impl Direct {
         let start = self.start;
         quote_spanned! { spanned.span() =>
             let (remaining, #name) = <#ty>::parse_smb_payload(&input[#start..])?;
-            current_pos = #name.smb_byte_size() + #start;
+            current_pos = ::smb_core::SMBByteSize::smb_byte_size(&#name) + #start;
         }
     }
 }
@@ -101,7 +101,7 @@ impl Vector {
                 current_pos += 8 - (current_pos % #align);
             }
             let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytes::parse_smb_payload_vec(&input[current_pos..], item_count as usize)?;
-            current_pos += #name.smb_byte_size();
+            current_pos += ::smb_core::SMBByteSize::smb_byte_size(&#name);
         }
     }
 }

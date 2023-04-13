@@ -9,13 +9,13 @@ use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use smb_derive::SMBFromBytes;
+use smb_derive::{SMBByteSize, SMBFromBytes};
 
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
 use crate::protocol::body::{Capabilities, FileTime, SMBDialect};
 use crate::protocol::body::negotiate::{NegotiateContext, NegotiateSecurityMode};
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize)]
 pub struct SMBNegotiateRequest {
     #[smb_direct(start = 4)]
     security_mode: NegotiateSecurityMode,

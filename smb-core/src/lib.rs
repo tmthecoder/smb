@@ -8,47 +8,56 @@ pub mod error;
 
 pub type SMBResult<'a, I, O, E = SMBError<'a>> = Result<(I, O), E>;
 
-pub trait SMBFromBytes {
+pub trait SMBByteSize {
     fn smb_byte_size(&self) -> usize;
+}
+
+pub trait SMBFromBytes: SMBByteSize {
     fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized;
 }
 
-pub trait SMBToBytes {
-    fn smb_to_bytes();
+pub trait SMBToBytes: SMBByteSize {
+    fn smb_to_bytes(&self) -> Vec<u8>;
 }
 
 impl<T: SMBFromBytes> SMBFromBytes for Vec<T> {
-    fn smb_byte_size(&self) -> usize {
-        self.iter().fold(0, |prev, x| prev + x.smb_byte_size())
-    }
-
     fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
         let (remaining, item) = T::parse_smb_payload(input)?;
         Ok((remaining, vec![item]))
     }
 }
 
-impl<T: SMBFromBytes> SMBFromBytes for PhantomData<T> {
+impl<T: SMBByteSize> SMBByteSize for Vec<T> {
     fn smb_byte_size(&self) -> usize {
-        0
+        self.iter().fold(0, |prev, x| prev + x.smb_byte_size())
     }
+}
 
+impl<T: SMBFromBytes> SMBFromBytes for PhantomData<T> {
     fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
         let (remaining, _) = T::parse_smb_payload(input)?;
         Ok((remaining, PhantomData))
     }
 }
 
-impl SMBFromBytes for String {
+impl<T> SMBByteSize for PhantomData<T> {
     fn smb_byte_size(&self) -> usize {
-        self.as_bytes().len()
+        0
     }
+}
 
+impl SMBFromBytes for String {
     fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
         let (remaining, vec) = <Vec<u8>>::parse_smb_payload(input)?;
         let str = String::from_utf8(vec)
             .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
         Ok((remaining, str))
+    }
+}
+
+impl SMBByteSize for String {
+    fn smb_byte_size(&self) -> usize {
+        self.as_bytes().len()
     }
 }
 
@@ -95,15 +104,17 @@ impl SMBVecFromBytes for String {
 // }
 
 impl SMBFromBytes for Uuid {
-    fn smb_byte_size(&self) -> usize {
-        16
-    }
-
     fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
         let uuid = Uuid::from_slice(&input[0..16])
             .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
         let remaining = &input[uuid.smb_byte_size()..];
         Ok((remaining, uuid))
+    }
+}
+
+impl SMBByteSize for Uuid {
+    fn smb_byte_size(&self) -> usize {
+        self.as_bytes().len()
     }
 }
 
@@ -127,15 +138,23 @@ macro_rules! impl_parse_fixed_slice {
     }}
 }
 
+macro_rules! impl_smb_byte_size_for_slice {(
+    $($N:literal)*
+) => (
+    $(
+        impl SMBByteSize for [u8; $N] {
+            fn smb_byte_size(&self) -> usize {
+                $N
+            }
+        }
+    )*
+)}
+
 macro_rules! impl_smb_from_bytes_for_slice {(
     $($N:literal)*
 ) => (
     $(
         impl SMBFromBytes for [u8; $N] {
-            fn smb_byte_size(&self) -> usize {
-                $N
-            }
-
             fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self> {
                 impl_parse_fixed_slice!($N, input)
             }
@@ -143,15 +162,23 @@ macro_rules! impl_smb_from_bytes_for_slice {(
     )*
 )}
 
-macro_rules! impl_parse_unsigned_type {(
+macro_rules! impl_smb_byte_size_unsigned_type {(
+    $($t:ty)*
+) => (
+    $(
+        impl SMBByteSize for $t {
+            fn smb_byte_size(&self) -> usize {
+                std::mem::size_of_val(self)
+            }
+        }
+    )*
+)}
+
+macro_rules! impl_smb_from_bytes_unsigned_type {(
     $($t:ty)*
 ) => (
     $(
         impl SMBFromBytes for $t {
-            fn smb_byte_size(&self) -> usize {
-                std::mem::size_of_val(self)
-            }
-
             fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self> {
                 const T_SIZE: usize = std::mem::size_of::<$t>();
                 let value = impl_parse_fixed_slice!(T_SIZE, input)?;
@@ -161,6 +188,13 @@ macro_rules! impl_parse_unsigned_type {(
     )*
 )}
 
+impl_smb_byte_size_for_slice! {
+    00 1 2 3 4 5 6 7 8 9
+    10 11 12 13 14 15 16
+    17 18 19 20 21 22 23 24
+    25 26 27 28 29 30 31 32
+}
+
 impl_smb_from_bytes_for_slice! {
     00 1 2 3 4 5 6 7 8 9
     10 11 12 13 14 15 16
@@ -168,6 +202,10 @@ impl_smb_from_bytes_for_slice! {
     25 26 27 28 29 30 31 32
 }
 
-impl_parse_unsigned_type! {
+impl_smb_byte_size_unsigned_type! {
+    u8 u16 u32 u64 u128
+}
+
+impl_smb_from_bytes_unsigned_type! {
     u8 u16 u32 u64 u128
 }

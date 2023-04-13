@@ -58,12 +58,12 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
 
     pub(crate) fn get_named_token(&self) -> proc_macro2::TokenStream {
         format!("self.{}", &self.name.to_string()).parse()
-            .unwrap_or_else(|_e| Self::error(&self.spanned))
+            .unwrap_or_else(|_e| Self::error(self.spanned))
     }
 
     pub(crate) fn get_unnamed_token(&self, idx: usize) -> proc_macro2::TokenStream {
         format!("self.{}", idx).parse()
-            .unwrap_or_else(|_e| Self::error(&self.spanned))
+            .unwrap_or_else(|_e| Self::error(self.spanned))
     }
 
     pub(crate) fn get_enum_token(&self) -> proc_macro2::TokenStream {
@@ -75,7 +75,7 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
 
     pub(crate) fn get_smb_message_size(&self, size_tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         quote_spanned! {self.spanned.span()=>
-            ::smb_core::SMBFromBytes::smb_byte_size(&#size_tokens)
+            ::smb_core::SMBByteSize::smb_byte_size(&#size_tokens)
         }
     }
 }

@@ -6,14 +6,14 @@ use nom::number::complete::{le_u16, le_u32, le_u64, le_u8};
 use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 
-use smb_derive::SMBFromBytes;
+use smb_derive::{SMBByteSize, SMBFromBytes};
 
 use crate::byte_helper::u16_to_bytes;
 use crate::protocol::body::Capabilities;
 use crate::protocol::body::session_setup::SessionSetupSecurityMode;
-use crate::util::flags_helper::impl_smb_for_bytes_for_bitflag;
+use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag};
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize)]
 pub struct SMBSessionSetupRequest {
     #[smb_direct(start = 2)]
     flags: SMBSessionSetupFlags,
@@ -123,4 +123,5 @@ bitflags! {
     }
 }
 
-impl_smb_for_bytes_for_bitflag! {SMBSessionSetupFlags SMBSessionFlags}
+impl_smb_byte_size_for_bitflag! {SMBSessionSetupFlags SMBSessionFlags}
+impl_smb_from_bytes_for_bitflag! {SMBSessionSetupFlags SMBSessionFlags}

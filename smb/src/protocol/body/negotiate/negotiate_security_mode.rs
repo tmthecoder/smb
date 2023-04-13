@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use crate::util::flags_helper::impl_smb_for_bytes_for_bitflag;
+use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag};
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
@@ -11,4 +11,5 @@ bitflags! {
     }
 }
 
-impl_smb_for_bytes_for_bitflag! {NegotiateSecurityMode}
+impl_smb_byte_size_for_bitflag! {NegotiateSecurityMode}
+impl_smb_from_bytes_for_bitflag! {NegotiateSecurityMode}

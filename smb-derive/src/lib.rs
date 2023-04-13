@@ -22,6 +22,48 @@ mod field;
 pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 
+    let parse_token = derive_impl_creator(input, FromBytesCreator {});
+
+    parse_token.into()
+}
+
+// #[proc_macro_derive(SMBToBytes, attributes(smb_direct, smb_buffer, smb_vector, smb_skip, smb_byte_tag, smb_string_tag))]
+// pub fn smb_to_bytes(input: TokenStream) -> TokenStream {
+//
+// }
+
+#[proc_macro_derive(SMBByteSize, attributes(smb_direct, smb_buffer, smb_vector, smb_skip, smb_byte_tag, smb_string_tag))]
+pub fn smb_byte_size(input: TokenStream) -> TokenStream {
+    let input: DeriveInput = parse_macro_input!(input);
+
+    let parse_token = derive_impl_creator(input, ByteSizeCreator {});
+
+    parse_token.into()
+}
+
+trait CreatorFn {
+    fn call<T: Spanned + PartialEq + Eq + Debug>(self, mapping: Result<SMBFieldMapping<T>, SMBDeriveError<T>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<T>>;
+}
+
+struct FromBytesCreator {}
+
+impl CreatorFn for FromBytesCreator {
+    fn call<T: Spanned + PartialEq + Eq + Debug>(self, mapping: Result<SMBFieldMapping<T>, SMBDeriveError<T>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<T>> {
+        create_parser_impl(mapping, name)
+    }
+}
+
+struct ByteSizeCreator {}
+
+impl CreatorFn for ByteSizeCreator {
+    fn call<T: Spanned + PartialEq + Eq + Debug>(self, mapping: Result<SMBFieldMapping<T>, SMBDeriveError<T>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<T>> {
+        create_byte_size_impl(mapping, name)
+    }
+}
+
+// type CreatorFn = fn (mapping: Result<SMBFieldMapping<T>, SMBDeriveError<T>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<T>>;
+
+fn derive_impl_creator(input: DeriveInput, creator: impl CreatorFn) -> proc_macro2::TokenStream {
     let name = &input.ident;
 
     let invalid_token: proc_macro2::TokenStream = quote_spanned! {
@@ -32,7 +74,7 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
         Data::Struct(structure) => {
             let parent_val_type = parent_value_type(&input);
             let mapping = get_struct_field_mapping(structure, parent_val_type);
-            create_parser_impl(mapping, name)
+            creator.call(mapping, name)
                 .unwrap_or_else(|e| match e {
                     SMBDeriveError::TypeError(f) => quote_spanned! {f.span()=>::std::compile_error!("Invalid field for SMB message parsing")},
                     SMBDeriveError::InvalidType => invalid_token
@@ -40,7 +82,7 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
         },
         Data::Enum(_en) => {
             let mapping = get_enum_field_mapping(&input.attrs, &input);
-            create_parser_impl(mapping, name)
+            creator.call(mapping, name)
                 .unwrap_or_else(|_e| quote_spanned! {input.span()=>
                     ::std::compile_error!("Invalid enum for SMB message parsing")
                 })
@@ -48,19 +90,15 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
         _ => invalid_token
     };
 
-    parse_token.into()
+    parse_token
 }
 
 fn create_parser_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: Result<SMBFieldMapping<T>, SMBDeriveError<T>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<T>> {
     let mapping = mapping?;
     let parser = parse_smb_payload(&mapping);
-    let size = smb_byte_size(&mapping);
 
     Ok(quote! {
         impl ::smb_core::SMBFromBytes for #name {
-            fn smb_byte_size(&self) -> usize {
-                #size
-            }
             #[allow(unused_variables, unused_assignments)]
             fn parse_smb_payload(input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
                 #parser
@@ -69,8 +107,20 @@ fn create_parser_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: Result<SMBFi
     })
 }
 
+fn create_byte_size_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: Result<SMBFieldMapping<T>, SMBDeriveError<T>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<T>> {
+    let mapping = mapping?;
+    let size = smb_byte_size_impl(&mapping);
+    Ok(quote! {
+        impl ::smb_core::SMBByteSize for #name {
+            fn smb_byte_size(&self) -> usize {
+                #size
+            }
+        }
+    })
+}
 
-fn smb_byte_size<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
+
+fn smb_byte_size_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
     mapping.get_mapping_size()
 }
 

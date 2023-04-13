@@ -9,7 +9,7 @@ use nom::sequence::tuple;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBFromBytes, SMBResult};
+use smb_core::{SMBByteSize, SMBFromBytes, SMBResult};
 use smb_core::error::SMBError;
 
 use crate::byte_helper::u16_to_bytes;
@@ -60,11 +60,13 @@ impl SMBStatus {
     }
 }
 
-impl SMBFromBytes for SMBStatus {
+impl SMBByteSize for SMBStatus {
     fn smb_byte_size(&self) -> usize {
         std::mem::size_of::<u32>()
     }
+}
 
+impl SMBFromBytes for SMBStatus {
     fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
         Self::parse(input).map_err(|_e| SMBError::ParseError("Invalid format"))
     }

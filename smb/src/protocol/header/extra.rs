@@ -5,11 +5,11 @@ use nom::number::complete::{le_u16, le_u64};
 use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 
-use smb_derive::SMBFromBytes;
+use smb_derive::{SMBByteSize, SMBFromBytes};
 
 use crate::byte_helper::{u16_to_bytes, u64_to_bytes};
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize)]
 pub struct SMBExtra {
     #[smb_direct(start = 0)]
     pid_high: u16,

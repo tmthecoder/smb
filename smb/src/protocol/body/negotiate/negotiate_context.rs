@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::ops::Neg;
 
 use bitflags::bitflags;
 use nom::bytes::complete::take;
@@ -13,12 +14,12 @@ use num_enum::TryFromPrimitive;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBFromBytes, SMBResult};
+use smb_core::{SMBByteSize, SMBFromBytes, SMBResult};
 use smb_core::error::SMBError;
-use smb_derive::SMBFromBytes;
+use smb_derive::{SMBByteSize, SMBFromBytes};
 
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
-use crate::util::flags_helper::impl_smb_for_bytes_for_bitflag;
+use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag};
 
 const PRE_AUTH_INTEGRITY_CAPABILITIES_TAG: u16 = 0x01;
 const ENCRYPTION_CAPABILITIES_TAG: u16 = 0x02;
@@ -97,7 +98,7 @@ pub enum NegotiateContext {
     SigningCapabilities(SigningCapabilities),
 }
 
-impl SMBFromBytes for NegotiateContext {
+impl SMBByteSize for NegotiateContext {
     fn smb_byte_size(&self) -> usize {
         match self {
             NegotiateContext::PreAuthIntegrityCapabilities(x) => x.smb_byte_size(),
@@ -109,7 +110,9 @@ impl SMBFromBytes for NegotiateContext {
             NegotiateContext::SigningCapabilities(x) => x.smb_byte_size(),
         }
     }
+}
 
+impl SMBFromBytes for NegotiateContext {
     fn parse_smb_payload(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
         if input.len() < 4 { return Err(SMBError::ParseError("Input too small")) }
         let (remaining, ctx_type) = u16::parse_smb_payload(input)?;
@@ -283,7 +286,7 @@ impl NegotiateContext {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize)]
 pub struct PreAuthIntegrityCapabilities {
     #[smb_skip(start = 0, length = 10)]
     reserved: PhantomData<Vec<u8>>,
@@ -295,7 +298,7 @@ pub struct PreAuthIntegrityCapabilities {
 
 #[repr(u16)]
 #[derive(
-Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd, SMBFromBytes
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd, SMBFromBytes, SMBByteSize
 )]
 pub enum HashAlgorithm {
     SHA512 = 0x01,
@@ -332,7 +335,7 @@ impl PreAuthIntegrityCapabilities {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize)]
 pub struct EncryptionCapabilities {
     #[smb_skip(start = 0, length = 8)]
     reserved: PhantomData<Vec<u8>>,
@@ -342,7 +345,7 @@ pub struct EncryptionCapabilities {
 
 #[repr(u16)]
 #[derive(
-Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize
 )]
 pub enum EncryptionCipher {
     AES128GCM = 0x01,
@@ -375,7 +378,7 @@ impl EncryptionCapabilities {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize)]
 pub struct CompressionCapabilities {
     #[smb_direct(start = 10)]
     pub(crate) flags: CompressionCapabilitiesFlags,
@@ -385,7 +388,7 @@ pub struct CompressionCapabilities {
 
 #[repr(u32)]
 #[derive(
-Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize
 )]
 pub enum CompressionCapabilitiesFlags {
     None = 0x0,
@@ -394,7 +397,7 @@ pub enum CompressionCapabilitiesFlags {
 
 #[repr(u16)]
 #[derive(
-Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize
 )]
 pub enum CompressionAlgorithm {
     None = 0x0,
@@ -440,7 +443,7 @@ impl CompressionCapabilities {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize)]
 pub struct NetnameNegotiateContextID {
     #[smb_skip(start = 0, length = 6)]
     reserved: PhantomData<Vec<u8>>,
@@ -469,7 +472,7 @@ impl NetnameNegotiateContextID {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, SMBFromBytes)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, SMBFromBytes, SMBByteSize)]
 pub struct TransportCapabilities {
     #[smb_direct(start = 0, length = 4)]
     pub(crate) flags: TransportCapabilitiesFlags,
@@ -482,7 +485,8 @@ bitflags! {
     }
 }
 
-impl_smb_for_bytes_for_bitflag! {TransportCapabilitiesFlags}
+impl_smb_byte_size_for_bitflag! {TransportCapabilitiesFlags}
+impl_smb_from_bytes_for_bitflag! {TransportCapabilitiesFlags}
 
 impl TransportCapabilities {
     fn byte_code(&self) -> u16 {
@@ -500,7 +504,7 @@ impl TransportCapabilities {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize)]
 pub struct RDMATransformCapabilities {
     #[smb_skip(start = 0, length = 14)]
     reserved: PhantomData<Vec<u8>>,
@@ -509,7 +513,7 @@ pub struct RDMATransformCapabilities {
 }
 
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy, SMBFromBytes)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy, SMBFromBytes, SMBByteSize)]
 pub enum RDMATransformID {
     None = 0x0,
     Encryption,
@@ -540,7 +544,7 @@ impl RDMATransformCapabilities {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize)]
 pub struct SigningCapabilities {
     #[smb_skip(start = 0, length = 8)]
     reserved: PhantomData<Vec<u8>>,
@@ -550,7 +554,7 @@ pub struct SigningCapabilities {
 
 #[repr(u16)]
 #[derive(
-Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize
 )]
 pub enum SigningAlgorithm {
     HmacSha256 = 0x0,

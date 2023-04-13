@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use smb_derive::SMBFromBytes;
+use smb_derive::{SMBByteSize, SMBFromBytes};
 
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes, u64_to_bytes};
 use crate::protocol::header::{
@@ -8,7 +8,7 @@ use crate::protocol::header::{
     SMBFlags, SMBStatus,
 };
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize)]
 #[smb_byte_tag(0xFE)]
 #[smb_string_tag("SMB")]
 pub struct SMBSyncHeader {
@@ -30,7 +30,7 @@ pub struct SMBSyncHeader {
     signature: [u8; 16],
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize)]
 #[smb_byte_tag(0xFE)]
 #[smb_string_tag("SMB")]
 pub struct LegacySMBHeader {

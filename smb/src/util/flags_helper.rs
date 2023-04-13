@@ -1,12 +1,19 @@
-macro_rules! impl_smb_for_bytes_for_bitflag {(
+macro_rules! impl_smb_byte_size_for_bitflag {(
+    $($t:ty)*
+) => (
+    $(
+        impl ::smb_core::SMBByteSize for $t {
+           fn smb_byte_size(&self) -> usize {
+               std::mem::size_of_val(&self.bits())
+           }
+        }
+    )*
+)}
+macro_rules! impl_smb_from_bytes_for_bitflag {(
     $($t:ty)*
 ) => (
     $(
         impl ::smb_core::SMBFromBytes for $t {
-            fn smb_byte_size(&self) -> usize {
-                std::mem::size_of_val(&self.bits())
-            }
-
             fn parse_smb_payload(input: &[u8]) -> ::smb_core::SMBResult<&[u8], Self, ::smb_core::error::SMBError> {
                 const SIZE: usize = std::mem::size_of::<<$t as bitflags::BitFlags>::Bits>();
                 if input.len() < SIZE {
@@ -22,4 +29,5 @@ macro_rules! impl_smb_for_bytes_for_bitflag {(
     )*
 )}
 
-pub(crate) use impl_smb_for_bytes_for_bitflag;
+pub(crate) use impl_smb_byte_size_for_bitflag;
+pub(crate) use impl_smb_from_bytes_for_bitflag;
