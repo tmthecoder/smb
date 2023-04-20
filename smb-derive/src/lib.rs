@@ -3,13 +3,14 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use std::fmt::{Debug, Display, Formatter};
 
-use darling::{FromDeriveInput, FromField};
+use darling::{FromAttributes, FromDeriveInput, FromField};
 use proc_macro2::Ident;
 use quote::{quote, quote_spanned};
 use syn::{Data, DeriveInput, Field, parse_macro_input};
+use syn::Lit::Byte;
 use syn::spanned::Spanned;
 
-use crate::attrs::{Buffer, Direct, Skip, Vector};
+use crate::attrs::{Buffer, ByteTag, Direct, Skip, StringTag, Vector};
 use crate::field::SMBFieldType;
 use crate::field_mapping::{get_enum_field_mapping, get_struct_field_mapping, SMBFieldMapping};
 use crate::smb_byte_size::ByteSizeCreator;
@@ -59,10 +60,12 @@ fn derive_impl_creator(input: DeriveInput, creator: impl CreatorFn) -> proc_macr
         input.span() => compile_error!("Invalid or unsupported type")
     };
 
+    let parent_attrs = parent_attrs(&input);
+
     let parse_token = match &input.data {
         Data::Struct(structure) => {
-            let parent_val_type = parent_value_type(&input);
-            let mapping = get_struct_field_mapping(structure, parent_val_type);
+            let mapping = get_struct_field_mapping(structure, parent_attrs);
+            println!("Mapping: {:?}", mapping);
             creator.call(mapping, name)
                 .unwrap_or_else(|e| match e {
                     SMBDeriveError::TypeError(f) => quote_spanned! {f.span()=>::std::compile_error!("Invalid field for SMB message parsing")},
@@ -70,7 +73,7 @@ fn derive_impl_creator(input: DeriveInput, creator: impl CreatorFn) -> proc_macr
                 })
         },
         Data::Enum(_en) => {
-            let mapping = get_enum_field_mapping(&input.attrs, &input);
+            let mapping = get_enum_field_mapping(&input.attrs, &input, parent_attrs);
             creator.call(mapping, name)
                 .unwrap_or_else(|_e| quote_spanned! {input.span()=>
                     ::std::compile_error!("Invalid enum for SMB message parsing")
@@ -83,16 +86,11 @@ fn derive_impl_creator(input: DeriveInput, creator: impl CreatorFn) -> proc_macr
 }
 
 
-fn parent_value_type(input: &DeriveInput) -> Option<SMBFieldType> {
-    if let Ok(buffer) = Buffer::from_derive_input(input) {
-        Some(SMBFieldType::Buffer(buffer))
-    } else if let Ok(direct) = Direct::from_derive_input(input) {
-        Some(SMBFieldType::Direct(direct))
-    } else if let Ok(vector) = Vector::from_derive_input(input) {
-        Some(SMBFieldType::Vector(vector))
-    } else {
-        None
-    }
+fn parent_attrs(input: &DeriveInput) -> Vec<SMBFieldType> {
+    input.attrs.iter().map(|attr| {
+        SMBFieldType::from_attributes(&[attr.clone()])
+    }).collect::<darling::Result<Vec<SMBFieldType>>>()
+        .unwrap_or(vec![])
 }
 
 trait CreatorFn {

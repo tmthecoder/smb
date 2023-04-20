@@ -2,11 +2,11 @@ extern crate smb_core;
 extern crate smb_derive;
 
 use smb_core::SMBFromBytes;
-use smb_derive::SMBFromBytes;
+use smb_derive::{SMBByteSize, SMBFromBytes};
 
-#[derive(SMBFromBytes)]
-#[byte_tag(value = 0xFE)]
-#[string_tag(value = "SMB")]
+#[derive(SMBFromBytes, SMBByteSize)]
+#[smb_byte_tag(value = 0xFE, order = 0)]
+#[smb_string_tag(value = "SMB", order = 1)]
 pub struct SMBSyncHeader {
     #[smb_direct(start = 8, length = 2)]
     pub command: u16,

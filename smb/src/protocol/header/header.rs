@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use smb_derive::{SMBByteSize, SMBFromBytes};
+use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes, u64_to_bytes};
 use crate::protocol::header::{
@@ -8,9 +8,9 @@ use crate::protocol::header::{
     SMBFlags, SMBStatus,
 };
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize)]
-#[smb_byte_tag(0xFE)]
-#[smb_string_tag("SMB")]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBToBytes, SMBByteSize)]
+#[smb_byte_tag(value = 0xFE, order = 0)]
+#[smb_string_tag(value = "SMB", order = 1)]
 pub struct SMBSyncHeader {
     #[smb_direct(start = 12)]
     pub command: SMBCommandCode,

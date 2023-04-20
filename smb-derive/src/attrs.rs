@@ -1,10 +1,10 @@
-use darling::{FromDeriveInput, FromField, FromMeta};
+use darling::{FromAttributes, FromDeriveInput, FromField, FromMeta};
 use proc_macro2::Ident;
 use quote::{format_ident, quote, quote_spanned};
 use syn::{Attribute, DeriveInput, Meta, NestedMeta, Path, Type, TypePath};
 use syn::spanned::Spanned;
 
-#[derive(Debug, FromDeriveInput, FromField, Default, PartialEq, Eq)]
+#[derive(Debug, FromDeriveInput, FromAttributes, FromField, Default, PartialEq, Eq)]
 #[darling(attributes(smb_direct))]
 pub struct Direct {
     pub start: usize,
@@ -28,6 +28,8 @@ impl Direct {
             }
         }
     }
+
+    pub(crate) fn attr_byte_size(&self) -> usize { 0 }
 }
 
 #[derive(Debug, FromMeta, PartialEq, Eq)]
@@ -103,7 +105,7 @@ impl DirectInner {
     }
 }
 
-#[derive(Debug, FromDeriveInput, FromField, PartialEq, Eq)]
+#[derive(Debug, FromDeriveInput, FromAttributes, FromField, PartialEq, Eq)]
 #[darling(attributes(smb_buffer))]
 pub struct Buffer {
     pub offset: DirectInner,
@@ -140,9 +142,11 @@ impl Buffer {
             }
         }
     }
+
+    pub(crate) fn attr_byte_size(&self) -> usize { 0 }
 }
 
-#[derive(Debug, FromDeriveInput, FromField, PartialEq, Eq)]
+#[derive(Debug, FromDeriveInput, FromAttributes, FromField, PartialEq, Eq)]
 #[darling(attributes(smb_vector))]
 pub struct Vector {
     pub count: DirectInner,
@@ -184,18 +188,80 @@ impl Vector {
             }
         }
     }
+
+    pub(crate) fn attr_byte_size(&self) -> usize { 0 }
 }
 
-#[derive(Debug, FromDeriveInput, FromField, Default)]
+#[derive(Debug, FromDeriveInput, FromAttributes, FromField, Default, Eq, PartialEq)]
 #[darling(attributes(smb_byte_tag))]
 pub struct ByteTag {
     pub value: u8,
+    #[darling(default)]
+    pub order: usize,
 }
 
-#[derive(FromDeriveInput, FromField, Default, Debug)]
+impl ByteTag {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
+        let start_byte = self.value;
+        quote_spanned! {spanned.span()=>
+            while input[current_pos] != #start_byte {
+                current_pos += 1;
+            }
+            let remaining = &input[current_pos..];
+        }
+    }
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
+        let start_byte = self.value;
+        quote_spanned! {spanned.span()=>
+            item[current_pos] = #start_byte;
+            current_pos += 1;
+        }
+    }
+
+    pub(crate) fn attr_byte_size(&self) -> usize { 1 }
+}
+
+#[derive(FromDeriveInput, FromField, FromAttributes, Default, Debug, Eq, PartialEq)]
 #[darling(attributes(smb_string_tag))]
 pub struct StringTag {
     pub value: String,
+    #[darling(default)]
+    pub order: usize,
+}
+
+impl StringTag {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
+        let start_val = &self.value;
+        quote_spanned! {spanned.span()=>
+             let mut tagged = false;
+             let mut next_pos = current_pos;
+             while let Some(pos) = input[current_pos..].iter().position(|x| *x == #start_val.as_bytes()[0]) {
+                if input[(pos)..].starts_with(#start_val.as_bytes()) {
+                    current_pos = pos;
+                    tagged = true;
+                    next_pos = pos;
+                    break;
+                }
+                current_pos += 1;
+            }
+            if (!tagged) {
+                return Err(::smb_core::error::SMBError::ParseError("struct did not have the valid starting tag"));
+            }
+            let remaining = &input[next_pos..];
+        }
+    }
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
+        let start_val = &self.value;
+        quote_spanned! {spanned.span()=>
+            let bytes = #start_val.as_bytes();
+            for i in current_pos..(current_pos + bytes.len()) {
+                item[i] = bytes[i - current_pos];
+            }
+            current_pos += bytes.len();
+        }
+    }
+
+    pub(crate) fn attr_byte_size(&self) -> usize { self.value.len() }
 }
 
 #[derive(Debug)]
@@ -203,7 +269,7 @@ pub struct Repr {
     pub ident: NestedMeta,
 }
 
-#[derive(Debug, FromDeriveInput, FromField, PartialEq, Eq)]
+#[derive(Debug, FromDeriveInput, FromAttributes, FromField, PartialEq, Eq)]
 #[darling(attributes(smb_skip))]
 pub struct Skip {
     pub start: usize,
@@ -228,6 +294,8 @@ impl Skip {
             current_pos = #start + #length;
         }}
     }
+
+    pub(crate) fn attr_byte_size(&self) -> usize { 0 }
 }
 
 impl FromDeriveInput for Repr {
@@ -236,8 +304,8 @@ impl FromDeriveInput for Repr {
     }
 }
 
-impl Repr {
-    pub fn from_attributes(attrs: &[Attribute]) -> darling::Result<Self> {
+impl FromAttributes for Repr {
+    fn from_attributes(attrs: &[Attribute]) -> darling::Result<Self> {
         for attr in attrs.iter() {
             if let Ok(Meta::List(l)) = attr.parse_meta() {
                 if let Some(ident) = l.path.get_ident() {

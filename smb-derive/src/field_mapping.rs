@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use darling::FromAttributes;
 use proc_macro2::Ident;
 use quote::{format_ident, quote};
 use syn::{Attribute, DataStruct, DeriveInput, Field, Fields, Path, Type, TypePath};
@@ -11,6 +12,7 @@ use crate::SMBDeriveError;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SMBFieldMapping<'a, T: Spanned + PartialEq + Eq> {
+    parent: SMBField<'a, T>,
     fields: Vec<SMBField<'a, T>>,
     mapping_type: SMBFieldMappingType,
 }
@@ -25,6 +27,7 @@ pub enum SMBFieldMappingType {
 
 impl<T: Spanned + PartialEq + Eq + Debug> SMBFieldMapping<'_, T> {
     pub(crate) fn get_mapping_size(&self) -> proc_macro2::TokenStream {
+        let parent_size = self.parent.attr_byte_size();
         let size = match &self.mapping_type {
             SMBFieldMappingType::NamedStruct => self.fields.iter().map(|f| {
                 let token = f.get_named_token();
@@ -44,12 +47,12 @@ impl<T: Spanned + PartialEq + Eq + Debug> SMBFieldMapping<'_, T> {
         };
 
         quote! {
-            0 #(+ #size)*
+            0 + #parent_size #(+ #size)*
         }
     }
 }
 
-pub(crate) fn get_enum_field_mapping<'a>(enum_attributes: &[Attribute], input: &'a DeriveInput) -> Result<SMBFieldMapping<'a, DeriveInput>, SMBDeriveError<DeriveInput>> {
+pub(crate) fn get_enum_field_mapping<'a>(enum_attributes: &[Attribute], input: &'a DeriveInput, parent_attrs: Vec<SMBFieldType>) -> Result<SMBFieldMapping<'a, DeriveInput>, SMBDeriveError<DeriveInput>> {
     let repr_type = Repr::from_attributes(enum_attributes)
         .map_err(|_e| SMBDeriveError::TypeError(input.clone()))?;
     let identity = &repr_type.ident;
@@ -60,27 +63,29 @@ pub(crate) fn get_enum_field_mapping<'a>(enum_attributes: &[Attribute], input: &
     let smb_field = SMBField::new(
         input,
         format_ident!("enum_field"),
-        ty,
-        SMBFieldType::Direct(Direct {
+        ty.clone(),
+        vec![SMBFieldType::Direct(Direct {
             start: 0
-        }),
+        })],
     );
+    let parent = SMBField::new(input, format_ident!("enum_outer"), ty, parent_attrs);
     Ok(SMBFieldMapping {
+        parent,
         fields: vec![smb_field],
         mapping_type: SMBFieldMappingType::Enum,
     })
 }
 
-pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_val_type: Option<SMBFieldType>) -> Result<SMBFieldMapping<Field>, SMBDeriveError<Field>> {
+pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_attrs: Vec<SMBFieldType>) -> Result<SMBFieldMapping<Field>, SMBDeriveError<Field>> {
     if structure.fields.len() == 1 {
         let field = structure.fields.iter().next()
             .ok_or(SMBDeriveError::InvalidType)?;
-        let (field, val_type) = if let Some(parent) = parent_val_type {
-            (field, parent)
+        let (field, val_types) = if !parent_attrs.is_empty() {
+            (field, parent_attrs)
         } else {
-            (field, SMBFieldType::Direct(Direct {
+            (field, vec![SMBFieldType::Direct(Direct {
                 start: 0,
-            }))
+            })])
         };
 
         let name = if let Some(x) = &field.ident {
@@ -90,15 +95,19 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_val_type: 
         };
 
 
-        let fields = vec![SMBField::new(field, name, field.ty.clone(), val_type)];
+        let fields = vec![SMBField::new(field, name, field.ty.clone(), val_types)];
+
+        let parent = SMBField::new(field, format_ident!("single_base"), field.ty.clone(), vec![]);
 
         return if field.ident.is_some() {
             Ok(SMBFieldMapping {
+                parent,
                 fields,
                 mapping_type: SMBFieldMappingType::NamedStruct,
             })
         } else {
             Ok(SMBFieldMapping {
+                parent,
                 fields,
                 mapping_type: SMBFieldMappingType::UnnamedStruct,
             })
@@ -119,7 +128,18 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_val_type: 
         Fields::Unit => SMBFieldMappingType::Unit
     };
 
+    let spanned_field = structure.fields.iter().next().unwrap();
+
+    let bogus_ty = Type::Path(TypePath {
+        qself: None,
+        path: Path::from(Ident::new("usize", spanned_field.span())),
+    });
+
+
+    let parent = SMBField::new(spanned_field, format_ident!("structure_base"), bogus_ty, parent_attrs);
+
     Ok(SMBFieldMapping {
+        parent,
         fields: mapped_fields,
         mapping_type,
     })
@@ -129,7 +149,7 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_val_type: 
 pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
     let recurse = vector.iter().map(SMBField::smb_from_bytes);
-
+    let parent = mapping.parent.smb_from_bytes();
     let names = vector.iter().map(SMBField::get_name);
 
     let expanded_stream = match mapping.mapping_type {
@@ -162,20 +182,24 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBF
             }
         }
     };
+
     quote! {
         let mut current_pos = 0;
         let remaining = input;
+        #parent
         #expanded_stream
     }
 }
 
 pub(crate) fn smb_to_bytes<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
+    let parent = mapping.parent.smb_to_bytes();
     let recurse = vector.iter().map(SMBField::smb_to_bytes);
 
     quote! {
         let mut current_pos = 0;
         let item = vec![0; ::smb_core::SMBByteSize::smb_byte_size(&self)];
+        #parent
         #(#recurse)*
         item
     }
