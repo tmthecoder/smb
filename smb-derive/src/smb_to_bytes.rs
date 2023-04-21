@@ -21,7 +21,7 @@ fn to_bytes_parser_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: Result<SMB
 
     Ok(quote! {
         impl ::smb_core::SMBToBytes for #name {
-            fn smb_from_bytes(&self) -> Vec<u8> {
+            fn smb_to_bytes(&self) -> Vec<u8> {
                 #to_bytes
             }
         }

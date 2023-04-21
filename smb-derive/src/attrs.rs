@@ -1,5 +1,5 @@
 use darling::{FromAttributes, FromDeriveInput, FromField, FromMeta};
-use proc_macro2::Ident;
+use proc_macro2::{Ident, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
 use syn::{Attribute, DeriveInput, Meta, NestedMeta, Path, Type, TypePath};
 use syn::spanned::Spanned;
@@ -19,13 +19,15 @@ impl Direct {
         }
     }
 
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> proc_macro2::TokenStream {
+        let start = self.start;
         quote_spanned! { spanned.span()=>
-            let size = ::smb_core::SMBByteSize::smb_byte_size(&name);
-            let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&self.#name);
-            for i in start..(start + size) {
-                item[i] = bytes[i - start];
+            let size = ::smb_core::SMBByteSize::smb_byte_size(&#token);
+            let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&#token);
+            for i in #start..(#start + size) {
+                item[i] = bytes[i - #start];
             }
+            current_pos = #start + size;
         }
     }
 
@@ -126,7 +128,7 @@ impl Buffer {
         }
     }
 
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> proc_macro2::TokenStream {
         let offset_info = self.offset.smb_to_bytes("offset", spanned);
         let length_info = self.length.smb_to_bytes("length", spanned);
 
@@ -135,8 +137,8 @@ impl Buffer {
             #offset_info
             #length_info
 
-            let length = ::smb_core::SMBByteSize::smb_byte_size(&self.#name);
-            let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&self.#name);
+            let length = ::smb_core::SMBByteSize::smb_byte_size(&#token);
+            let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&#token);
             for i in current_pos..(current_pos + length) {
                 item[i] = bytes[i - current_pos];
             }
@@ -170,7 +172,7 @@ impl Vector {
         }
     }
 
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> proc_macro2::TokenStream {
         let count_info = self.count.smb_to_bytes("item_count", spanned);
         let align = self.align;
 
@@ -179,7 +181,7 @@ impl Vector {
             if #align > 0 && current_pos % #align != 0 {
                 current_pos += 8 - (current_pos % #align);
             }
-            for entry in &self.#name {
+            for entry in &#token.iter() {
                 let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(&entry);
                 for i in current_pos..(current_pos + item_bytes.len()) {
                     item[i] = item_bytes[i - current_pos];
@@ -287,7 +289,7 @@ impl Skip {
             let #name = ::std::marker::PhantomData;
         }
     }
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
         let start = self.start;
         let length = self.length;
         quote_spanned! {spanned.span() => {

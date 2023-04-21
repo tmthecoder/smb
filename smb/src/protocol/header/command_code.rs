@@ -1,10 +1,10 @@
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 
-use smb_derive::{SMBByteSize, SMBFromBytes};
+use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy, SMBFromBytes, SMBByteSize)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub enum SMBCommandCode {
     Negotiate = 0x0,
     SessionSetup,

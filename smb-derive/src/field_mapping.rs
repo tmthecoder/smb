@@ -193,12 +193,15 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBF
 
 pub(crate) fn smb_to_bytes<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
-    let parent = mapping.parent.smb_to_bytes();
-    let recurse = vector.iter().map(SMBField::smb_to_bytes);
+    let parent = mapping.parent.smb_to_bytes_struct();
+    let recurse = match mapping.mapping_type {
+        SMBFieldMappingType::Enum => vector.iter().map(SMBField::smb_to_bytes_enum).collect::<Vec<proc_macro2::TokenStream>>(),
+        _ => vector.iter().map(SMBField::smb_to_bytes_struct).collect()
+    };
 
     quote! {
         let mut current_pos = 0;
-        let item = vec![0; ::smb_core::SMBByteSize::smb_byte_size(&self)];
+        let mut item = vec![0; ::smb_core::SMBByteSize::smb_byte_size(self)];
         #parent
         #(#recurse)*
         item

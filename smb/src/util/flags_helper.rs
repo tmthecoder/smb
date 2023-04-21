@@ -29,5 +29,18 @@ macro_rules! impl_smb_from_bytes_for_bitflag {(
     )*
 )}
 
+macro_rules! impl_smb_to_bytes_for_bitflag {(
+    $($t:ty)*
+) => (
+    $(
+        impl ::smb_core::SMBToBytes for $t {
+            fn smb_to_bytes(&self) -> Vec<u8> {
+                self.bits().to_be_bytes().to_vec()
+            }
+        }
+    )*
+)}
+
 pub(crate) use impl_smb_byte_size_for_bitflag;
 pub(crate) use impl_smb_from_bytes_for_bitflag;
+pub(crate) use impl_smb_to_bytes_for_bitflag;

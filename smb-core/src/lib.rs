@@ -27,6 +27,12 @@ impl<T: SMBFromBytes> SMBFromBytes for Vec<T> {
     }
 }
 
+impl<T: SMBToBytes> SMBToBytes for Vec<T> {
+    fn smb_to_bytes(&self) -> Vec<u8> {
+        self.iter().map(SMBToBytes::smb_to_bytes).collect::<Vec<Vec<u8>>>().concat()
+    }
+}
+
 impl<T: SMBByteSize> SMBByteSize for Vec<T> {
     fn smb_byte_size(&self) -> usize {
         self.iter().fold(0, |prev, x| prev + x.smb_byte_size())
@@ -37,6 +43,12 @@ impl<T: SMBFromBytes> SMBFromBytes for PhantomData<T> {
     fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
         let (remaining, _) = T::smb_from_bytes(input)?;
         Ok((remaining, PhantomData))
+    }
+}
+
+impl<T: SMBToBytes> SMBToBytes for PhantomData<T> {
+    fn smb_to_bytes(&self) -> Vec<u8> {
+        vec![]
     }
 }
 
@@ -52,6 +64,12 @@ impl SMBFromBytes for String {
         let str = String::from_utf8(vec)
             .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
         Ok((remaining, str))
+    }
+}
+
+impl SMBToBytes for String {
+    fn smb_to_bytes(&self) -> Vec<u8> {
+        self.encode_utf16().map(|x| x.to_be_bytes()).collect::<Vec<[u8; 2]>>().concat()
     }
 }
 
@@ -112,6 +130,12 @@ impl SMBFromBytes for Uuid {
     }
 }
 
+impl SMBToBytes for Uuid {
+    fn smb_to_bytes(&self) -> Vec<u8> {
+        self.as_bytes().to_vec()
+    }
+}
+
 impl SMBByteSize for Uuid {
     fn smb_byte_size(&self) -> usize {
         self.as_bytes().len()
@@ -162,6 +186,18 @@ macro_rules! impl_smb_from_bytes_for_slice {(
     )*
 )}
 
+macro_rules! impl_smb_to_bytes_for_slice {(
+    $($N:literal)*
+) => (
+    $(
+        impl SMBToBytes for [u8; $N] {
+            fn smb_to_bytes(&self) -> Vec<u8>{
+                self.to_vec()
+            }
+        }
+    )*
+)}
+
 macro_rules! impl_smb_byte_size_unsigned_type {(
     $($t:ty)*
 ) => (
@@ -188,6 +224,18 @@ macro_rules! impl_smb_from_bytes_unsigned_type {(
     )*
 )}
 
+macro_rules! impl_smb_to_bytes_unsigned_type {(
+    $($t:ty)*
+) => (
+    $(
+        impl SMBToBytes for $t {
+            fn smb_to_bytes(&self) -> Vec<u8> {
+                self.to_be_bytes().to_vec()
+            }
+        }
+    )*
+)}
+
 impl_smb_byte_size_for_slice! {
     00 1 2 3 4 5 6 7 8 9
     10 11 12 13 14 15 16
@@ -202,10 +250,21 @@ impl_smb_from_bytes_for_slice! {
     25 26 27 28 29 30 31 32
 }
 
+impl_smb_to_bytes_for_slice! {
+    00 1 2 3 4 5 6 7 8 9
+    10 11 12 13 14 15 16
+    17 18 19 20 21 22 23 24
+    25 26 27 28 29 30 31 32
+}
+
 impl_smb_byte_size_unsigned_type! {
     u8 u16 u32 u64 u128
 }
 
 impl_smb_from_bytes_unsigned_type! {
+    u8 u16 u32 u64 u128
+}
+
+impl_smb_to_bytes_unsigned_type! {
     u8 u16 u32 u64 u128
 }

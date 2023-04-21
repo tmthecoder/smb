@@ -2,7 +2,7 @@ use std::cmp::{min, Ordering};
 use std::fmt::Debug;
 
 use darling::FromAttributes;
-use proc_macro2::Ident;
+use proc_macro2::{Delimiter, Group, Ident, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
 use syn::{Attribute, Field, Type};
 use syn::spanned::Spanned;
@@ -48,10 +48,21 @@ impl<'a, T: Spanned> SMBField<'a, T> {
         }
     }
 
-    pub(crate) fn smb_to_bytes(&self) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_to_bytes_struct(&self) -> proc_macro2::TokenStream {
         let name = &self.name;
+        let name_self = TokenTree::Group(Group::new(Delimiter::Parenthesis, quote! {self.#name}));
         let field = self.spanned;
-        let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_to_bytes(name, field));
+        let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_to_bytes(&name_self, field));
+        quote! {
+            #(#all_bytes)*
+        }
+    }
+
+    pub(crate) fn smb_to_bytes_enum(&self) -> proc_macro2::TokenStream {
+        let ty = &self.ty;
+        let group = TokenTree::Group(proc_macro2::Group::new(Delimiter::Parenthesis, quote! {*self as #ty}));
+        let field = self.spanned;
+        let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_to_bytes(&group, field));
         quote! {
             #(#all_bytes)*
         }
@@ -131,12 +142,12 @@ impl SMBFieldType {
             SMBFieldType::StringTag(string_tag) => string_tag.smb_from_bytes(field),
         }
     }
-    fn smb_to_bytes<T: Spanned>(&self, name: &Ident, field: &T) -> proc_macro2::TokenStream {
+    fn smb_to_bytes<T: Spanned>(&self, token: &TokenTree, field: &T) -> proc_macro2::TokenStream {
         match self {
-            SMBFieldType::Direct(direct) => direct.smb_to_bytes(field, name),
-            SMBFieldType::Buffer(buffer) => buffer.smb_to_bytes(field, name),
-            SMBFieldType::Vector(vector) => vector.smb_to_bytes(field, name),
-            SMBFieldType::Skip(skip) => skip.smb_to_bytes(field, name),
+            SMBFieldType::Direct(direct) => direct.smb_to_bytes(field, token),
+            SMBFieldType::Buffer(buffer) => buffer.smb_to_bytes(field, token),
+            SMBFieldType::Vector(vector) => vector.smb_to_bytes(field, token),
+            SMBFieldType::Skip(skip) => skip.smb_to_bytes(field),
             SMBFieldType::ByteTag(byte_tag) => byte_tag.smb_to_bytes(field),
             SMBFieldType::StringTag(string_tag) => string_tag.smb_to_bytes(field),
         }
