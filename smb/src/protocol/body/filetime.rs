@@ -1,10 +1,16 @@
-use crate::byte_helper::{bytes_to_u32, bytes_to_u64, u32_to_bytes, u64_to_bytes};
-use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+use serde::{Deserialize, Serialize};
+
+use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
+
+use crate::byte_helper::{bytes_to_u32, bytes_to_u64, u32_to_bytes, u64_to_bytes};
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, SMBFromBytes, SMBToBytes, SMBByteSize)]
 pub struct FileTime {
+    #[smb_direct(start = 0)]
     low_date_time: u32,
+    #[smb_direct(start = 4)]
     high_date_time: u32,
 }
 

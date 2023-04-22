@@ -9,7 +9,7 @@ use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use smb_derive::{SMBByteSize, SMBFromBytes};
+use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
 use crate::protocol::body::{Capabilities, FileTime, SMBDialect};
@@ -75,7 +75,7 @@ impl SMBNegotiateRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBToBytes, SMBFromBytes)]
 pub struct SMBNegotiateResponseBody {
     security_mode: NegotiateSecurityMode,
     dialect: SMBDialect,

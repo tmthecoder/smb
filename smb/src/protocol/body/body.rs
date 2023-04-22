@@ -48,6 +48,8 @@ impl Body<SMBSyncHeader> for SMBBody {
     fn as_bytes(&self) -> Vec<u8> {
         match self {
             SMBBody::NegotiateResponse(x) => {
+                println!("test: {:?}", x.smb_to_bytes());
+                println!("actu: {:?}", x.as_bytes());
                 x.as_bytes()
             },
             SMBBody::SessionSetupResponse(x) => {
