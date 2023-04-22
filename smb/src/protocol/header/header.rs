@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use serde::{Deserialize, Serialize};
 
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
@@ -11,17 +13,20 @@ use crate::protocol::header::{
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBToBytes, SMBByteSize)]
 #[smb_byte_tag(value = 0xFE, order = 0)]
 #[smb_string_tag(value = "SMB", order = 1)]
+#[smb_byte_tag(value = 64, order = 2)]
 pub struct SMBSyncHeader {
-    #[smb_direct(start = 12)]
-    pub command: SMBCommandCode,
     #[smb_direct(start = 8)]
     channel_sequence: u32,
+    #[smb_direct(start = 12)]
+    command: SMBCommandCode,
     #[smb_direct(start = 16)]
     flags: SMBFlags,
     #[smb_direct(start = 20)]
     next_command: u32,
     #[smb_direct(start = 24)]
     message_id: u64,
+    #[smb_skip(start = 32, length = 4, value = "[0, 0, 0xFE, 0xFF]")]
+    reserved: PhantomData<[u8; 4]>,
     #[smb_direct(start = 36)]
     tree_id: u32,
     #[smb_direct(start = 40)]
@@ -30,7 +35,7 @@ pub struct SMBSyncHeader {
     signature: [u8; 16],
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize, SMBToBytes)]
 #[smb_byte_tag(0xFE)]
 #[smb_string_tag("SMB")]
 pub struct LegacySMBHeader {
@@ -123,6 +128,7 @@ impl SMBSyncHeader {
             flags,
             next_command,
             message_id,
+            reserved: PhantomData::default(),
             tree_id,
             session_id,
             signature,
@@ -137,6 +143,7 @@ impl SMBSyncHeader {
                 channel_sequence: 0,
                 next_command: 0,
                 message_id: legacy_header.mid as u64,
+                reserved: PhantomData::default(),
                 tree_id: legacy_header.tid as u32,
                 session_id: legacy_header.uid as u64,
                 signature: [0; 16],
@@ -152,6 +159,7 @@ impl SMBSyncHeader {
             channel_sequence,
             next_command: 0,
             message_id: self.message_id,
+            reserved: PhantomData::default(),
             tree_id: self.tree_id,
             session_id,
             signature: [0; 16],

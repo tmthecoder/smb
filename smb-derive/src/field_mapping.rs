@@ -47,7 +47,9 @@ impl<T: Spanned + PartialEq + Eq + Debug> SMBFieldMapping<'_, T> {
         };
 
         quote! {
-            0 + #parent_size #(+ #size)*
+            let size = 0;
+            #(#size)*
+            size
         }
     }
 }

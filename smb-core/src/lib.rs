@@ -230,7 +230,7 @@ macro_rules! impl_smb_to_bytes_unsigned_type {(
     $(
         impl SMBToBytes for $t {
             fn smb_to_bytes(&self) -> Vec<u8> {
-                self.to_be_bytes().to_vec()
+                self.to_le_bytes().to_vec()
             }
         }
     )*

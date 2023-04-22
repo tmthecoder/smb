@@ -29,7 +29,7 @@ pub enum SMBCommandCode {
 }
 
 #[repr(u8)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy, SMBFromBytes, SMBByteSize)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub enum LegacySMBCommandCode {
     CreateDirectory,
     DeleteDirectory,

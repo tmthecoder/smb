@@ -21,6 +21,7 @@ fn to_bytes_parser_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: Result<SMB
 
     Ok(quote! {
         impl ::smb_core::SMBToBytes for #name {
+            #[allow(unused_variables, unused_assignments, clippy::needless_borrow, clippy::identity_op)]
             fn smb_to_bytes(&self) -> Vec<u8> {
                 #to_bytes
             }

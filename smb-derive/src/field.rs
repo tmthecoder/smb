@@ -1,4 +1,4 @@
-use std::cmp::{min, Ordering};
+use std::cmp::{max, min, Ordering};
 use std::fmt::Debug;
 
 use darling::FromAttributes;
@@ -60,7 +60,7 @@ impl<'a, T: Spanned> SMBField<'a, T> {
 
     pub(crate) fn smb_to_bytes_enum(&self) -> proc_macro2::TokenStream {
         let ty = &self.ty;
-        let group = TokenTree::Group(proc_macro2::Group::new(Delimiter::Parenthesis, quote! {*self as #ty}));
+        let group = TokenTree::Group(proc_macro2::Group::new(Delimiter::Parenthesis, quote! {(*self) as #ty}));
         let field = self.spanned;
         let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_to_bytes(&group, field));
         quote! {
@@ -104,8 +104,18 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
     }
 
     pub(crate) fn get_smb_message_size(&self, size_tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
-        quote_spanned! {self.spanned.span()=>
-            ::smb_core::SMBByteSize::smb_byte_size(&#size_tokens)
+        let tmp = SMBFieldType::Skip(Skip::new(0, 0));
+        let (start_val, ty) = self.val_type.iter().fold((0, &tmp), |prev, val| {
+            if val.weight_of_enum() == 2 || val.find_start_val() > prev.0 { (val.find_start_val(), val) } else { prev }
+        });
+        if ty.weight_of_enum() == 2 {
+            quote_spanned! {self.spanned.span()=>
+                let size = size + ::smb_core::SMBByteSize::smb_byte_size(&#size_tokens);
+            }
+        } else {
+            quote_spanned! {self.spanned.span()=>
+                let size = #start_val + ::smb_core::SMBByteSize::smb_byte_size(&#size_tokens);
+            }
         }
     }
 }

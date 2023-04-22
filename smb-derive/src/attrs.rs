@@ -24,9 +24,7 @@ impl Direct {
         quote_spanned! { spanned.span()=>
             let size = ::smb_core::SMBByteSize::smb_byte_size(&#token);
             let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&#token);
-            for i in #start..(#start + size) {
-                item[i] = bytes[i - #start];
-            }
+            item[#start..(#start + size)].copy_from_slice(&bytes);
             current_pos = #start + size;
         }
     }
@@ -47,17 +45,15 @@ impl DirectInner {
     fn get_type<T: Spanned>(&self, spanned: &T) -> Type {
         let ty = &self.ty;
         if self.ty != "direct" {
-            let ty = Type::Path(TypePath {
+            Type::Path(TypePath {
                 qself: None,
                 path: Path::from(Ident::new(ty, spanned.span())),
-            });
-            ty
+            })
         } else {
-            let ty = Type::Path(TypePath {
+            Type::Path(TypePath {
                 qself: None,
                 path: Path::from(Ident::new("usize", spanned.span())),
-            });
-            ty
+            })
         }
     }
 
@@ -100,9 +96,7 @@ impl DirectInner {
             let #name_len = #end;
             let #name = #name_add + current_pos;
             let #name_bytes = ::smb_core::SMBToBytes::smb_to_bytes(#name as #ty)
-            for i in #name_start..(#name_start + #name_len) {
-                item[i] = #name_bytes[i - #name_start];
-            }
+            item[#name_start..(#name_start + #name_len)].copy_from_slice(&#name_bytes)
         }
     }
 }
@@ -139,9 +133,8 @@ impl Buffer {
 
             let length = ::smb_core::SMBByteSize::smb_byte_size(&#token);
             let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&#token);
-            for i in current_pos..(current_pos + length) {
-                item[i] = bytes[i - current_pos];
-            }
+            item[current_pos..(current_pos + length)].copy_from_slice(&bytes);
+            current_pos += length;
         }
     }
 
@@ -183,9 +176,7 @@ impl Vector {
             }
             for entry in &#token.iter() {
                 let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(&entry);
-                for i in current_pos..(current_pos + item_bytes.len()) {
-                    item[i] = item_bytes[i - current_pos];
-                }
+                item[current_pos..(current_pos + item_bytes.len())].copy_from_slice(&item_bytes);
                 current_pos += item_bytes.len();
             }
         }
@@ -256,9 +247,7 @@ impl StringTag {
         let start_val = &self.value;
         quote_spanned! {spanned.span()=>
             let bytes = #start_val.as_bytes();
-            for i in current_pos..(current_pos + bytes.len()) {
-                item[i] = bytes[i - current_pos];
-            }
+            item[current_pos..(current_pos + bytes.len())].copy_from_slice(&bytes);
             current_pos += bytes.len();
         }
     }
@@ -276,9 +265,14 @@ pub struct Repr {
 pub struct Skip {
     pub start: usize,
     pub length: usize,
+    #[darling(default)]
+    pub value: Vec<u8>,
 }
 
 impl Skip {
+    pub(crate) fn new(start: usize, length: usize) -> Self {
+        Self { start, length, value: Vec::new() }
+    }
     pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
         let start = self.start;
         let length = self.length;
@@ -292,9 +286,18 @@ impl Skip {
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
         let start = self.start;
         let length = self.length;
-        quote_spanned! {spanned.span() => {
-            current_pos = #start + #length;
-        }}
+        if self.value.len() == length {
+            let value = self.value.clone();
+            quote_spanned! {spanned.span()=>
+                let value = [#(#value,)*];
+                item[#start..(#start + #length)].copy_from_slice(&value);
+                current_pos = #start + #length;
+            }
+        } else {
+            quote_spanned! {spanned.span() =>
+                current_pos = #start + #length;
+            }
+        }
     }
 
     pub(crate) fn attr_byte_size(&self) -> usize { 0 }

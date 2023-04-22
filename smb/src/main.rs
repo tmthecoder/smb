@@ -6,7 +6,7 @@ use smb_reader::protocol::body::{
 };
 use smb_reader::protocol::body::negotiate::{NegotiateSecurityMode, SMBNegotiateResponse};
 use smb_reader::protocol::body::session_setup::SMBSessionSetupResponse;
-use smb_reader::protocol::header::{SMBCommandCode, SMBFlags, SMBSyncHeader};
+use smb_reader::protocol::header::{Header, SMBCommandCode, SMBFlags, SMBSyncHeader};
 use smb_reader::protocol::message::SMBMessage;
 use smb_reader::SMBListener;
 use smb_reader::util::auth::{AuthProvider, User};
@@ -24,7 +24,7 @@ fn main() -> anyhow::Result<()> {
     for mut connection in server.connections() {
         let mut cloned_connection = connection.try_clone()?;
         for message in connection.messages() {
-            match message.header.command {
+            match message.header.command_code() {
                 SMBCommandCode::LegacyNegotiate => {
                     let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::new(
                         NegotiateSecurityMode::empty(),

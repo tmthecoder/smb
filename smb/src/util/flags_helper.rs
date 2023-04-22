@@ -35,7 +35,7 @@ macro_rules! impl_smb_to_bytes_for_bitflag {(
     $(
         impl ::smb_core::SMBToBytes for $t {
             fn smb_to_bytes(&self) -> Vec<u8> {
-                self.bits().to_be_bytes().to_vec()
+                self.bits().to_le_bytes().to_vec()
             }
         }
     )*
