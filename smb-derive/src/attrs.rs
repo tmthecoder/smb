@@ -1,7 +1,8 @@
-use darling::{FromAttributes, FromDeriveInput, FromField, FromMeta};
+use darling::{FromAttributes, FromDeriveInput, FromField, FromMeta, util::parse_expr};
 use proc_macro2::{Ident, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
-use syn::{Attribute, DeriveInput, Meta, NestedMeta, Path, Type, TypePath};
+use syn::{Attribute, DeriveInput, Expr, Meta, Path, Token, Type, TypePath};
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, Default, PartialEq, Eq)]
@@ -32,19 +33,18 @@ impl Direct {
     pub(crate) fn attr_byte_size(&self) -> usize { 0 }
 }
 
-#[derive(Debug, FromMeta, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, FromMeta)]
 pub struct DirectInner {
     pub start: usize,
-    #[darling(rename = "type")]
-    pub ty: String,
+    pub num_type: String,
     #[darling(default)]
     pub subtract: usize,
 }
 
 impl DirectInner {
     fn get_type<T: Spanned>(&self, spanned: &T) -> Type {
-        let ty = &self.ty;
-        if self.ty != "direct" {
+        let ty = &self.num_type;
+        if self.num_type != "direct" {
             Type::Path(TypePath {
                 qself: None,
                 path: Path::from(Ident::new(ty, spanned.span())),
@@ -62,12 +62,12 @@ impl DirectInner {
         let subtract = self.subtract;
         let name = format_ident!("{}", name);
         let ty = self.get_type(spanned);
-        let chunk = if self.ty != "direct" {
+        let chunk = if self.num_type != "direct" {
             quote! {
                 let (remaining, #name) = <#ty>::smb_from_bytes(&input[#start..])?;
             }
         } else {
-            quote! { let #name = current_pos }
+            quote! { let #name = current_pos; }
         };
         quote_spanned! {spanned.span()=>
             #chunk
@@ -84,7 +84,7 @@ impl DirectInner {
         let name_len = format_ident!("{}_len", name);
         let name_add = format_ident!("{}_add", name);
         let name_bytes = format_ident!("{}_bytes", name);
-        let end = if self.ty == "direct" {
+        let end = if self.num_type == "direct" {
             quote! {0}
         } else {
             quote! { ::smb_core::SMBByteSize::smb_byte_size(&(0 as #ty)) }
@@ -95,8 +95,8 @@ impl DirectInner {
             let #name_add = #subtract;
             let #name_len = #end;
             let #name = #name_add + current_pos;
-            let #name_bytes = ::smb_core::SMBToBytes::smb_to_bytes(#name as #ty)
-            item[#name_start..(#name_start + #name_len)].copy_from_slice(&#name_bytes)
+            let #name_bytes = ::smb_core::SMBToBytes::smb_to_bytes(&(#name as #ty));
+            item[#name_start..(#name_start + #name_len)].copy_from_slice(&#name_bytes);
         }
     }
 }
@@ -144,8 +144,8 @@ impl Buffer {
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, PartialEq, Eq)]
 #[darling(attributes(smb_vector))]
 pub struct Vector {
-    pub count: DirectInner,
     pub order: usize,
+    pub count: DirectInner,
     #[darling(default)]
     pub align: usize,
 }
@@ -154,7 +154,6 @@ impl Vector {
     pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
         let count = self.count.smb_from_bytes("item_count", spanned);
         let align = self.align;
-
         quote_spanned! { spanned.span() =>
             #count
             if #align > 0 && current_pos % #align != 0 {
@@ -167,15 +166,15 @@ impl Vector {
 
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> proc_macro2::TokenStream {
         let count_info = self.count.smb_to_bytes("item_count", spanned);
-        let align = self.align;
+        let align = self.align.clone();
 
         quote_spanned! { spanned.span()=>
             #count_info
             if #align > 0 && current_pos % #align != 0 {
                 current_pos += 8 - (current_pos % #align);
             }
-            for entry in &#token.iter() {
-                let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(&entry);
+            for entry in #token.iter() {
+                let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(entry);
                 item[current_pos..(current_pos + item_bytes.len())].copy_from_slice(&item_bytes);
                 current_pos += item_bytes.len();
             }
@@ -195,7 +194,7 @@ pub struct ByteTag {
 
 impl ByteTag {
     pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
-        let start_byte = self.value;
+        let start_byte = self.value.clone();
         quote_spanned! {spanned.span()=>
             while input[current_pos] != #start_byte {
                 current_pos += 1;
@@ -204,7 +203,7 @@ impl ByteTag {
         }
     }
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
-        let start_byte = self.value;
+        let start_byte = self.value.clone();
         quote_spanned! {spanned.span()=>
             item[current_pos] = #start_byte;
             current_pos += 1;
@@ -257,7 +256,7 @@ impl StringTag {
 
 #[derive(Debug)]
 pub struct Repr {
-    pub ident: NestedMeta,
+    pub ident: Ident,
 }
 
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, PartialEq, Eq)]
@@ -274,8 +273,8 @@ impl Skip {
         Self { start, length, value: Vec::new() }
     }
     pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
-        let start = self.start;
-        let length = self.length;
+        let start = self.start.clone();
+        let length = self.length.clone();
 
         quote_spanned! {spanned.span() =>
             current_pos = #start + #length;
@@ -284,8 +283,8 @@ impl Skip {
         }
     }
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
-        let start = self.start;
-        let length = self.length;
+        let start = self.start.clone();
+        let length = self.length.clone();
         if self.value.len() == length {
             let value = self.value.clone();
             quote_spanned! {spanned.span()=>
@@ -312,15 +311,27 @@ impl FromDeriveInput for Repr {
 impl FromAttributes for Repr {
     fn from_attributes(attrs: &[Attribute]) -> darling::Result<Self> {
         for attr in attrs.iter() {
-            if let Ok(Meta::List(l)) = attr.parse_meta() {
-                if let Some(ident) = l.path.get_ident() {
-                    if ident == "repr" && l.nested.len() == 1 {
-                        return Ok(Self {
-                            ident: l.nested[0].clone()
-                        });
+            if attr.path().is_ident("repr") {
+                let nested = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?;
+                for meta in nested {
+                    if let Meta::Path(p) = meta {
+                        if let Some(ident) = p.get_ident() {
+                            return Ok(Self {
+                                ident: ident.clone()
+                            })
+                        }
                     }
                 }
             }
+            // if let Ok(Meta::List(l)) = attr.parse_nested_meta() {
+            //     if let Some(ident) = l.path.get_ident() {
+            //         if ident == "repr" && l.nested.len() == 1 {
+            //             return Ok(Self {
+            //                 ident: l.nested[0].clone()
+            //             });
+            //         }
+            //     }
+            // }
         }
         Err(darling::Error::custom("Could not derive 'repr' type"))
     }

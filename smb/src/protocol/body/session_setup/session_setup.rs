@@ -23,7 +23,7 @@ pub struct SMBSessionSetupRequest {
     capabilities: Capabilities,
     #[smb_direct(start = 16)]
     previous_session_id: u64,
-    #[smb_buffer(offset(start = 12, type = "u16", subtract = 64), length(start = 14, type = "u16"))]
+    #[smb_buffer(offset(start = 12, num_type = "u16", subtract = 64), length(start = 14, num_type = "u16"))]
     buffer: Vec<u8>,
 }
 

@@ -1,4 +1,4 @@
-use std::cmp::{max, min, Ordering};
+use std::cmp::{min, Ordering};
 use std::fmt::Debug;
 
 use darling::FromAttributes;
@@ -175,19 +175,11 @@ impl SMBFieldType {
 }
 
 impl PartialOrd for SMBFieldType {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self.weight_of_enum() == other.weight_of_enum() {
-            Some(self.find_start_val().cmp(&other.find_start_val()))
-        } else {
-            Some(self.weight_of_enum().cmp(&other.weight_of_enum()))
-        }
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 impl<'a, T: Spanned + PartialEq + Eq> PartialOrd for SMBField<'a, T> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.val_type.partial_cmp(&other.val_type)
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 impl<'a, T: Spanned + PartialEq + Eq> Ord for SMBField<'a, T> {
@@ -198,7 +190,11 @@ impl<'a, T: Spanned + PartialEq + Eq> Ord for SMBField<'a, T> {
 
 impl Ord for SMBFieldType {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+        if self.weight_of_enum() == other.weight_of_enum() {
+            self.find_start_val().cmp(&other.find_start_val())
+        } else {
+            self.weight_of_enum().cmp(&other.weight_of_enum())
+        }
     }
 }
 

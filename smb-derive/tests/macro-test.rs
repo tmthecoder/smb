@@ -1,29 +1,40 @@
 extern crate smb_core;
 extern crate smb_derive;
 
+use std::marker::PhantomData;
+
 use smb_core::SMBFromBytes;
 use smb_derive::{SMBByteSize, SMBFromBytes};
 
-#[derive(SMBFromBytes, SMBByteSize)]
+#[derive(Debug, Eq, PartialEq, Clone, SMBByteSize, SMBFromBytes)]
 #[smb_byte_tag(value = 0xFE, order = 0)]
 #[smb_string_tag(value = "SMB", order = 1)]
-pub struct SMBSyncHeader {
-    #[smb_direct(start = 8, length = 2)]
-    pub command: u16,
-    #[smb_direct(start = 4, length = 4)]
-    channel_sequence: u32,
-    #[smb_direct(start = 12, length = 4)]
-    flags: u32,
-    #[smb_direct(start = 16, length = 4)]
-    next_command: u32,
-    #[smb_direct(start = 20, length = 8)]
-    message_id: u64,
-    #[smb_direct(start = 32, length = 4)]
-    tree_id: u32,
-    #[smb_direct(start = 36, length = 8)]
-    session_id: u64,
-    #[smb_buffer(offset(start = 44, length = 1), length(start = 45, length = 15))]
-    signature: [u8; 16],
+#[smb_byte_tag(value = 64, order = 2)]
+pub struct PreAuthIntegrityCapabilities {
+    #[smb_direct(start = 0)]
+    pid_high: u16,
+    #[smb_direct(start = 2)]
+    signature: u64,
+    #[smb_skip(start = 2, length = 10)]
+    s2: PhantomData<Vec<u8>>,
+    #[smb_vector(order = 4, count(start = 4, num_type = "u16"))]
+    s3: Vec<u8>,
+}
+
+#[repr(u16)]
+#[derive(
+Debug, Eq, PartialEq, Copy, Clone, Ord, PartialOrd, SMBFromBytes, SMBByteSize
+)]
+pub enum HashAlgorithm {
+    SHA512 = 0x01,
+}
+
+impl TryFrom<u16> for HashAlgorithm {
+    type Error = ();
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        Ok(HashAlgorithm::SHA512)
+    }
 }
 
 #[test]

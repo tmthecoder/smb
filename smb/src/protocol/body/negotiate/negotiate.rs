@@ -15,7 +15,7 @@ use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
 use crate::protocol::body::{Capabilities, FileTime, SMBDialect};
 use crate::protocol::body::negotiate::{NegotiateContext, NegotiateSecurityMode};
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct SMBNegotiateRequest {
     #[smb_direct(start = 4)]
     security_mode: NegotiateSecurityMode,
@@ -25,9 +25,9 @@ pub struct SMBNegotiateRequest {
     client_uuid: Uuid,
     #[smb_skip(start = 28, length = 8)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 2, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 2, num_type = "u16"))]
     dialects: Vec<SMBDialect>,
-    #[smb_vector(order = 2, align = 8, count(start = 32, type = "u16"))]
+    #[smb_vector(order = 2, align = 8, count(start = 32, num_type = "u16"))]
     negotiate_contexts: Vec<NegotiateContext>,
 }
 
@@ -75,7 +75,7 @@ impl SMBNegotiateRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct SMBNegotiateResponseBody {
     security_mode: NegotiateSecurityMode,
     dialect: SMBDialect,

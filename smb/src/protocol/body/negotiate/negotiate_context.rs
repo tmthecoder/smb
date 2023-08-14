@@ -14,12 +14,12 @@ use num_enum::TryFromPrimitive;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBByteSize, SMBFromBytes, SMBResult};
+use smb_core::{SMBByteSize, SMBFromBytes, SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
-use smb_derive::{SMBByteSize, SMBFromBytes};
+use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
-use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag};
+use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
 const PRE_AUTH_INTEGRITY_CAPABILITIES_TAG: u16 = 0x01;
 const ENCRYPTION_CAPABILITIES_TAG: u16 = 0x02;
@@ -166,6 +166,20 @@ impl SMBFromBytes for NegotiateContext {
     }
 }
 
+impl SMBToBytes for NegotiateContext {
+    fn smb_to_bytes(&self) -> Vec<u8> {
+        match self {
+            NegotiateContext::PreAuthIntegrityCapabilities(body) => body.smb_to_bytes(),
+            NegotiateContext::EncryptionCapabilities(body) => body.smb_to_bytes(),
+            NegotiateContext::CompressionCapabilities(body) => body.smb_to_bytes(),
+            NegotiateContext::NetnameNegotiateContextID(body) => body.smb_to_bytes(),
+            NegotiateContext::TransportCapabilities(body) => body.smb_to_bytes(),
+            NegotiateContext::RDMATransformCapabilities(body) => body.smb_to_bytes(),
+            NegotiateContext::SigningCapabilities(body) => body.smb_to_bytes(),
+        }
+    }
+}
+
 impl NegotiateContext {
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (_, (ctx_type_num, ctx_len, _)) = tuple((le_u16, le_u16, take(4_usize)))(bytes)?;
@@ -286,19 +300,19 @@ impl NegotiateContext {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct PreAuthIntegrityCapabilities {
     #[smb_skip(start = 0, length = 10)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 6, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 6, num_type = "u16"))]
     pub(crate) hash_algorithms: Vec<HashAlgorithm>,
-    #[smb_vector(order = 2, count(start = 8, type = "u16"))]
+    #[smb_vector(order = 2, count(start = 8, num_type = "u16"))]
     pub(crate) salt: Vec<u8>,
 }
 
 #[repr(u16)]
 #[derive(
-Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd, SMBFromBytes, SMBByteSize
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd, SMBFromBytes, SMBByteSize, SMBToBytes
 )]
 pub enum HashAlgorithm {
     SHA512 = 0x01,
@@ -335,17 +349,17 @@ impl PreAuthIntegrityCapabilities {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct EncryptionCapabilities {
     #[smb_skip(start = 0, length = 8)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 6, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 6, num_type = "u16"))]
     pub(crate) ciphers: Vec<EncryptionCipher>,
 }
 
 #[repr(u16)]
 #[derive(
-Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize, SMBToBytes
 )]
 pub enum EncryptionCipher {
     AES128GCM = 0x01,
@@ -378,17 +392,17 @@ impl EncryptionCapabilities {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct CompressionCapabilities {
     #[smb_direct(start = 10)]
     pub(crate) flags: CompressionCapabilitiesFlags,
-    #[smb_vector(order = 1, count(start = 6, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 6, num_type = "u16"))]
     pub(crate) compression_algorithms: Vec<CompressionAlgorithm>,
 }
 
 #[repr(u32)]
 #[derive(
-Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize, SMBToBytes
 )]
 pub enum CompressionCapabilitiesFlags {
     None = 0x0,
@@ -397,7 +411,7 @@ pub enum CompressionCapabilitiesFlags {
 
 #[repr(u16)]
 #[derive(
-Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize, SMBToBytes
 )]
 pub enum CompressionAlgorithm {
     None = 0x0,
@@ -443,11 +457,11 @@ impl CompressionCapabilities {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct NetnameNegotiateContextID {
     #[smb_skip(start = 0, length = 6)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 0, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 0, num_type = "u16"))]
     pub(crate) netname: String,
 }
 
@@ -472,7 +486,7 @@ impl NetnameNegotiateContextID {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, SMBFromBytes, SMBByteSize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct TransportCapabilities {
     #[smb_direct(start = 0, length = 4)]
     pub(crate) flags: TransportCapabilitiesFlags,
@@ -487,6 +501,7 @@ bitflags! {
 
 impl_smb_byte_size_for_bitflag! {TransportCapabilitiesFlags}
 impl_smb_from_bytes_for_bitflag! {TransportCapabilitiesFlags}
+impl_smb_to_bytes_for_bitflag! {TransportCapabilitiesFlags}
 
 impl TransportCapabilities {
     fn byte_code(&self) -> u16 {
@@ -504,16 +519,16 @@ impl TransportCapabilities {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct RDMATransformCapabilities {
     #[smb_skip(start = 0, length = 14)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 6, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 6, num_type = "u16"))]
     pub(crate) transform_ids: Vec<RDMATransformID>,
 }
 
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy, SMBFromBytes, SMBByteSize)]
+#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Copy, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub enum RDMATransformID {
     None = 0x0,
     Encryption,
@@ -544,17 +559,17 @@ impl RDMATransformCapabilities {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct SigningCapabilities {
     #[smb_skip(start = 0, length = 8)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 6, type = "u16"))]
+    #[smb_vector(order = 1, count(start = 6, num_type = "u16"))]
     pub(crate) signing_algorithms: Vec<SigningAlgorithm>,
 }
 
 #[repr(u16)]
 #[derive(
-Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize
+Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize, SMBToBytes
 )]
 pub enum SigningAlgorithm {
     HmacSha256 = 0x0,

@@ -27,7 +27,7 @@ pub enum SMBFieldMappingType {
 
 impl<T: Spanned + PartialEq + Eq + Debug> SMBFieldMapping<'_, T> {
     pub(crate) fn get_mapping_size(&self) -> proc_macro2::TokenStream {
-        let parent_size = self.parent.attr_byte_size();
+        let _parent_size = self.parent.attr_byte_size();
         let size = match &self.mapping_type {
             SMBFieldMappingType::NamedStruct => self.fields.iter().map(|f| {
                 let token = f.get_named_token();
@@ -115,7 +115,6 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_attrs: Vec
             })
         };
     }
-
     let mut mapped_fields: Vec<SMBField<Field>> = match structure.fields {
         Fields::Named(ref fields) => SMBField::from_iter(fields.named.iter())?,
         Fields::Unnamed(ref fields) => SMBField::from_iter(fields.unnamed.iter())?,

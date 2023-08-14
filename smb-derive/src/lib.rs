@@ -3,14 +3,12 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use std::fmt::{Debug, Display, Formatter};
 
-use darling::{FromAttributes, FromDeriveInput, FromField};
+use darling::FromAttributes;
 use proc_macro2::Ident;
-use quote::{quote, quote_spanned};
-use syn::{Data, DeriveInput, Field, parse_macro_input};
-use syn::Lit::Byte;
+use quote::quote_spanned;
+use syn::{Data, DeriveInput, parse_macro_input};
 use syn::spanned::Spanned;
 
-use crate::attrs::{Buffer, ByteTag, Direct, Skip, StringTag, Vector};
 use crate::field::SMBFieldType;
 use crate::field_mapping::{get_enum_field_mapping, get_struct_field_mapping, SMBFieldMapping};
 use crate::smb_byte_size::ByteSizeCreator;
@@ -65,7 +63,6 @@ fn derive_impl_creator(input: DeriveInput, creator: impl CreatorFn) -> proc_macr
     let parse_token = match &input.data {
         Data::Struct(structure) => {
             let mapping = get_struct_field_mapping(structure, parent_attrs);
-            println!("Mapping: {:?}", mapping);
             creator.call(mapping, name)
                 .unwrap_or_else(|e| match e {
                     SMBDeriveError::TypeError(f) => quote_spanned! {f.span()=>::std::compile_error!("Invalid field for SMB message parsing")},
