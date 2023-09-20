@@ -1,6 +1,4 @@
-use nom::error::ErrorKind;
-
-use smb_core::error::SMBError;
+use smb_core::{error::SMBError, SMBToBytes};
 use smb_reader::protocol::body::{
     Capabilities, FileTime, SMBBody, SMBDialect,
 };
@@ -50,6 +48,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 SMBCommandCode::Negotiate => {
                     if let SMBBody::NegotiateRequest(request) = message.body {
+                        println!("Test to bytes: {:?}, {:?}", message.header.smb_to_bytes(), request.smb_to_bytes());
                         let init_buffer = SPNEGOToken::Init(SPNEGOTokenInitBody::<NTLMAuthProvider>::new());
                         let resp_body = SMBBody::NegotiateResponse(
                             SMBNegotiateResponse::from_request(request, init_buffer.as_bytes(true))

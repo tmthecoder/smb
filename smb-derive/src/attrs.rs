@@ -1,7 +1,7 @@
-use darling::{FromAttributes, FromDeriveInput, FromField, FromMeta, util::parse_expr};
+use darling::{FromAttributes, FromDeriveInput, FromField, FromMeta};
 use proc_macro2::{Ident, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
-use syn::{Attribute, DeriveInput, Expr, Meta, Path, Token, Type, TypePath};
+use syn::{Attribute, DeriveInput, Meta, Path, Token, Type, TypePath};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 
@@ -166,7 +166,7 @@ impl Vector {
 
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> proc_macro2::TokenStream {
         let count_info = self.count.smb_to_bytes("item_count", spanned);
-        let align = self.align.clone();
+        let align = self.align;
 
         quote_spanned! { spanned.span()=>
             #count_info

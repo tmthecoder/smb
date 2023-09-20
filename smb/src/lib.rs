@@ -95,6 +95,7 @@ impl Iterator for SMBMessageIterator<'_> {
                 if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
                     if buffer[(pos)..].starts_with(b"SMB") {
                         println!("header: {:?}", SMBSyncHeader::smb_from_bytes(&buffer[(pos - 1)..read]));
+                        println!("Current buffer: {:?}", &buffer[(pos)..]);
                         let (carryover, message) = if let Ok((remaining, msg)) = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[(pos-1)..read]) {
                             (remaining, msg)
                         } else {

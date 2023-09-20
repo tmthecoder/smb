@@ -27,7 +27,7 @@ pub enum SMBFieldMappingType {
 
 impl<T: Spanned + PartialEq + Eq + Debug> SMBFieldMapping<'_, T> {
     pub(crate) fn get_mapping_size(&self) -> proc_macro2::TokenStream {
-        let _parent_size = self.parent.attr_byte_size();
+        let parent_size = self.parent.attr_byte_size();
         let size = match &self.mapping_type {
             SMBFieldMappingType::NamedStruct => self.fields.iter().map(|f| {
                 let token = f.get_named_token();
@@ -47,7 +47,7 @@ impl<T: Spanned + PartialEq + Eq + Debug> SMBFieldMapping<'_, T> {
         };
 
         quote! {
-            let size = 0;
+            let size = #parent_size;
             #(#size)*
             size
         }
@@ -157,6 +157,7 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBF
         SMBFieldMappingType::NamedStruct => {
             quote! {
                 #(#recurse)*
+                println!("Size: {}", current_pos);
                 Ok((remaining, Self {
                     #(#names,)*
                 }))

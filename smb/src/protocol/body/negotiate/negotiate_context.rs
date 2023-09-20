@@ -1,5 +1,4 @@
 use std::marker::PhantomData;
-use std::ops::Neg;
 
 use bitflags::bitflags;
 use nom::bytes::complete::take;
@@ -100,7 +99,7 @@ pub enum NegotiateContext {
 
 impl SMBByteSize for NegotiateContext {
     fn smb_byte_size(&self) -> usize {
-        match self {
+        let ctx_size = match self {
             NegotiateContext::PreAuthIntegrityCapabilities(x) => x.smb_byte_size(),
             NegotiateContext::EncryptionCapabilities(x) => x.smb_byte_size(),
             NegotiateContext::CompressionCapabilities(x) => x.smb_byte_size(),
@@ -108,6 +107,11 @@ impl SMBByteSize for NegotiateContext {
             NegotiateContext::TransportCapabilities(x) => x.smb_byte_size(),
             NegotiateContext::RDMATransformCapabilities(x) => x.smb_byte_size(),
             NegotiateContext::SigningCapabilities(x) => x.smb_byte_size(),
+        };
+        if ctx_size % 8 == 0 {
+            ctx_size
+        } else {
+            ctx_size + (8 - (ctx_size % 8))
         }
     }
 }
@@ -462,7 +466,7 @@ pub struct NetnameNegotiateContextID {
     #[smb_skip(start = 0, length = 6)]
     reserved: PhantomData<Vec<u8>>,
     #[smb_vector(order = 1, count(start = 0, num_type = "u16"))]
-    pub(crate) netname: String,
+    pub(crate) netname: Vec<u8>,
 }
 
 impl NetnameNegotiateContextID {
@@ -473,16 +477,12 @@ impl NetnameNegotiateContextID {
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, name_len) = le_u16(bytes)?;
         let (remaining, _) = take(4_usize)(remaining)?;
-        let (remaining, netname) = map_res(take(name_len), |s: &[u8]| {
-            let mut vec = s.to_vec();
-            vec.retain(|x| *x != 0_u8);
-            String::from_utf8(vec)
-        })(remaining)?;
-        Ok((remaining, Self { reserved: PhantomData, netname }))
+        let (remaining, netname) = take(name_len)(remaining)?;
+        Ok((remaining, Self { reserved: PhantomData, netname: netname.to_vec() }))
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
-        self.netname.bytes().collect::<Vec<u8>>()
+        self.netname.clone()
     }
 }
 

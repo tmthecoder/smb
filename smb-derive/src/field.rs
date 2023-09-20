@@ -106,11 +106,23 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
     pub(crate) fn get_smb_message_size(&self, size_tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let tmp = SMBFieldType::Skip(Skip::new(0, 0));
         let (start_val, ty) = self.val_type.iter().fold((0, &tmp), |prev, val| {
-            if val.weight_of_enum() == 2 || val.find_start_val() > prev.0 { (val.find_start_val(), val) } else { prev }
+            if let SMBFieldType::Skip(skip) = val && skip.length + skip.start > prev.0 { (skip.length + skip.start, val) } else if val.weight_of_enum() == 2 || val.find_start_val() > prev.0 { (val.find_start_val(), val) } else { prev }
         });
+
+        let align = if let SMBFieldType::Vector(vec) = ty {
+            if vec.align > 0 { vec.align } else { 1 }
+        } else {
+            1
+        };
+
         if ty.weight_of_enum() == 2 {
             quote_spanned! {self.spanned.span()=>
-                let size = size + ::smb_core::SMBByteSize::smb_byte_size(&#size_tokens);
+                let align_value = if size % #align == 0 {
+                    0
+                } else {
+                    #align - (size % #align)
+                };
+                let size = size + align_value + ::smb_core::SMBByteSize::smb_byte_size(&#size_tokens);
             }
         } else {
             quote_spanned! {self.spanned.span()=>
