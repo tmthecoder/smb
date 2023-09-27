@@ -1,7 +1,5 @@
 use smb_core::{error::SMBError, SMBToBytes};
-use smb_reader::protocol::body::{
-    Capabilities, FileTime, SMBBody, SMBDialect,
-};
+use smb_reader::protocol::body::{Body, Capabilities, FileTime, SMBBody, SMBDialect};
 use smb_reader::protocol::body::negotiate::{NegotiateSecurityMode, SMBNegotiateResponse};
 use smb_reader::protocol::body::session_setup::SMBSessionSetupResponse;
 use smb_reader::protocol::header::{Header, SMBCommandCode, SMBFlags, SMBSyncHeader};
@@ -50,10 +48,11 @@ fn main() -> anyhow::Result<()> {
                     if let SMBBody::NegotiateRequest(request) = message.body {
                         println!("Test to bytes: {:?}, {:?}", message.header.smb_to_bytes(), request.smb_to_bytes());
                         let init_buffer = SPNEGOToken::Init(SPNEGOTokenInitBody::<NTLMAuthProvider>::new());
-                        let resp_body = SMBBody::NegotiateResponse(
-                            SMBNegotiateResponse::from_request(request, init_buffer.as_bytes(true))
-                                .unwrap(),
-                        );
+                        let neg_resp = SMBNegotiateResponse::from_request(request, init_buffer.as_bytes(true))
+                            .unwrap();
+                        println!("Actual: {:?}", neg_resp.as_bytes());
+                        println!("New rp: {:?}", neg_resp.smb_to_bytes());
+                        let resp_body = SMBBody::NegotiateResponse(neg_resp);
                         let resp_header = message.header.create_response_header(0x0, 0);
                         let resp_msg = SMBMessage::new(resp_header, resp_body);
                         cloned_connection.send_message(resp_msg)?;

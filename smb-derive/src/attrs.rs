@@ -1,5 +1,5 @@
 use darling::{FromAttributes, FromDeriveInput, FromField, FromMeta};
-use proc_macro2::{Ident, TokenTree};
+use proc_macro2::{Ident, TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
 use syn::{Attribute, DeriveInput, Meta, Path, Token, Type, TypePath};
 use syn::punctuated::Punctuated;
@@ -57,7 +57,7 @@ impl DirectInner {
         }
     }
 
-    fn smb_from_bytes<T: Spanned>(&self, name: &str, spanned: &T) -> proc_macro2::TokenStream {
+    fn smb_from_bytes<T: Spanned>(&self, name: &str, spanned: &T) -> TokenStream {
         let start = self.start;
         let subtract = self.subtract;
         let name = format_ident!("{}", name);
@@ -75,7 +75,7 @@ impl DirectInner {
         }
     }
 
-    fn smb_to_bytes<T: Spanned>(&self, name: &str, spanned: &T) -> proc_macro2::TokenStream {
+    fn smb_to_bytes<T: Spanned>(&self, name: &str, spanned: &T) -> TokenStream {
         let start = self.start;
         let subtract = self.subtract;
         let name = format_ident!("{}", name);
@@ -146,30 +146,44 @@ impl Buffer {
 pub struct Vector {
     pub order: usize,
     pub count: DirectInner,
+    pub offset: Option<DirectInner>,
     #[darling(default)]
     pub align: usize,
 }
 
 impl Vector {
-    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> TokenStream {
         let count = self.count.smb_from_bytes("item_count", spanned);
         let align = self.align;
+        let offset = self.offset
+            .as_ref()
+            .map_or(quote! {
+                let item_offset = current_pos;
+            }, |offset| offset.smb_from_bytes("item_offset", spanned));
         quote_spanned! { spanned.span() =>
             #count
             if #align > 0 && current_pos % #align != 0 {
                 current_pos += 8 - (current_pos % #align);
             }
-            let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytes::smb_from_bytes_vec(&input[current_pos..], item_count as usize)?;
-            current_pos += ::smb_core::SMBByteSize::smb_byte_size(&#name);
+            #offset
+            let item_offset = item_offset as usize;
+            println!("OFFSET: {:?}", item_offset);
+            let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytes::smb_from_bytes_vec(&input[item_offset..], item_count as usize)?;
+            current_pos = item_offset + ::smb_core::SMBByteSize::smb_byte_size(&#name);
         }
     }
 
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
         let count_info = self.count.smb_to_bytes("item_count", spanned);
+        let offset_info = self.offset
+            .as_ref()
+            .map_or(quote! {}, |offset| offset.smb_to_bytes("item_offset", spanned));
         let align = self.align;
 
+        println!("OFFSET: {}", offset_info);
         quote_spanned! { spanned.span()=>
             #count_info
+            // #offset_info
             if #align > 0 && current_pos % #align != 0 {
                 current_pos += 8 - (current_pos % #align);
             }
@@ -193,8 +207,8 @@ pub struct ByteTag {
 }
 
 impl ByteTag {
-    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
-        let start_byte = self.value.clone();
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T) -> TokenStream {
+        let start_byte = self.value;
         quote_spanned! {spanned.span()=>
             while input[current_pos] != #start_byte {
                 current_pos += 1;
@@ -203,7 +217,7 @@ impl ByteTag {
         }
     }
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
-        let start_byte = self.value.clone();
+        let start_byte = self.value;
         quote_spanned! {spanned.span()=>
             item[current_pos] = #start_byte;
             current_pos += 1;
@@ -273,8 +287,8 @@ impl Skip {
         Self { start, length, value: Vec::new() }
     }
     pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
-        let start = self.start.clone();
-        let length = self.length.clone();
+        let start = self.start;
+        let length = self.length;
 
         quote_spanned! {spanned.span() =>
             current_pos = #start + #length;
@@ -283,8 +297,8 @@ impl Skip {
         }
     }
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
-        let start = self.start.clone();
-        let length = self.length.clone();
+        let start = self.start;
+        let length = self.length;
         if self.value.len() == length {
             let value = self.value.clone();
             quote_spanned! {spanned.span()=>

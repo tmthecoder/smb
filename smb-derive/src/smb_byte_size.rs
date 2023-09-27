@@ -20,7 +20,7 @@ fn create_byte_size_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: Result<SM
     let size = smb_byte_size_impl(&mapping);
     Ok(quote! {
         impl ::smb_core::SMBByteSize for #name {
-            #[allow(unused_variables, unused_assignments)]
+            #[allow(unused_variables, unused_assignments, modulo_one)]
             fn smb_byte_size(&self) -> usize {
                 #size
             }
