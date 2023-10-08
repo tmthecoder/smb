@@ -1,7 +1,7 @@
 use nom::error::ErrorKind;
 use nom::IResult;
 
-use smb_core::SMBFromBytes;
+use smb_core::{SMBFromBytes, SMBToBytes};
 
 mod header;
 mod command_code;
@@ -21,7 +21,7 @@ pub type LegacySMBHeader = header::LegacySMBHeader;
 pub type LegacySMBFlags = flags::LegacySMBFlags;
 pub type LegacySMBFlags2 = flags2::LegacySMBFlags2;
 
-pub trait Header {
+pub trait Header: SMBFromBytes + SMBToBytes {
     type CommandCode;
 
     fn command_code(&self) -> Self::CommandCode;

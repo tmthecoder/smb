@@ -6,14 +6,15 @@ use nom::number::complete::{le_u16, le_u32, le_u64, le_u8};
 use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 
-use smb_derive::{SMBByteSize, SMBFromBytes};
+use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::byte_helper::u16_to_bytes;
 use crate::protocol::body::Capabilities;
 use crate::protocol::body::session_setup::SessionSetupSecurityMode;
-use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag};
+use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[smb_byte_tag(value = 25)]
 pub struct SMBSessionSetupRequest {
     #[smb_direct(start = 2)]
     flags: SMBSessionSetupFlags,
@@ -71,9 +72,12 @@ impl SMBSessionSetupRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBToBytes, SMBFromBytes, SMBByteSize)]
+#[smb_byte_tag(value = 9)]
 pub struct SMBSessionSetupResponse {
+    #[smb_direct(start = 2)]
     session_flags: SMBSessionFlags,
+    #[smb_buffer(offset(start = 4, num_type = "u16", subtract = 64, min_val = 72), length(start = 6, num_type = "u16"))]
     buffer: Vec<u8>,
 }
 
@@ -125,3 +129,4 @@ bitflags! {
 
 impl_smb_byte_size_for_bitflag! {SMBSessionSetupFlags SMBSessionFlags}
 impl_smb_from_bytes_for_bitflag! {SMBSessionSetupFlags SMBSessionFlags}
+impl_smb_to_bytes_for_bitflag! {SMBSessionSetupFlags SMBSessionFlags}

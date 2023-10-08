@@ -41,6 +41,20 @@ macro_rules! ctx_to_bytes {
     }};
 }
 
+macro_rules! ctx_smb_to_bytes {
+    ($body: expr) => {{
+        let mut bytes = $body.smb_to_bytes();
+        let size = bytes.len() as u16 - 6;
+        bytes[0..2].copy_from_slice(&size.smb_to_bytes());
+        [
+            &u16_to_bytes($body.byte_code())[0..],
+            &size.smb_to_bytes(),
+            &bytes[2..],
+        ]
+        .concat()
+    }};
+}
+
 macro_rules! ctx_parse_enumify {
     ($enumType: expr, $bodyType: expr, $data: expr, $len: expr) => {{
         let (_, body) = $bodyType($data)?;
@@ -107,12 +121,13 @@ impl SMBByteSize for NegotiateContext {
             NegotiateContext::TransportCapabilities(x) => x.smb_byte_size(),
             NegotiateContext::RDMATransformCapabilities(x) => x.smb_byte_size(),
             NegotiateContext::SigningCapabilities(x) => x.smb_byte_size(),
-        };
-        if ctx_size % 8 == 0 {
-            ctx_size
-        } else {
-            ctx_size + (8 - (ctx_size % 8))
-        }
+        } + 2;
+        ctx_size
+        // if ctx_size % 8 == 0 {
+        //     ctx_size
+        // } else {
+        //     ctx_size + (8 - (ctx_size % 8))
+        // }
     }
 }
 
@@ -173,13 +188,13 @@ impl SMBFromBytes for NegotiateContext {
 impl SMBToBytes for NegotiateContext {
     fn smb_to_bytes(&self) -> Vec<u8> {
         match self {
-            NegotiateContext::PreAuthIntegrityCapabilities(body) => body.smb_to_bytes(),
-            NegotiateContext::EncryptionCapabilities(body) => body.smb_to_bytes(),
-            NegotiateContext::CompressionCapabilities(body) => body.smb_to_bytes(),
-            NegotiateContext::NetnameNegotiateContextID(body) => body.smb_to_bytes(),
-            NegotiateContext::TransportCapabilities(body) => body.smb_to_bytes(),
-            NegotiateContext::RDMATransformCapabilities(body) => body.smb_to_bytes(),
-            NegotiateContext::SigningCapabilities(body) => body.smb_to_bytes(),
+            NegotiateContext::PreAuthIntegrityCapabilities(body) => ctx_smb_to_bytes!(body),
+            NegotiateContext::EncryptionCapabilities(body) => ctx_smb_to_bytes!(body),
+            NegotiateContext::CompressionCapabilities(body) => ctx_smb_to_bytes!(body),
+            NegotiateContext::NetnameNegotiateContextID(body) => ctx_smb_to_bytes!(body),
+            NegotiateContext::TransportCapabilities(body) => ctx_smb_to_bytes!(body),
+            NegotiateContext::RDMATransformCapabilities(body) => ctx_smb_to_bytes!(body),
+            NegotiateContext::SigningCapabilities(body) => ctx_smb_to_bytes!(body),
         }
     }
 }

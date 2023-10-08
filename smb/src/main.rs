@@ -50,8 +50,8 @@ fn main() -> anyhow::Result<()> {
                         let init_buffer = SPNEGOToken::Init(SPNEGOTokenInitBody::<NTLMAuthProvider>::new());
                         let neg_resp = SMBNegotiateResponse::from_request(request, init_buffer.as_bytes(true))
                             .unwrap();
-                        println!("Actual: {:?}", neg_resp.as_bytes());
-                        println!("New rp: {:?}", neg_resp.smb_to_bytes());
+                        println!("New rp: {:02x?}", neg_resp.smb_to_bytes());
+                        println!("Actual: {:02x?}", neg_resp.as_bytes());
                         let resp_body = SMBBody::NegotiateResponse(neg_resp);
                         let resp_header = message.header.create_response_header(0x0, 0);
                         let resp_msg = SMBMessage::new(resp_header, resp_body);
@@ -89,9 +89,12 @@ fn main() -> anyhow::Result<()> {
                             request,
                             spnego_response_body.as_bytes(),
                         ).unwrap();
+                        println!("Test response: {:?}", resp.smb_to_bytes());
+                        println!("Actu response: {:?}", resp.as_bytes());
                         let resp_body = SMBBody::SessionSetupResponse(resp);
                         let resp_header = message.header.create_response_header(0, 1010);
                         let resp_msg = SMBMessage::new(resp_header, resp_body);
+
                         cloned_connection.send_message(resp_msg)?;
                     }
                 }

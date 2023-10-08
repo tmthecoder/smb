@@ -5,7 +5,7 @@ use nom::multi::many1;
 use nom::number::complete::le_u8;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBFromBytes, SMBResult};
+use smb_core::{SMBFromBytes, SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
 
 use crate::protocol::body::Body;
@@ -48,10 +48,10 @@ impl Body<SMBSyncHeader> for SMBBody {
     fn as_bytes(&self) -> Vec<u8> {
         match self {
             SMBBody::NegotiateResponse(x) => {
-                x.as_bytes()
+                x.smb_to_bytes()
             },
             SMBBody::SessionSetupResponse(x) => {
-                x.as_bytes()
+                x.smb_to_bytes()
             }
             _ => Vec::new()
         }

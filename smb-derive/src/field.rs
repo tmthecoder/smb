@@ -1,4 +1,4 @@
-use std::cmp::{min, Ordering};
+use std::cmp::Ordering;
 use std::fmt::Debug;
 
 use darling::FromAttributes;
@@ -115,14 +115,28 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
             1
         };
 
+        let offset = if let SMBFieldType::Vector(vec) = ty {
+            vec.offset.as_ref()
+        } else if let SMBFieldType::Buffer(buf) = ty {
+            Some(&buf.offset)
+        } else {
+            None
+        };
+
+        let min_start = if let Some(start) = offset.map(|offset| offset.min_val.saturating_sub(offset.subtract)) {
+            start
+        } else {
+            0
+        };
+
         if ty.weight_of_enum() == 2 {
             quote_spanned! {self.spanned.span()=>
-                let align_value = if size % #align == 0 {
-                    0
-                } else {
-                    #align - (size % #align)
-                };
-                let size = size + align_value + ::smb_core::SMBByteSize::smb_byte_size(&#size_tokens);
+                // let align_value = if size % #align == 0 {
+                //     0
+                // } else {
+                //     #align - (size % #align)
+                // };
+                let size = ::std::cmp::max(size, #min_start) + ::smb_core::SMBByteSizeVec::smb_byte_size_vec(&#size_tokens, #align, size);
             }
         } else {
             quote_spanned! {self.spanned.span()=>
@@ -214,7 +228,7 @@ impl SMBFieldType {
     fn find_start_val(&self) -> usize {
         match self {
             Self::Direct(x) => x.start,
-            Self::Buffer(x) => min(x.length.start, x.offset.start),
+            Self::Buffer(x) => x.order,
             Self::Vector(x) => x.order,
             Self::Skip(x) => x.start,
             Self::ByteTag(x) => x.order,

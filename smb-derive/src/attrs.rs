@@ -39,6 +39,8 @@ pub struct DirectInner {
     pub num_type: String,
     #[darling(default)]
     pub subtract: usize,
+    #[darling(default)]
+    pub min_val: usize,
 }
 
 impl DirectInner {
@@ -75,7 +77,7 @@ impl DirectInner {
         }
     }
 
-    fn smb_to_bytes<T: Spanned>(&self, name: &str, spanned: &T) -> TokenStream {
+    fn smb_to_bytes<T: Spanned>(&self, name: &str, spanned: &T, name_val: Option<TokenStream>) -> TokenStream {
         let start = self.start;
         let subtract = self.subtract;
         let name = format_ident!("{}", name);
@@ -84,19 +86,36 @@ impl DirectInner {
         let name_len = format_ident!("{}_len", name);
         let name_add = format_ident!("{}_add", name);
         let name_bytes = format_ident!("{}_bytes", name);
+        let min_val = self.min_val;
         let end = if self.num_type == "direct" {
             quote! {0}
         } else {
             quote! { ::smb_core::SMBByteSize::smb_byte_size(&(0 as #ty)) }
         };
 
+        let new_current_pos = if name_val.is_some() {
+            quote! {
+                current_pos = current_pos;
+            }
+        } else {
+            quote! {
+                current_pos = (#name - #name_add);
+            }
+        };
+
+        let name_val = name_val.unwrap_or(quote! {
+            #name_add + current_pos
+        });
+
         quote_spanned! {spanned.span()=>
             let #name_start = #start;
             let #name_add = #subtract;
             let #name_len = #end;
-            let #name = #name_add + current_pos;
+            let #name = ::std::cmp::max(#name_val, #min_val);
             let #name_bytes = ::smb_core::SMBToBytes::smb_to_bytes(&(#name as #ty));
             item[#name_start..(#name_start + #name_len)].copy_from_slice(&#name_bytes);
+            #new_current_pos
+            current_pos = ::std::cmp::max(current_pos, #name_start + #name_len);
         }
     }
 }
@@ -104,12 +123,14 @@ impl DirectInner {
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, PartialEq, Eq)]
 #[darling(attributes(smb_buffer))]
 pub struct Buffer {
+    #[darling(default)]
+    pub order: usize,
     pub offset: DirectInner,
     pub length: DirectInner,
 }
 
 impl Buffer {
-    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> TokenStream {
         let offset = self.offset.smb_from_bytes("offset", spanned);
         let length = self.length.smb_from_bytes("length", spanned);
 
@@ -122,17 +143,19 @@ impl Buffer {
         }
     }
 
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> proc_macro2::TokenStream {
-        let offset_info = self.offset.smb_to_bytes("offset", spanned);
-        let length_info = self.length.smb_to_bytes("length", spanned);
-
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
+        let offset_info = self.offset.smb_to_bytes("offset", spanned, None);
+        let length_info = self.length.smb_to_bytes("length", spanned, Some(quote! {
+            bytes.len()
+        }));
 
         quote_spanned! {spanned.span()=>
+            let bytes = &#token;
+
             #offset_info
             #length_info
 
-            let length = ::smb_core::SMBByteSize::smb_byte_size(&#token);
-            let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&#token);
+            let length = bytes.len();
             item[current_pos..(current_pos + length)].copy_from_slice(&bytes);
             current_pos += length;
         }
@@ -167,29 +190,41 @@ impl Vector {
             }
             #offset
             let item_offset = item_offset as usize;
-            println!("OFFSET: {:?}", item_offset);
             let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytes::smb_from_bytes_vec(&input[item_offset..], item_count as usize)?;
-            current_pos = item_offset + ::smb_core::SMBByteSize::smb_byte_size(&#name);
+            current_pos = item_offset + ::smb_core::SMBByteSizeVec::smb_byte_size_vec(&#name, #align, item_offset);
         }
     }
 
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
-        let count_info = self.count.smb_to_bytes("item_count", spanned);
+        let count_info = self.count.smb_to_bytes("item_count", spanned, Some(quote! {
+          #token.len()
+        }));
         let offset_info = self.offset
             .as_ref()
-            .map_or(quote! {}, |offset| offset.smb_to_bytes("item_offset", spanned));
+            .map_or(quote! {}, |offset| offset.smb_to_bytes("item_offset", spanned, None));
         let align = self.align;
 
-        println!("OFFSET: {}", offset_info);
         quote_spanned! { spanned.span()=>
             #count_info
-            // #offset_info
-            if #align > 0 && current_pos % #align != 0 {
-                current_pos += 8 - (current_pos % #align);
-            }
+            let get_aligned_pos = |align: usize, current_pos: usize| {
+                if align > 0 && current_pos % align != 0 {
+                    current_pos + (8 - current_pos % align)
+                } else {
+                    current_pos
+                }
+            };
+            current_pos = get_aligned_pos(#align, current_pos);
+            #offset_info
             for entry in #token.iter() {
                 let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(entry);
+                if (#align > 0) {
+                    println!("item with align {} initial starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
+                }
+                current_pos = get_aligned_pos(#align, current_pos);
                 item[current_pos..(current_pos + item_bytes.len())].copy_from_slice(&item_bytes);
+                if (#align > 0) {
+                    println!("adding item with align {} at starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
+                }
                 current_pos += item_bytes.len();
             }
         }

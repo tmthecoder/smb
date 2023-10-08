@@ -20,22 +20,41 @@ pub trait SMBToBytes: SMBByteSize {
     fn smb_to_bytes(&self) -> Vec<u8>;
 }
 
-impl<T: SMBFromBytes> SMBFromBytes for Vec<T> {
-    fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
-        let (remaining, item) = T::smb_from_bytes(input)?;
-        Ok((remaining, vec![item]))
-    }
+pub trait SMBByteSizeVec {
+    fn smb_byte_size_vec(&self, align: usize, start: usize) -> usize;
 }
 
-impl<T: SMBToBytes> SMBToBytes for Vec<T> {
-    fn smb_to_bytes(&self) -> Vec<u8> {
-        self.iter().map(SMBToBytes::smb_to_bytes).collect::<Vec<Vec<u8>>>().concat()
-    }
-}
+// impl<T: SMBFromBytes> SMBFromBytes for Vec<T> {
+//     fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
+//         let (remaining, item) = T::smb_from_bytes(input)?;
+//         Ok((remaining, vec![item]))
+//     }
+// }
+//
+// impl<T: SMBToBytes> SMBToBytes for Vec<T> {
+//     fn smb_to_bytes(&self) -> Vec<u8> {
+//         self.iter().map(SMBToBytes::smb_to_bytes).collect::<Vec<Vec<u8>>>().concat()
+//     }
+// }
 
-impl<T: SMBByteSize> SMBByteSize for Vec<T> {
-    fn smb_byte_size(&self) -> usize {
-        self.iter().fold(0, |prev, x| prev + x.smb_byte_size())
+impl<T: SMBByteSize> SMBByteSizeVec for Vec<T> {
+    fn smb_byte_size_vec(&self, align: usize, start: usize) -> usize {
+        let align = std::cmp::max(align, 1);
+        self.iter().fold(start, |prev, x| {
+            if align > 1 {
+                println!("Start position for item at {prev} with align {align}");
+            }
+            let size = x.smb_byte_size();
+            let aligned_start = if prev % align == 0 {
+                prev
+            } else {
+                prev + (align - prev % align)
+            };
+            if align > 1 {
+                println!("adj Start position for item at {aligned_start} with align {align} and size {size}");
+            }
+            aligned_start + size
+        }) - start
     }
 }
 
@@ -58,9 +77,9 @@ impl<T> SMBByteSize for PhantomData<T> {
     }
 }
 
-impl SMBFromBytes for String {
-    fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
-        let (remaining, vec) = <Vec<u8>>::smb_from_bytes(input)?;
+impl SMBVecFromBytes for String {
+    fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self> where Self: Sized {
+        let (remaining, vec) = <Vec<u8>>::smb_from_bytes_vec(input, count)?;
         let str = String::from_utf8(vec)
             .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
         Ok((remaining, str))
@@ -98,14 +117,14 @@ impl<T: SMBFromBytes> SMBVecFromBytes for Vec<T> {
     }
 }
 
-impl SMBVecFromBytes for String {
-    fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self> where Self: Sized {
-        let (remaining, vec) = <Vec<u16>>::smb_from_bytes_vec(input, count / 2)?;
-        let string = String::from_utf16(&vec)
-            .map_err(|_e| SMBError::ParseError("Invalid string"))?;
-        Ok((remaining, string))
-    }
-}
+// impl SMBVecFromBytes for String {
+//     fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self> where Self: Sized {
+//         let (remaining, vec) = <Vec<u16>>::smb_from_bytes_vec(input, count / 2)?;
+//         let string = String::from_utf16(&vec)
+//             .map_err(|_e| SMBError::ParseError("Invalid string"))?;
+//         Ok((remaining, string))
+//     }
+// }
 
 // impl<T> SMBFromBytes for T where T: Into<String> + TryFrom<String> + Clone {
 //     fn smb_byte_size(&self) -> usize {

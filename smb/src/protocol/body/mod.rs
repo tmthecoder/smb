@@ -1,7 +1,4 @@
-use nom::IResult;
-
-use smb_core::error::SMBError;
-use smb_core::SMBResult;
+use smb_core::{SMBFromBytes, SMBResult, SMBToBytes};
 
 use crate::protocol::header::Header;
 
