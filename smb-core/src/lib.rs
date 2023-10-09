@@ -6,14 +6,15 @@ use error::SMBError;
 
 pub mod error;
 
-pub type SMBResult<'a, I, O, E = SMBError<'a>> = Result<(I, O), E>;
+pub type SMBParseResult<'a, I, O, E = SMBError<'a>> = Result<(I, O), E>;
+pub type SMBResult<O, E = SMBError<'static>> = Result<O, E>;
 
 pub trait SMBByteSize {
     fn smb_byte_size(&self) -> usize;
 }
 
 pub trait SMBFromBytes: SMBByteSize {
-    fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized;
+    fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized;
 }
 
 pub trait SMBToBytes: SMBByteSize {
@@ -59,7 +60,7 @@ impl<T: SMBByteSize> SMBByteSizeVec for Vec<T> {
 }
 
 impl<T: SMBFromBytes> SMBFromBytes for PhantomData<T> {
-    fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
+    fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
         let (remaining, _) = T::smb_from_bytes(input)?;
         Ok((remaining, PhantomData))
     }
@@ -78,7 +79,7 @@ impl<T> SMBByteSize for PhantomData<T> {
 }
 
 impl SMBVecFromBytes for String {
-    fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self> where Self: Sized {
+    fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized {
         let (remaining, vec) = <Vec<u8>>::smb_from_bytes_vec(input, count)?;
         let str = String::from_utf8(vec)
             .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
@@ -99,11 +100,11 @@ impl SMBByteSize for String {
 }
 
 pub trait SMBVecFromBytes {
-    fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self> where Self: Sized;
+    fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized;
 }
 
 impl<T: SMBFromBytes> SMBVecFromBytes for Vec<T> {
-    fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self> where Self: Sized {
+    fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized {
         let mut remaining = input;
         let mut done_cnt = 0;
         let mut msg_vec = Vec::<T>::new();
@@ -141,7 +142,7 @@ impl<T: SMBFromBytes> SMBVecFromBytes for Vec<T> {
 // }
 
 impl SMBFromBytes for Uuid {
-    fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
+    fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
         let uuid = Uuid::from_slice(&input[0..16])
             .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
         let remaining = &input[uuid.smb_byte_size()..];
@@ -198,7 +199,7 @@ macro_rules! impl_smb_from_bytes_for_slice {(
 ) => (
     $(
         impl SMBFromBytes for [u8; $N] {
-            fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> {
+            fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> {
                 impl_parse_fixed_slice!($N, input)
             }
         }
@@ -234,7 +235,7 @@ macro_rules! impl_smb_from_bytes_unsigned_type {(
 ) => (
     $(
         impl SMBFromBytes for $t {
-            fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> {
+            fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> {
                 const T_SIZE: usize = std::mem::size_of::<$t>();
                 let value = impl_parse_fixed_slice!(T_SIZE, input)?;
                 Ok((value.0, <$t>::from_le_bytes(value.1)))

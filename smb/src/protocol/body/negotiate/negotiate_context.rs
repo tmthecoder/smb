@@ -13,7 +13,7 @@ use num_enum::TryFromPrimitive;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBByteSize, SMBFromBytes, SMBResult, SMBToBytes};
+use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
@@ -132,7 +132,7 @@ impl SMBByteSize for NegotiateContext {
 }
 
 impl SMBFromBytes for NegotiateContext {
-    fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
+    fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
         if input.len() < 4 { return Err(SMBError::ParseError("Input too small")) }
         let (remaining, ctx_type) = u16::smb_from_bytes(input)?;
         let (_, ctx_len) = u16::smb_from_bytes(remaining)?;

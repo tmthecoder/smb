@@ -3,7 +3,7 @@ use std::str;
 
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBFromBytes, SMBResult, SMBToBytes};
+use smb_core::SMBParseResult;
 
 use crate::byte_helper::u16_to_bytes;
 use crate::protocol::body::{Body, LegacySMBBody, SMBBody};
@@ -29,7 +29,7 @@ impl<S: Header, T: Body<S>> SMBMessage<S, T> {
 
 pub trait Message {
     fn as_bytes(&self) -> Vec<u8>;
-    fn parse(bytes: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized;
+    fn parse(bytes: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized;
 }
 
 impl SMBMessage<SMBSyncHeader, SMBBody> {
@@ -50,7 +50,7 @@ impl<S: Header, T: Body<S>> Message for SMBMessage<S, T> {
         [[0, 0].to_vec(), len_bytes.to_vec(), smb2_message].concat()
     }
 
-    fn parse(bytes: &[u8]) -> SMBResult<&[u8], Self> {
+    fn parse(bytes: &[u8]) -> SMBParseResult<&[u8], Self> {
         let (remaining, header) = S::smb_from_bytes(bytes)?;
         let (remaining, body) = T::parse_with_cc(remaining, header.command_code())?;
         Ok((remaining, Self { header, body }))

@@ -4,20 +4,22 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
 use smb_core::error::SMBError;
+use smb_core::SMBResult;
 
 use crate::protocol::body::SMBDialect;
 use crate::util::crypto::sp800_108;
 
-pub fn calculate_signature(signing_key: &[u8], dialect: SMBDialect, buffer: &[u8], offset: usize, padded_len: usize) -> Result<Vec<u8>, anyhow::Error>{
+pub fn calculate_signature(signing_key: &[u8], dialect: SMBDialect, buffer: &[u8], offset: usize, padded_len: usize) -> SMBResult<Vec<u8>> {
     let buffer = &buffer[offset..(offset + padded_len)];
     let output = if dialect == SMBDialect::V2_0_2 || dialect == SMBDialect::V2_1_0 {
-        <Hmac<Sha256>>::new_from_slice(signing_key)?
+        new_sha256_from_slice(signing_key)?
             .chain_update(buffer)
             .finalize()
             .into_bytes()
             .to_vec()
     } else {
-        <Cmac<Aes128>>::new_from_slice(signing_key)?
+        <Cmac<Aes128>>::new_from_slice(signing_key)
+            .map_err(|_| SMBError::CryptoError("Invalid Key Length"))?
             .chain_update(buffer)
             .finalize()
             .into_bytes()
@@ -25,7 +27,8 @@ pub fn calculate_signature(signing_key: &[u8], dialect: SMBDialect, buffer: &[u8
     };
     Ok(output)
 }
-pub fn generate_signing_key(session_key: &[u8], dialect: SMBDialect, preauth_integrity_hash_value: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
+
+pub fn generate_signing_key(session_key: &[u8], dialect: SMBDialect, preauth_integrity_hash_value: &[u8]) -> SMBResult<Vec<u8>> {
     if dialect == SMBDialect::V2_0_2 || dialect == SMBDialect::V2_1_0 {
         return Ok(session_key.into());
     }
@@ -45,6 +48,11 @@ pub fn generate_signing_key(session_key: &[u8], dialect: SMBDialect, preauth_int
         b"SmbSign\0"
     };
 
-    let hmac = <Hmac<Sha256>>::new_from_slice(session_key)?;
+    let hmac = new_sha256_from_slice(session_key)?;
     Ok(sp800_108::derive_key(hmac, label, context, 128))
+}
+
+fn new_sha256_from_slice(slice: &[u8]) -> SMBResult<Hmac<Sha256>> {
+    <Hmac<Sha256>>::new_from_slice(slice)
+        .map_err(|_| SMBError::CryptoError("Invalid Key Length"))
 }

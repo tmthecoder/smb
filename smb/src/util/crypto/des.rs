@@ -3,9 +3,10 @@ use des::Des;
 use digest::KeyInit;
 
 use smb_core::error::SMBError;
+use smb_core::SMBResult;
 
-pub fn des_long_encrypt(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
-    if key.len() != 16 || plaintext.len() != 8 { return Err(SMBError::CryptoError.into()); }
+pub fn des_long_encrypt(key: &[u8], plaintext: &[u8]) -> SMBResult<Vec<u8>> {
+    if key.len() != 16 || plaintext.len() != 8 { return Err(SMBError::CryptoError("Invalid key length")); }
     let padded = [key, &*vec![0; 21 - key.len()]].concat();
 
     let k1 = &padded[0..7];
@@ -38,8 +39,9 @@ fn extend_des_key(key: &[u8]) -> Vec<u8> {
     result
 }
 
-fn des_encrypt(key: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
-    let des = Des::new_from_slice(key)?;
+fn des_encrypt(key: &[u8], plaintext: &[u8]) -> SMBResult<Vec<u8>> {
+    let des = Des::new_from_slice(key)
+        .map_err(|_| SMBError::CryptoError("Invalid key length"))?;
     let mut result = vec![0_u8; plaintext.len()];
     des.encrypt_block_b2b(plaintext.into(), (&mut *result).into());
     Ok(result)

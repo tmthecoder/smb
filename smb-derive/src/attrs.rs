@@ -217,14 +217,14 @@ impl Vector {
             #offset_info
             for entry in #token.iter() {
                 let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(entry);
-                if (#align > 0) {
-                    println!("item with align {} initial starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
-                }
+                // if (#align > 0) {
+                //     println!("item with align {} initial starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
+                // }
                 current_pos = get_aligned_pos(#align, current_pos);
                 item[current_pos..(current_pos + item_bytes.len())].copy_from_slice(&item_bytes);
-                if (#align > 0) {
-                    println!("adding item with align {} at starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
-                }
+                // if (#align > 0) {
+                //     println!("adding item with align {} at starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
+                // }
                 current_pos += item_bytes.len();
             }
         }
@@ -251,7 +251,7 @@ impl ByteTag {
             let remaining = &input[current_pos..];
         }
     }
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> TokenStream {
         let start_byte = self.value;
         quote_spanned! {spanned.span()=>
             item[current_pos] = #start_byte;

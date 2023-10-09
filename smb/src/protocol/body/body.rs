@@ -5,7 +5,7 @@ use nom::multi::many1;
 use nom::number::complete::le_u8;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBFromBytes, SMBResult, SMBToBytes};
+use smb_core::{SMBFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
 
 use crate::protocol::body::Body;
@@ -27,7 +27,7 @@ pub enum SMBBody {
 }
 
 impl Body<SMBSyncHeader> for SMBBody {
-    fn parse_with_cc(bytes: &[u8], command_code: SMBCommandCode) -> SMBResult<&[u8], Self> {
+    fn parse_with_cc(bytes: &[u8], command_code: SMBCommandCode) -> SMBParseResult<&[u8], Self> {
         match command_code {
             SMBCommandCode::Negotiate => {
                 let (remaining, body) = SMBNegotiateRequest::smb_from_bytes(bytes)?;
@@ -65,7 +65,7 @@ pub enum LegacySMBBody {
 }
 
 impl Body<LegacySMBHeader> for LegacySMBBody {
-    fn parse_with_cc(bytes: &[u8], command_code: LegacySMBCommandCode) -> SMBResult<&[u8], Self> where Self: Sized {
+    fn parse_with_cc(bytes: &[u8], command_code: LegacySMBCommandCode) -> SMBParseResult<&[u8], Self> where Self: Sized {
         match command_code {
             LegacySMBCommandCode::Negotiate => {
                 let (remaining, cnt) = le_u8(bytes)
