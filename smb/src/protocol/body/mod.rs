@@ -9,6 +9,7 @@ mod filetime;
 pub mod negotiate;
 pub mod session_setup;
 
+pub mod logoff;
 pub mod tree_connect;
 
 pub type SMBBody = body::SMBBody;
