@@ -21,24 +21,11 @@ pub trait SMBToBytes: SMBByteSize {
     fn smb_to_bytes(&self) -> Vec<u8>;
 }
 
-pub trait SMBByteSizeVec {
+pub trait SMBVecByteSize {
     fn smb_byte_size_vec(&self, align: usize, start: usize) -> usize;
 }
 
-// impl<T: SMBFromBytes> SMBFromBytes for Vec<T> {
-//     fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
-//         let (remaining, item) = T::smb_from_bytes(input)?;
-//         Ok((remaining, vec![item]))
-//     }
-// }
-//
-// impl<T: SMBToBytes> SMBToBytes for Vec<T> {
-//     fn smb_to_bytes(&self) -> Vec<u8> {
-//         self.iter().map(SMBToBytes::smb_to_bytes).collect::<Vec<Vec<u8>>>().concat()
-//     }
-// }
-
-impl<T: SMBByteSize> SMBByteSizeVec for Vec<T> {
+impl<T: SMBByteSize> SMBVecByteSize for Vec<T> {
     fn smb_byte_size_vec(&self, align: usize, start: usize) -> usize {
         let align = std::cmp::max(align, 1);
         self.iter().fold(start, |prev, x| {
@@ -118,29 +105,6 @@ impl<T: SMBFromBytes> SMBVecFromBytes for Vec<T> {
     }
 }
 
-// impl SMBVecFromBytes for String {
-//     fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBResult<&[u8], Self> where Self: Sized {
-//         let (remaining, vec) = <Vec<u16>>::smb_from_bytes_vec(input, count / 2)?;
-//         let string = String::from_utf16(&vec)
-//             .map_err(|_e| SMBError::ParseError("Invalid string"))?;
-//         Ok((remaining, string))
-//     }
-// }
-
-// impl<T> SMBFromBytes for T where T: Into<String> + TryFrom<String> + Clone {
-//     fn smb_byte_size(&self) -> usize {
-//         Into::into(self.clone()).as_bytes().len()
-//     }
-//
-//     fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
-//         let string = String::from_utf8(input.into())
-//             .map_err(|_e| SMBError::ParseError("Invalid slice"))?;
-//         let value = T::try_from(string)
-//             .map_err(|_e| SMBError::ParseError("Invalid string"));
-//         Ok((&input[string.len()..], ))
-//     }
-// }
-
 impl SMBFromBytes for Uuid {
     fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
         let uuid = Uuid::from_slice(&input[0..16])
@@ -161,18 +125,6 @@ impl SMBByteSize for Uuid {
         self.as_bytes().len()
     }
 }
-
-// impl<'a, T> SMBFromBytes for T where T: From<&'a [u8]> {
-//     fn smb_byte_size(&self) -> usize {
-//         self.into().len()
-//     }
-//
-//     fn smb_from_bytes(input: &[u8]) -> SMBResult<&[u8], Self> where Self: Sized {
-//         let val = T::from(input);
-//         let remaining = &input[val.smb_byte_size()..];
-//         Ok((remaining, val))
-//     }
-// }
 
 macro_rules! impl_parse_fixed_slice {
     ($size: expr, $input: expr) => {{

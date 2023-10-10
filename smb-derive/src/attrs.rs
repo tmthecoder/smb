@@ -191,7 +191,7 @@ impl Vector {
             #offset
             let item_offset = item_offset as usize;
             let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytes::smb_from_bytes_vec(&input[item_offset..], item_count as usize)?;
-            current_pos = item_offset + ::smb_core::SMBByteSizeVec::smb_byte_size_vec(&#name, #align, item_offset);
+            current_pos = item_offset + ::smb_core::SMBVecByteSize::smb_byte_size_vec(&#name, #align, item_offset);
         }
     }
 
@@ -271,7 +271,7 @@ pub struct StringTag {
 }
 
 impl StringTag {
-    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T) -> TokenStream {
         let start_val = &self.value;
         quote_spanned! {spanned.span()=>
              let mut tagged = false;
@@ -291,7 +291,7 @@ impl StringTag {
             let remaining = &input[next_pos..];
         }
     }
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> TokenStream {
         let start_val = &self.value;
         quote_spanned! {spanned.span()=>
             let bytes = #start_val.as_bytes();
@@ -321,7 +321,7 @@ impl Skip {
     pub(crate) fn new(start: usize, length: usize) -> Self {
         Self { start, length, value: Vec::new() }
     }
-    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> TokenStream {
         let start = self.start;
         let length = self.length;
 
@@ -331,7 +331,7 @@ impl Skip {
             let #name = ::std::marker::PhantomData;
         }
     }
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> TokenStream {
         let start = self.start;
         let length = self.length;
         if self.value.len() == length {
@@ -372,16 +372,46 @@ impl FromAttributes for Repr {
                     }
                 }
             }
-            // if let Ok(Meta::List(l)) = attr.parse_nested_meta() {
-            //     if let Some(ident) = l.path.get_ident() {
-            //         if ident == "repr" && l.nested.len() == 1 {
-            //             return Ok(Self {
-            //                 ident: l.nested[0].clone()
-            //             });
-            //         }
-            //     }
-            // }
         }
         Err(darling::Error::custom("Could not derive 'repr' type"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use darling::FromAttributes;
+    use quote::quote;
+    use syn::Attribute;
+    use syn::parse::{Parse, ParseStream};
+
+    use crate::attrs::{Repr, Skip};
+
+    struct AttrsTestStruct {
+        attrs: Vec<Attribute>,
+    }
+
+    impl Parse for AttrsTestStruct {
+        fn parse(input: ParseStream) -> syn::Result<Self> {
+            Ok(AttrsTestStruct {
+                attrs: input.call(Attribute::parse_outer)?,
+            })
+        }
+    }
+
+    #[test]
+    fn test_repr_from_attributes() {
+        let struct_stream = quote! {
+            #[repr(u8)]
+            #[derive(Debug)]
+        };
+        let struct_buffer: AttrsTestStruct = syn::parse2(struct_stream).unwrap();
+        assert_eq!(Repr::from_attributes(&struct_buffer.attrs).unwrap().ident.to_string(), "u8");
+    }
+
+    #[test]
+    fn test_smb_skip() {
+        let skip = Skip::new(10, 10);
+        // let skip_to_bytes= skip.smb_to_bytes();
+    }
+}
+

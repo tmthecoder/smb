@@ -136,7 +136,7 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
                 // } else {
                 //     #align - (size % #align)
                 // };
-                let size = ::std::cmp::max(size, #min_start) + ::smb_core::SMBByteSizeVec::smb_byte_size_vec(&#size_tokens, #align, size);
+                let size = ::std::cmp::max(size, #min_start) + ::smb_core::SMBVecByteSize::smb_byte_size_vec(&#size_tokens, #align, size);
             }
         } else {
             quote_spanned! {self.spanned.span()=>

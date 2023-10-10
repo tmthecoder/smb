@@ -60,7 +60,7 @@ fn lmowf_v2(password: &str, user: &str, domain: &str) -> SMBResult<Vec<u8>> {
 
 fn ntowf_v2(password: &str, user: &str, domain: &str) -> SMBResult<Vec<u8>> {
     let password = password.encode_utf16().map(u16_to_bytes).collect::<Vec<[u8; 2]>>().concat();
-    let password_hash = Md4::digest(&password);
+    let password_hash = Md4::digest(password);
     let text = user.to_uppercase() + domain;
     let bytes = text.encode_utf16().map(u16_to_bytes).collect::<Vec<[u8; 2]>>().concat();
     let mut hmac_md5 = new_hmac_from_slice(password_hash.as_slice())?;

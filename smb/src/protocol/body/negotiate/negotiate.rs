@@ -78,7 +78,7 @@ impl SMBNegotiateRequest {
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBToBytes, SMBByteSize)]
 #[smb_byte_tag(value = 65)]
-pub struct SMBNegotiateResponseBody {
+pub struct SMBNegotiateResponse {
     #[smb_direct(start = 2)]
     security_mode: NegotiateSecurityMode,
     #[smb_direct(start = 4)]
@@ -103,7 +103,7 @@ pub struct SMBNegotiateResponseBody {
     negotiate_contexts: Vec<NegotiateContext>,
 }
 
-impl SMBNegotiateResponseBody {
+impl SMBNegotiateResponse {
     pub fn new(
         security_mode: NegotiateSecurityMode,
         dialect: SMBDialect,
@@ -155,7 +155,7 @@ impl SMBNegotiateResponseBody {
     }
 }
 
-impl SMBNegotiateResponseBody {
+impl SMBNegotiateResponse {
     pub fn as_bytes(&self) -> Vec<u8> {
         let len_w_buffer = 128 + self.buffer.len();
         let padding_len = 8 - (len_w_buffer % 8);
