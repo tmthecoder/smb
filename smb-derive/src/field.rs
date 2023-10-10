@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::cmp::{max, Ordering};
 use std::fmt::Debug;
 
 use darling::FromAttributes;
@@ -69,7 +69,16 @@ impl<'a, T: Spanned> SMBField<'a, T> {
     }
 
     pub(crate) fn attr_byte_size(&self) -> usize {
-        self.val_type.iter().fold(0, |x, inc| x + inc.attr_size())
+        let mut current_ptr = 0;
+        let mut skip_ptr = 0;
+        for field_type in self.val_type.iter() {
+            if let SMBFieldType::Skip(s) = field_type {
+                skip_ptr = s.start + s.length;
+            } else {
+                current_ptr += field_type.attr_size();
+            }
+        }
+        max(current_ptr, skip_ptr)
     }
 
     pub(crate) fn get_name(&self) -> proc_macro2::TokenStream {
@@ -173,7 +182,7 @@ impl SMBFieldType {
             SMBFieldType::Direct(direct) => direct.smb_from_bytes(field, name, ty),
             SMBFieldType::Buffer(buffer) => buffer.smb_from_bytes(field, name),
             SMBFieldType::Vector(vector) => vector.smb_from_bytes(field, name, ty),
-            SMBFieldType::Skip(skip) => skip.smb_from_bytes(field, name),
+            SMBFieldType::Skip(skip) => skip.smb_from_bytes(field, name, ty),
             SMBFieldType::ByteTag(byte_tag) => byte_tag.smb_from_bytes(field),
             SMBFieldType::StringTag(string_tag) => string_tag.smb_from_bytes(field),
         }

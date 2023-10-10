@@ -321,14 +321,14 @@ impl Skip {
     pub(crate) fn new(start: usize, length: usize) -> Self {
         Self { start, length, value: Vec::new() }
     }
-    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> TokenStream {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> TokenStream {
         let start = self.start;
         let length = self.length;
 
         quote_spanned! {spanned.span() =>
             current_pos = #start + #length;
             let remaining = &input[current_pos..];
-            let #name = ::std::marker::PhantomData;
+            let #name: #ty = ::std::marker::PhantomData;
         }
     }
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T) -> TokenStream {

@@ -3,17 +3,20 @@ use std::fmt::Debug;
 use darling::FromAttributes;
 use proc_macro2::Ident;
 use quote::{format_ident, quote};
-use syn::{Attribute, DataStruct, DeriveInput, Field, Fields, Path, Type, TypePath};
+use syn::{AngleBracketedGenericArguments, Attribute, DataStruct, DeriveInput, Field, Fields, GenericArgument, Path, PathArguments, PathSegment, Token, Type, TypePath};
+use syn::parse::Parse;
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
+use syn::token::PathSep;
 
 use crate::attrs::{Direct, Repr};
 use crate::field::{SMBField, SMBFieldType};
 use crate::SMBDeriveError;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct SMBFieldMapping<'a, T: Spanned + PartialEq + Eq> {
+pub struct SMBFieldMapping<'a, T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq> {
     parent: SMBField<'a, T>,
-    fields: Vec<SMBField<'a, T>>,
+    fields: Vec<SMBField<'a, U>>,
     mapping_type: SMBFieldMappingType,
 }
 
@@ -25,7 +28,7 @@ pub enum SMBFieldMappingType {
     Unit,
 }
 
-impl<T: Spanned + PartialEq + Eq + Debug> SMBFieldMapping<'_, T> {
+impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug> SMBFieldMapping<'_, T, U> {
     pub(crate) fn get_mapping_size(&self) -> proc_macro2::TokenStream {
         let parent_size = self.parent.attr_byte_size();
         let size = match &self.mapping_type {
@@ -42,7 +45,7 @@ impl<T: Spanned + PartialEq + Eq + Debug> SMBFieldMapping<'_, T> {
                 f.get_smb_message_size(token)
             }).collect(),
             SMBFieldMappingType::Unit => vec![quote! {
-                std::compile_error!("Invalid structure type")
+
             }]
         };
 
@@ -54,7 +57,7 @@ impl<T: Spanned + PartialEq + Eq + Debug> SMBFieldMapping<'_, T> {
     }
 }
 
-pub(crate) fn get_enum_field_mapping<'a>(enum_attributes: &[Attribute], input: &'a DeriveInput, parent_attrs: Vec<SMBFieldType>) -> Result<SMBFieldMapping<'a, DeriveInput>, SMBDeriveError<DeriveInput>> {
+pub(crate) fn get_enum_field_mapping<'a>(enum_attributes: &[Attribute], input: &'a DeriveInput, parent_attrs: Vec<SMBFieldType>) -> Result<SMBFieldMapping<'a, DeriveInput, DeriveInput>, SMBDeriveError<DeriveInput>> {
     let repr_type = Repr::from_attributes(enum_attributes)
         .map_err(|_e| SMBDeriveError::TypeError(input.clone()))?;
     let identity = &repr_type.ident;
@@ -78,7 +81,7 @@ pub(crate) fn get_enum_field_mapping<'a>(enum_attributes: &[Attribute], input: &
     })
 }
 
-pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_attrs: Vec<SMBFieldType>) -> Result<SMBFieldMapping<Field>, SMBDeriveError<Field>> {
+pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_attrs: Vec<SMBFieldType>) -> Result<SMBFieldMapping<Fields, Field>, SMBDeriveError<Field>> {
     if structure.fields.len() == 1 {
         let field = structure.fields.iter().next()
             .ok_or(SMBDeriveError::InvalidType)?;
@@ -99,7 +102,7 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_attrs: Vec
 
         let fields = vec![SMBField::new(field, name, field.ty.clone(), val_types)];
 
-        let parent = SMBField::new(field, format_ident!("single_base"), field.ty.clone(), vec![]);
+        let parent = SMBField::new(&structure.fields, format_ident!("single_base"), field.ty.clone(), vec![]);
 
         return if field.ident.is_some() {
             Ok(SMBFieldMapping {
@@ -129,15 +132,44 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_attrs: Vec
         Fields::Unit => SMBFieldMappingType::Unit
     };
 
-    let spanned_field = structure.fields.iter().next().unwrap();
+    let spanned_field = &structure.fields;
 
-    let bogus_ty = Type::Path(TypePath {
+    let usize_ty = Type::Path(TypePath {
         qself: None,
         path: Path::from(Ident::new("usize", spanned_field.span())),
     });
 
+    let mut punctuated_bracket_arg: Punctuated<GenericArgument, Token![,]> = Punctuated::new();
 
-    let parent = SMBField::new(spanned_field, format_ident!("structure_base"), bogus_ty, parent_attrs);
+    punctuated_bracket_arg.push(GenericArgument::Type(usize_ty));
+
+    let path_segments = [
+        PathSegment::from(Ident::new("std", spanned_field.span())),
+        PathSegment::from(Ident::new("marker", spanned_field.span())),
+        PathSegment {
+            ident: Ident::new("PhantomData", spanned_field.span()),
+            arguments: PathArguments::AngleBracketed(AngleBracketedGenericArguments {
+                colon2_token: None,
+                lt_token: Default::default(),
+                args: punctuated_bracket_arg,
+                gt_token: Default::default(),
+            }),
+        },
+    ];
+
+    let mut segments: Punctuated<PathSegment, Token![::]> = Punctuated::from_iter(path_segments);
+
+    let phantom_data_path = Path {
+        leading_colon: Some(PathSep::default()),
+        segments,
+    };
+
+    let phantom_ty = Type::Path(TypePath {
+        qself: None,
+        path: phantom_data_path,
+    });
+
+    let parent = SMBField::new(spanned_field, format_ident!("structure_base"), phantom_ty, parent_attrs);
 
     Ok(SMBFieldMapping {
         parent,
@@ -147,7 +179,7 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_attrs: Vec
 }
 
 
-pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
+pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T, U>) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
     let recurse = vector.iter().map(SMBField::smb_from_bytes);
     let parent = mapping.parent.smb_from_bytes();
@@ -180,7 +212,7 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBF
         }
         SMBFieldMappingType::Unit => {
             quote! {
-                std::compile_error!("Invalid struct type")
+                Ok((remaining, Self))
             }
         }
     };
@@ -193,7 +225,7 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBF
     }
 }
 
-pub(crate) fn smb_to_bytes<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
+pub(crate) fn smb_to_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T, U>) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
     let parent = mapping.parent.smb_to_bytes_struct();
     let recurse = match mapping.mapping_type {

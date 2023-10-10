@@ -10,12 +10,12 @@ use crate::field_mapping::SMBFieldMapping;
 pub(crate) struct ByteSizeCreator {}
 
 impl CreatorFn for ByteSizeCreator {
-    fn call<T: Spanned + PartialEq + Eq + Debug>(self, mapping: Result<SMBFieldMapping<T>, SMBDeriveError<T>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<T>> {
+    fn call<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(self, mapping: Result<SMBFieldMapping<T, U>, SMBDeriveError<U>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
         create_byte_size_impl(mapping, name)
     }
 }
 
-fn create_byte_size_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: Result<SMBFieldMapping<T>, SMBDeriveError<T>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<T>> {
+fn create_byte_size_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(mapping: Result<SMBFieldMapping<T, U>, SMBDeriveError<U>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
     let mapping = mapping?;
     let size = smb_byte_size_impl(&mapping);
     Ok(quote! {
@@ -28,6 +28,6 @@ fn create_byte_size_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: Result<SM
     })
 }
 
-fn smb_byte_size_impl<T: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T>) -> proc_macro2::TokenStream {
+fn smb_byte_size_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T, U>) -> proc_macro2::TokenStream {
     mapping.get_mapping_size()
 }

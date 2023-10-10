@@ -92,7 +92,7 @@ fn parent_attrs(input: &DeriveInput) -> Vec<SMBFieldType> {
 }
 
 trait CreatorFn {
-    fn call<T: Spanned + PartialEq + Eq + Debug>(self, mapping: Result<SMBFieldMapping<T>, SMBDeriveError<T>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<T>>;
+    fn call<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(self, mapping: Result<SMBFieldMapping<T, U>, SMBDeriveError<U>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>>;
 }
 
 #[derive(Debug)]
