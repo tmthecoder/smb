@@ -74,7 +74,6 @@ pub(crate) fn get_enum_field_mapping<'a>(enum_attributes: &[Attribute], input: &
             order: 0,
         })],
     );
-    println!("Parent attrs: {:?}", parent_attrs);
     let parent = SMBField::new(input, format_ident!("enum_outer"), ty, parent_attrs);
     Ok(SMBFieldMapping {
         parent,
