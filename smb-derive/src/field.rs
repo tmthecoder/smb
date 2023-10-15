@@ -277,15 +277,6 @@ impl FromAttributes for SMBFieldType {
 }
 
 fn get_field_types(field: &Field, attrs: &[Attribute]) -> Result<SMBFieldType, SMBDeriveError<Field>> {
-    if let Ok(buffer) = Buffer::from_attributes(attrs) {
-        Ok(SMBFieldType::Buffer(buffer))
-    } else if let Ok(direct) = Direct::from_attributes(attrs) {
-        Ok(SMBFieldType::Direct(direct))
-    } else if let Ok(vector) = Vector::from_attributes(attrs) {
-        Ok(SMBFieldType::Vector(vector))
-    } else if let Ok(skip) = Skip::from_attributes(attrs) {
-        Ok(SMBFieldType::Skip(skip))
-    } else {
-        Err(SMBDeriveError::TypeError(field.clone()))
-    }
+    SMBFieldType::from_attributes(attrs)
+        .map_err(|_e| SMBDeriveError::TypeError(field.clone()))
 }

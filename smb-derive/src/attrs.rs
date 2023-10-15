@@ -8,7 +8,7 @@ use syn::spanned::Spanned;
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, Default, PartialEq, Eq)]
 #[darling(attributes(smb_direct))]
 pub struct Direct {
-    #[darling(map = From::< isize >::from)]
+    #[darling(map = "From::< isize >::from")]
     pub start: DirectStart,
     #[darling(default)]
     pub order: usize

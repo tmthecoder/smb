@@ -42,7 +42,7 @@ pub struct BlobData {
 pub struct SidAttrData {
     #[smb_direct(start = 0)]
     sid_data: BlobData,
-    #[smb_direct(order = 1)]
+    #[smb_direct(order = 1, start = - 1)]
     attr: SidAttr,
 }
 

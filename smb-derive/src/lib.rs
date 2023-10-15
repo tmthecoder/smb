@@ -60,7 +60,6 @@ fn derive_impl_creator(input: DeriveInput, creator: impl CreatorFn) -> proc_macr
     };
 
     let parent_attrs = parent_attrs(&input);
-    println!("Parent a: {:?}", parent_attrs);
 
     let parse_token = match &input.data {
         Data::Struct(structure) => {
@@ -86,7 +85,6 @@ fn derive_impl_creator(input: DeriveInput, creator: impl CreatorFn) -> proc_macr
 
 
 fn parent_attrs(input: &DeriveInput) -> Vec<SMBFieldType> {
-    println!("Input attrs: {:?}", input.attrs);
     input.attrs.iter().map(|attr| {
         SMBFieldType::from_attributes(&[attr.clone()])
     }).collect::<darling::Result<Vec<SMBFieldType>>>()
