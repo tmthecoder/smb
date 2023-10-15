@@ -7,7 +7,7 @@ use quote::{format_ident, quote, quote_spanned};
 use syn::{Attribute, Field, Type};
 use syn::spanned::Spanned;
 
-use crate::attrs::{Buffer, ByteTag, Direct, Skip, StringTag, Vector};
+use crate::attrs::{Buffer, ByteTag, Direct, DirectStart, Skip, StringTag, Vector};
 use crate::SMBDeriveError;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -60,7 +60,7 @@ impl<'a, T: Spanned> SMBField<'a, T> {
 
     pub(crate) fn smb_to_bytes_enum(&self) -> proc_macro2::TokenStream {
         let ty = &self.ty;
-        let group = TokenTree::Group(proc_macro2::Group::new(Delimiter::Parenthesis, quote! {(*self) as #ty}));
+        let group = TokenTree::Group(Group::new(Delimiter::Parenthesis, quote! {(*self) as #ty}));
         let field = self.spanned;
         let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_to_bytes(&group, field));
         quote! {
@@ -236,7 +236,10 @@ impl Ord for SMBFieldType {
 impl SMBFieldType {
     fn find_start_val(&self) -> usize {
         match self {
-            Self::Direct(x) => x.start,
+            Self::Direct(x) => match x.start {
+                DirectStart::Location(idx) => idx,
+                DirectStart::CurrentPos => x.order
+            },
             Self::Buffer(x) => x.order,
             Self::Vector(x) => x.order,
             Self::Skip(x) => x.start,

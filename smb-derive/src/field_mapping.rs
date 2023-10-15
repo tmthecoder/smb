@@ -9,7 +9,7 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::PathSep;
 
-use crate::attrs::{Direct, Repr};
+use crate::attrs::{Direct, DirectStart, Repr};
 use crate::field::{SMBField, SMBFieldType};
 use crate::SMBDeriveError;
 
@@ -70,9 +70,11 @@ pub(crate) fn get_enum_field_mapping<'a>(enum_attributes: &[Attribute], input: &
         format_ident!("enum_field"),
         ty.clone(),
         vec![SMBFieldType::Direct(Direct {
-            start: 0
+            start: DirectStart::Location(0),
+            order: 0,
         })],
     );
+    println!("Parent attrs: {:?}", parent_attrs);
     let parent = SMBField::new(input, format_ident!("enum_outer"), ty, parent_attrs);
     Ok(SMBFieldMapping {
         parent,
@@ -89,7 +91,8 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_attrs: Vec
             (field, parent_attrs)
         } else {
             (field, vec![SMBFieldType::Direct(Direct {
-                start: 0,
+                start: DirectStart::Location(0),
+                order: 0,
             })])
         };
 
@@ -157,7 +160,7 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_attrs: Vec
         },
     ];
 
-    let mut segments: Punctuated<PathSegment, Token![::]> = Punctuated::from_iter(path_segments);
+    let segments: Punctuated<PathSegment, Token![::]> = Punctuated::from_iter(path_segments);
 
     let phantom_data_path = Path {
         leading_colon: Some(PathSep::default()),
@@ -227,7 +230,11 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq
 
 pub(crate) fn smb_to_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T, U>) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
-    let parent = mapping.parent.smb_to_bytes_struct();
+    let parent = match mapping.mapping_type {
+        SMBFieldMappingType::Enum => mapping.parent.smb_to_bytes_enum(),
+        _ => mapping.parent.smb_to_bytes_struct()
+    };
+
     let recurse = match mapping.mapping_type {
         SMBFieldMappingType::Enum => vector.iter().map(SMBField::smb_to_bytes_enum).collect::<Vec<proc_macro2::TokenStream>>(),
         _ => vector.iter().map(SMBField::smb_to_bytes_struct).collect()

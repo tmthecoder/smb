@@ -8,20 +8,47 @@ use syn::spanned::Spanned;
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, Default, PartialEq, Eq)]
 #[darling(attributes(smb_direct))]
 pub struct Direct {
-    pub start: usize,
+    #[darling(map = From::< isize >::from)]
+    pub start: DirectStart,
+    #[darling(default)]
+    pub order: usize
+}
+
+#[derive(Debug, Default, PartialEq, Eq, FromMeta)]
+pub enum DirectStart {
+    Location(usize),
+    #[default] CurrentPos,
+}
+
+impl From<isize> for DirectStart {
+    fn from(value: isize) -> Self {
+        if value < 0 {
+            DirectStart::CurrentPos
+        } else {
+            DirectStart::Location(value as usize)
+        }
+    }
 }
 
 impl Direct {
-    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
-        let start = self.start;
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> TokenStream {
+        let start = if let DirectStart::Location(s) = self.start {
+            quote! { #s }
+        } else {
+            quote! { current_pos }
+        };
         quote_spanned! { spanned.span() =>
             let (remaining, #name) = <#ty>::smb_from_bytes(&input[#start..])?;
             current_pos = ::smb_core::SMBByteSize::smb_byte_size(&#name) + #start;
         }
     }
 
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> proc_macro2::TokenStream {
-        let start = self.start;
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
+        let start = if let DirectStart::Location(s) = self.start {
+            quote! { #s }
+        } else {
+            quote! { current_pos }
+        };
         quote_spanned! { spanned.span()=>
             let size = ::smb_core::SMBByteSize::smb_byte_size(&#token);
             let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&#token);

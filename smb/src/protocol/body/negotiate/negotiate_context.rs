@@ -113,7 +113,7 @@ pub enum NegotiateContext {
 
 impl SMBByteSize for NegotiateContext {
     fn smb_byte_size(&self) -> usize {
-        let ctx_size = match self {
+        (match self {
             NegotiateContext::PreAuthIntegrityCapabilities(x) => x.smb_byte_size(),
             NegotiateContext::EncryptionCapabilities(x) => x.smb_byte_size(),
             NegotiateContext::CompressionCapabilities(x) => x.smb_byte_size(),
@@ -121,13 +121,7 @@ impl SMBByteSize for NegotiateContext {
             NegotiateContext::TransportCapabilities(x) => x.smb_byte_size(),
             NegotiateContext::RDMATransformCapabilities(x) => x.smb_byte_size(),
             NegotiateContext::SigningCapabilities(x) => x.smb_byte_size(),
-        } + 2;
-        ctx_size
-        // if ctx_size % 8 == 0 {
-        //     ctx_size
-        // } else {
-        //     ctx_size + (8 - (ctx_size % 8))
-        // }
+        }) + 2
     }
 }
 
