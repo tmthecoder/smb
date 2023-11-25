@@ -70,7 +70,7 @@ pub(crate) fn get_enum_field_mapping<'a>(enum_attributes: &[Attribute], input: &
         format_ident!("enum_field"),
         ty.clone(),
         vec![SMBFieldType::Direct(Direct {
-            start: DirectStart::Location(0),
+            start: DirectStart::Fixed(0),
             order: 0,
         })],
     );
@@ -90,7 +90,7 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_attrs: Vec
             (field, parent_attrs)
         } else {
             (field, vec![SMBFieldType::Direct(Direct {
-                start: DirectStart::Location(0),
+                start: DirectStart::Fixed(0),
                 order: 0,
             })])
         };

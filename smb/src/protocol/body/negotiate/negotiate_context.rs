@@ -407,7 +407,7 @@ impl EncryptionCapabilities {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct CompressionCapabilities {
-    #[smb_direct(start = 10)]
+    #[smb_direct(start(fixed = 10))]
     pub(crate) flags: CompressionCapabilitiesFlags,
     #[smb_vector(order = 1, count(start = 6, num_type = "u16"))]
     pub(crate) compression_algorithms: Vec<CompressionAlgorithm>,

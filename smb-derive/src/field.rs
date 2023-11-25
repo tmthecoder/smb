@@ -237,8 +237,8 @@ impl SMBFieldType {
     fn find_start_val(&self) -> usize {
         match self {
             Self::Direct(x) => match x.start {
-                DirectStart::Location(idx) => idx,
-                DirectStart::CurrentPos => x.order
+                DirectStart::Fixed(idx) => idx,
+                DirectStart::CurrentPos | DirectStart::Inner(_) => x.order
             },
             Self::Buffer(x) => x.order,
             Self::Vector(x) => x.order,

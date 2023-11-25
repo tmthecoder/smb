@@ -1,23 +1,52 @@
+use std::str::FromStr;
+
 use darling::{FromAttributes, FromDeriveInput, FromField, FromMeta};
+use darling::ast::NestedMeta;
 use proc_macro2::{Ident, TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
-use syn::{Attribute, DeriveInput, Meta, Path, Token, Type, TypePath};
+use syn::{Attribute, DeriveInput, Expr, Lit, Meta, Path, Token, Type, TypePath};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, Default, PartialEq, Eq)]
 #[darling(attributes(smb_direct))]
 pub struct Direct {
-    #[darling(map = "From::< isize >::from")]
     pub start: DirectStart,
     #[darling(default)]
     pub order: usize
 }
 
-#[derive(Debug, Default, PartialEq, Eq, FromMeta)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub enum DirectStart {
-    Location(usize),
+    Fixed(usize),
+    Inner(DirectInner),
     #[default] CurrentPos,
+}
+
+impl FromMeta for DirectStart {
+    fn from_list(items: &[NestedMeta]) -> darling::Result<Self> {
+        println!("items: {:?}", items);
+        for item in items {
+            if let NestedMeta::Meta(Meta::NameValue(meta)) = item {
+                if meta.path.is_ident("fixed") {
+                    if let Expr::Lit(lit) = &meta.value {
+                        if let Lit::Int(int) = &lit.lit {
+                            println!("fixed at pos: {:?}", int);
+                            return Ok(DirectStart::Fixed(int.base10_parse::<usize>()?))
+                        }
+                    }
+                }
+            }
+        }
+        Err(darling::Error::missing_field("fixed | current_pos | inner"))
+    }
+
+    fn from_string(value: &str) -> darling::Result<Self> {
+        match value.to_lowercase().trim().replace(' ', "").replace("_", "").as_str() {
+            "currentpos" => Ok(DirectStart::CurrentPos),
+            _ => Err(darling::Error::missing_field("fixed | current_pos | inner"))
+        }
+    }
 }
 
 impl From<isize> for DirectStart {
@@ -25,14 +54,14 @@ impl From<isize> for DirectStart {
         if value < 0 {
             DirectStart::CurrentPos
         } else {
-            DirectStart::Location(value as usize)
+            DirectStart::Fixed(value as usize)
         }
     }
 }
 
 impl Direct {
     pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> TokenStream {
-        let start = if let DirectStart::Location(s) = self.start {
+        let start = if let DirectStart::Fixed(s) = self.start {
             quote! { #s }
         } else {
             quote! { current_pos }
@@ -44,7 +73,7 @@ impl Direct {
     }
 
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
-        let start = if let DirectStart::Location(s) = self.start {
+        let start = if let DirectStart::Fixed(s) = self.start {
             quote! { #s }
         } else {
             quote! { current_pos }

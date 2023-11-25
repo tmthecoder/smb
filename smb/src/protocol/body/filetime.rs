@@ -8,9 +8,9 @@ use crate::byte_helper::{bytes_to_u32, bytes_to_u64, u32_to_bytes, u64_to_bytes}
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, SMBFromBytes, SMBToBytes, SMBByteSize)]
 pub struct FileTime {
-    #[smb_direct(start = 0)]
+    #[smb_direct(start(fixed = 0))]
     low_date_time: u32,
-    #[smb_direct(start = 4)]
+    #[smb_direct(start(fixed = 4))]
     high_date_time: u32,
 }
 

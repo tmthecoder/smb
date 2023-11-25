@@ -16,13 +16,13 @@ use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_by
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize, SMBToBytes)]
 #[smb_byte_tag(value = 25)]
 pub struct SMBSessionSetupRequest {
-    #[smb_direct(start = 2)]
+    #[smb_direct(start(fixed = 2))]
     flags: SMBSessionSetupFlags,
-    #[smb_direct(start = 3)]
+    #[smb_direct(start(fixed = 3))]
     security_mode: SessionSetupSecurityMode,
-    #[smb_direct(start = 4)]
+    #[smb_direct(start(fixed = 4))]
     capabilities: Capabilities,
-    #[smb_direct(start = 16)]
+    #[smb_direct(start(fixed = 16))]
     previous_session_id: u64,
     #[smb_buffer(offset(start = 12, num_type = "u16", subtract = 64), length(start = 14, num_type = "u16"))]
     buffer: Vec<u8>,
@@ -75,7 +75,7 @@ impl SMBSessionSetupRequest {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBToBytes, SMBFromBytes, SMBByteSize)]
 #[smb_byte_tag(value = 9)]
 pub struct SMBSessionSetupResponse {
-    #[smb_direct(start = 2)]
+    #[smb_direct(start(fixed = 2))]
     session_flags: SMBSessionFlags,
     #[smb_buffer(offset(start = 4, num_type = "u16", subtract = 64, min_val = 72), length(start = 6, num_type = "u16"))]
     buffer: Vec<u8>,

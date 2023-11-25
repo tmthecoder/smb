@@ -15,23 +15,23 @@ use crate::protocol::header::{
 #[smb_string_tag(value = "SMB", order = 1)]
 #[smb_byte_tag(value = 64, order = 2)]
 pub struct SMBSyncHeader {
-    #[smb_direct(start = 8)]
+    #[smb_direct(start(fixed = 8))]
     channel_sequence: u32,
-    #[smb_direct(start = 12)]
+    #[smb_direct(start(fixed = 12))]
     command: SMBCommandCode,
-    #[smb_direct(start = 16)]
+    #[smb_direct(start(fixed = 16))]
     flags: SMBFlags,
-    #[smb_direct(start = 20)]
+    #[smb_direct(start(fixed = 20))]
     next_command: u32,
-    #[smb_direct(start = 24)]
+    #[smb_direct(start(fixed = 24))]
     message_id: u64,
     #[smb_skip(start = 32, length = 4, value = "[0, 0, 0xFE, 0xFF]")]
     reserved: PhantomData<[u8; 4]>,
-    #[smb_direct(start = 36)]
+    #[smb_direct(start(fixed = 36))]
     tree_id: u32,
-    #[smb_direct(start = 40)]
+    #[smb_direct(start(fixed = 40))]
     session_id: u64,
-    #[smb_direct(start = 48)]
+    #[smb_direct(start(fixed = 48))]
     signature: [u8; 16],
 }
 
@@ -39,23 +39,23 @@ pub struct SMBSyncHeader {
 #[smb_byte_tag(0xFE)]
 #[smb_string_tag("SMB")]
 pub struct LegacySMBHeader {
-    #[smb_direct(start = 4)]
+    #[smb_direct(start(fixed = 4))]
     pub(crate) command: LegacySMBCommandCode,
-    #[smb_direct(start = 5)]
+    #[smb_direct(start(fixed = 5))]
     status: SMBStatus,
-    #[smb_direct(start = 9)]
+    #[smb_direct(start(fixed = 9))]
     flags: LegacySMBFlags,
-    #[smb_direct(start = 10)]
+    #[smb_direct(start(fixed = 10))]
     flags2: LegacySMBFlags2,
-    #[smb_direct(start = 12)]
+    #[smb_direct(start(fixed = 12))]
     extra: SMBExtra,
-    #[smb_direct(start = 22)]
+    #[smb_direct(start(fixed = 22))]
     tid: u16,
-    #[smb_direct(start = 24)]
+    #[smb_direct(start(fixed = 24))]
     pid: u16,
-    #[smb_direct(start = 26)]
+    #[smb_direct(start(fixed = 26))]
     uid: u16,
-    #[smb_direct(start = 28)]
+    #[smb_direct(start(fixed = 28))]
     mid: u16,
 }
 

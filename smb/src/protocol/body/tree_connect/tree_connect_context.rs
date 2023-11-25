@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
@@ -8,12 +10,6 @@ use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_by
 
 pub enum SMBTreeConnectContext {
     RemotedIdentity(RemotedIdentity),
-    BlobData(BlobData),
-    SIDAttrData(SidAttrData),
-    SIDArrayData(SidArrayData),
-    LUIDAttrData(LuidAttrData),
-    PrivilegeData(PrivilegeData),
-    PrivilegeArrayData(PrivilegeArrayData),
 }
 
 pub struct RemotedIdentity {
@@ -32,30 +28,45 @@ pub struct RemotedIdentity {
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct BlobData {
-    #[smb_direct(start = 0)]
-    size: u16,
+    #[smb_skip(start = 0, length = 2)]
+    reserved: PhantomData<Vec<u8>>,
     #[smb_vector(order = 1, count(start = 0, num_type = "u16"))]
     data: Vec<u8>,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct SidAttrData {
-    #[smb_direct(start = 0)]
+    #[smb_direct(start(fixed = 0))]
     sid_data: BlobData,
-    #[smb_direct(order = 1, start = - 1)]
+    #[smb_direct(start = "current_pos", order = 1)]
     attr: SidAttr,
 }
 
-pub type SidArrayData = Vec<SidAttrData>;
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
+pub struct SidArrayData {
+    #[smb_skip(start = 0, length = 2)]
+    reserved: PhantomData<Vec<u8>>,
+    #[smb_vector(order = 1, count(start = 0, num_type = "u16"))]
+    array: Vec<SidAttrData>,
+}
 
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct LuidAttrData {
-    luid: Vec<u8>,
+    #[smb_direct(start(fixed = 0))]
+    luid: [u8; 8],
+    #[smb_direct(start(fixed = 0))]
     attr: LuidAttr,
 }
 
 pub type PrivilegeData = BlobData;
 
-pub type PrivilegeArrayData = Vec<PrivilegeData>;
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
+pub struct PrivilegeArrayData {
+    #[smb_skip(start = 0, length = 2)]
+    reserved: PhantomData<Vec<u8>>,
+    #[smb_vector(order = 1, count(start = 0, num_type = "u16"))]
+    array: Vec<PrivilegeData>,
+}
 
 bitflags! {
     #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]

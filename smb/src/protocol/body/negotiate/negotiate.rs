@@ -18,11 +18,11 @@ use crate::protocol::body::negotiate::{NegotiateContext, NegotiateSecurityMode};
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize, SMBToBytes)]
 #[smb_byte_tag(value = 36)]
 pub struct SMBNegotiateRequest {
-    #[smb_direct(start = 4)]
+    #[smb_direct(start(fixed = 4))]
     security_mode: NegotiateSecurityMode,
-    #[smb_direct(start = 8)]
+    #[smb_direct(start(fixed = 8))]
     capabilities: Capabilities,
-    #[smb_direct(start = 12)]
+    #[smb_direct(start(fixed = 12))]
     client_uuid: Uuid,
     #[smb_skip(start = 28, length = 8)]
     reserved: PhantomData<Vec<u8>>,
@@ -79,23 +79,23 @@ impl SMBNegotiateRequest {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBToBytes, SMBByteSize)]
 #[smb_byte_tag(value = 65)]
 pub struct SMBNegotiateResponse {
-    #[smb_direct(start = 2)]
+    #[smb_direct(start(fixed = 2))]
     security_mode: NegotiateSecurityMode,
-    #[smb_direct(start = 4)]
+    #[smb_direct(start(fixed = 4))]
     dialect: SMBDialect,
-    #[smb_direct(start = 8)]
+    #[smb_direct(start(fixed = 8))]
     guid: Uuid,
-    #[smb_direct(start = 24)]
+    #[smb_direct(start(fixed = 24))]
     capabilities: Capabilities,
-    #[smb_direct(start = 28)]
+    #[smb_direct(start(fixed = 28))]
     max_transact_size: u32,
-    #[smb_direct(start = 32)]
+    #[smb_direct(start(fixed = 32))]
     max_read_size: u32,
-    #[smb_direct(start = 36)]
+    #[smb_direct(start(fixed = 36))]
     max_write_size: u32,
-    #[smb_direct(start = 40)]
+    #[smb_direct(start(fixed = 40))]
     system_time: FileTime,
-    #[smb_direct(start = 48)]
+    #[smb_direct(start(fixed = 48))]
     server_start_time: FileTime,
     #[smb_buffer(offset(start = 56, num_type = "u16", subtract = 64, min_val = 128), length(start = 58, num_type = "u16"), order = 1)]
     buffer: Vec<u8>,
