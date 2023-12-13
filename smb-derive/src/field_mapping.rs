@@ -9,7 +9,7 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::PathSep;
 
-use crate::attrs::{Direct, DirectStart, Repr};
+use crate::attrs::{AttributeInfo, Direct, Repr};
 use crate::field::{SMBField, SMBFieldType};
 use crate::SMBDeriveError;
 
@@ -34,7 +34,9 @@ impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug> SMBFieldM
         let size = match &self.mapping_type {
             SMBFieldMappingType::NamedStruct => self.fields.iter().map(|f| {
                 let token = f.get_named_token();
-                f.get_smb_message_size(token)
+                let size = f.get_smb_message_size(token.clone());
+                println!("token: {}, size: {}", token, size);
+                size
             }).collect(),
             SMBFieldMappingType::UnnamedStruct => self.fields.iter().enumerate().map(|(idx, f)| {
                 let token = f.get_unnamed_token(idx);
@@ -70,7 +72,7 @@ pub(crate) fn get_enum_field_mapping<'a>(enum_attributes: &[Attribute], input: &
         format_ident!("enum_field"),
         ty.clone(),
         vec![SMBFieldType::Direct(Direct {
-            start: DirectStart::Fixed(0),
+            start: AttributeInfo::Fixed(0),
             order: 0,
         })],
     );
@@ -90,7 +92,7 @@ pub(crate) fn get_struct_field_mapping(structure: &DataStruct, parent_attrs: Vec
             (field, parent_attrs)
         } else {
             (field, vec![SMBFieldType::Direct(Direct {
-                start: DirectStart::Fixed(0),
+                start: AttributeInfo::Fixed(0),
                 order: 0,
             })])
         };

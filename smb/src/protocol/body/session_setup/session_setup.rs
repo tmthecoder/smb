@@ -24,7 +24,7 @@ pub struct SMBSessionSetupRequest {
     capabilities: Capabilities,
     #[smb_direct(start(fixed = 16))]
     previous_session_id: u64,
-    #[smb_buffer(offset(start = 12, num_type = "u16", subtract = 64), length(start = 14, num_type = "u16"))]
+    #[smb_buffer(offset(inner(start = 12, num_type = "u16", subtract = 64)), length(inner(start = 14, num_type = "u16")))]
     buffer: Vec<u8>,
 }
 
@@ -77,7 +77,7 @@ impl SMBSessionSetupRequest {
 pub struct SMBSessionSetupResponse {
     #[smb_direct(start(fixed = 2))]
     session_flags: SMBSessionFlags,
-    #[smb_buffer(offset(start = 4, num_type = "u16", subtract = 64, min_val = 72), length(start = 6, num_type = "u16"))]
+    #[smb_buffer(offset(inner(start = 4, num_type = "u16", subtract = 64, min_val = 72)), length(inner(start = 6, num_type = "u16")))]
     buffer: Vec<u8>,
 }
 

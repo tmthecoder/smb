@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use darling::{FromAttributes, FromDeriveInput, FromField, FromMeta};
 use darling::ast::NestedMeta;
 use proc_macro2::{Ident, TokenStream, TokenTree};
@@ -8,85 +6,11 @@ use syn::{Attribute, DeriveInput, Expr, Lit, Meta, Path, Token, Type, TypePath};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 
-#[derive(Debug, FromDeriveInput, FromAttributes, FromField, Default, PartialEq, Eq)]
-#[darling(attributes(smb_direct))]
-pub struct Direct {
-    pub start: DirectStart,
-    #[darling(default)]
-    pub order: usize
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-pub enum DirectStart {
-    Fixed(usize),
-    Inner(DirectInner),
-    #[default] CurrentPos,
-}
-
-impl FromMeta for DirectStart {
-    fn from_list(items: &[NestedMeta]) -> darling::Result<Self> {
-        println!("items: {:?}", items);
-        for item in items {
-            if let NestedMeta::Meta(Meta::NameValue(meta)) = item {
-                if meta.path.is_ident("fixed") {
-                    if let Expr::Lit(lit) = &meta.value {
-                        if let Lit::Int(int) = &lit.lit {
-                            println!("fixed at pos: {:?}", int);
-                            return Ok(DirectStart::Fixed(int.base10_parse::<usize>()?))
-                        }
-                    }
-                }
-            }
-        }
-        Err(darling::Error::missing_field("fixed | current_pos | inner"))
-    }
-
-    fn from_string(value: &str) -> darling::Result<Self> {
-        match value.to_lowercase().trim().replace(' ', "").replace("_", "").as_str() {
-            "currentpos" => Ok(DirectStart::CurrentPos),
-            _ => Err(darling::Error::missing_field("fixed | current_pos | inner"))
-        }
-    }
-}
-
-impl From<isize> for DirectStart {
-    fn from(value: isize) -> Self {
-        if value < 0 {
-            DirectStart::CurrentPos
-        } else {
-            DirectStart::Fixed(value as usize)
-        }
-    }
-}
-
-impl Direct {
-    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> TokenStream {
-        let start = if let DirectStart::Fixed(s) = self.start {
-            quote! { #s }
-        } else {
-            quote! { current_pos }
-        };
-        quote_spanned! { spanned.span() =>
-            let (remaining, #name) = <#ty>::smb_from_bytes(&input[#start..])?;
-            current_pos = ::smb_core::SMBByteSize::smb_byte_size(&#name) + #start;
-        }
-    }
-
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
-        let start = if let DirectStart::Fixed(s) = self.start {
-            quote! { #s }
-        } else {
-            quote! { current_pos }
-        };
-        quote_spanned! { spanned.span()=>
-            let size = ::smb_core::SMBByteSize::smb_byte_size(&#token);
-            let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&#token);
-            item[#start..(#start + size)].copy_from_slice(&bytes);
-            current_pos = #start + size;
-        }
-    }
-
-    pub(crate) fn attr_byte_size(&self) -> usize { 0 }
+fn get_type<T: Spanned>(underlying: &str, spanned: &T) -> Type {
+    Type::Path(TypePath {
+        qself: None,
+        path: Path::from(Ident::new(underlying, spanned.span())),
+    })
 }
 
 #[derive(Debug, PartialEq, Eq, FromMeta)]
@@ -103,15 +27,9 @@ impl DirectInner {
     fn get_type<T: Spanned>(&self, spanned: &T) -> Type {
         let ty = &self.num_type;
         if self.num_type != "direct" {
-            Type::Path(TypePath {
-                qself: None,
-                path: Path::from(Ident::new(ty, spanned.span())),
-            })
+            get_type(ty, spanned)
         } else {
-            Type::Path(TypePath {
-                qself: None,
-                path: Path::from(Ident::new("usize", spanned.span())),
-            })
+            get_type("usize", spanned)
         }
     }
 
@@ -176,19 +94,144 @@ impl DirectInner {
     }
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+pub enum AttributeInfo {
+    Fixed(usize),
+    Inner(DirectInner),
+    #[default] CurrentPos,
+    NullTerminated(String),
+}
+
+impl FromMeta for AttributeInfo {
+    fn from_list(items: &[NestedMeta]) -> darling::Result<Self> {
+        for item in items {
+            if let NestedMeta::Meta(Meta::NameValue(meta)) = item {
+                if meta.path.is_ident("fixed") {
+                    if let Expr::Lit(lit) = &meta.value {
+                        if let Lit::Int(int) = &lit.lit {
+                            return Ok(AttributeInfo::Fixed(int.base10_parse::<usize>()?))
+                        }
+                    }
+                }
+            } else if let NestedMeta::Meta(Meta::List(list)) = item {
+                if list.path.is_ident("inner") {
+                    return Ok(AttributeInfo::Inner(DirectInner::from_nested_meta(item)?))
+                } else if list.path.is_ident("null_terminated") {
+                    return Ok(AttributeInfo::NullTerminated(String::from_nested_meta(item)?))
+                }
+            }
+        }
+        Err(darling::Error::missing_field("fixed | current_pos | inner | null_terminated"))
+    }
+
+    fn from_string(value: &str) -> darling::Result<Self> {
+        match value.to_lowercase().trim().replace([' ', '_'], "").as_str() {
+            "currentpos" => Ok(AttributeInfo::CurrentPos),
+            "nullterminated" => Ok(AttributeInfo::NullTerminated("u8".into())),
+            _ => Err(darling::Error::missing_field("fixed | current_pos | inner | null_terminated"))
+        }
+    }
+}
+
+impl AttributeInfo {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &str) -> TokenStream {
+        let name_ident = format_ident!("{}", name);
+        match self {
+            Self::CurrentPos => quote! { let #name_ident = current_pos; },
+            Self::Fixed(start) => quote! { let #name_ident = #start; },
+            Self::Inner(inner) => inner.smb_from_bytes(name, spanned),
+            Self::NullTerminated(num_ty) => {
+                let ty = get_type(num_ty, spanned);
+                quote! {
+                    let #name_ident = 0;
+                    let val = &input[item_offset..];
+                    let size = ::smb_core::SMBByteSize::smb_byte_size(0 as #ty);
+                    while let Ok(num) = SMBFromBytes::smb_from_bytes::<#ty>(val) {
+                        val = val[size..];
+                        #name_ident += size;
+                        if num == 0 {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, name: &str, name_val: Option<TokenStream>) -> TokenStream {
+        let name_ident = format_ident!("{}", name);
+        match self {
+            Self::CurrentPos => quote! { let #name_ident = current_pos; },
+            Self::Fixed(start) => quote! { let #name_ident = #start; },
+            Self::Inner(inner) => inner.smb_to_bytes(name, spanned, name_val),
+            Self::NullTerminated(_) => quote! {},
+        }
+    }
+
+    pub(crate) fn get_pos(&self) -> usize {
+        match self {
+            Self::CurrentPos | Self::NullTerminated(_) => 0,
+            Self::Fixed(pos) => *pos,
+            Self::Inner(inner) => inner.min_val.saturating_sub(inner.subtract)
+        }
+    }
+}
+
+impl From<isize> for AttributeInfo {
+    fn from(value: isize) -> Self {
+        if value < 0 {
+            AttributeInfo::CurrentPos
+        } else {
+            AttributeInfo::Fixed(value as usize)
+        }
+    }
+}
+
+#[derive(Debug, FromDeriveInput, FromAttributes, FromField, Default, PartialEq, Eq)]
+#[darling(attributes(smb_direct))]
+pub struct Direct {
+    pub start: AttributeInfo,
+    #[darling(default)]
+    pub order: usize,
+}
+
+impl Direct {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> TokenStream {
+        let start = self.start.smb_from_bytes(spanned, "item_start");
+        quote_spanned! { spanned.span() =>
+            #start
+            let (remaining, #name) = <#ty>::smb_from_bytes(&input[(item_start as usize)..])?;
+            current_pos = ::smb_core::SMBByteSize::smb_byte_size(&#name) + item_start as usize;
+        }
+    }
+
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
+        let start = self.start.smb_to_bytes(spanned, "item_start", None);
+        quote_spanned! { spanned.span()=>
+            #start
+            let size = ::smb_core::SMBByteSize::smb_byte_size(&#token);
+            let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&#token);
+            item[(item_start as usize)..(item_start as usize + size)].copy_from_slice(&bytes);
+            current_pos = item_start as usize + size;
+        }
+    }
+
+    pub(crate) fn attr_byte_size(&self) -> usize { 0 }
+}
+
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, PartialEq, Eq)]
 #[darling(attributes(smb_buffer))]
 pub struct Buffer {
     #[darling(default)]
     pub order: usize,
-    pub offset: DirectInner,
-    pub length: DirectInner,
+    pub offset: AttributeInfo,
+    pub length: AttributeInfo,
 }
 
 impl Buffer {
     pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> TokenStream {
-        let offset = self.offset.smb_from_bytes("offset", spanned);
-        let length = self.length.smb_from_bytes("length", spanned);
+        let offset = self.offset.smb_from_bytes(spanned, "offset");
+        let length = self.length.smb_from_bytes(spanned, "length");
 
         quote_spanned! { spanned.span() =>
             #offset
@@ -200,8 +243,8 @@ impl Buffer {
     }
 
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
-        let offset_info = self.offset.smb_to_bytes("offset", spanned, None);
-        let length_info = self.length.smb_to_bytes("length", spanned, Some(quote! {
+        let offset_info = self.offset.smb_to_bytes(spanned, "offset", None);
+        let length_info = self.length.smb_to_bytes(spanned, "length", Some(quote! {
             bytes.len()
         }));
 
@@ -224,21 +267,19 @@ impl Buffer {
 #[darling(attributes(smb_vector))]
 pub struct Vector {
     pub order: usize,
-    pub count: DirectInner,
-    pub offset: Option<DirectInner>,
+    pub count: AttributeInfo,
+    #[darling(default)]
+    pub offset: AttributeInfo,
     #[darling(default)]
     pub align: usize,
 }
 
 impl Vector {
     pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> TokenStream {
-        let count = self.count.smb_from_bytes("item_count", spanned);
+        let count = self.count.smb_from_bytes(spanned, "item_count");
+        println!("Count: {}", count);
         let align = self.align;
-        let offset = self.offset
-            .as_ref()
-            .map_or(quote! {
-                let item_offset = current_pos;
-            }, |offset| offset.smb_from_bytes("item_offset", spanned));
+        let offset = self.offset.smb_from_bytes(spanned, "item_offset");
         quote_spanned! { spanned.span() =>
             #count
             if #align > 0 && current_pos % #align != 0 {
@@ -252,12 +293,10 @@ impl Vector {
     }
 
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
-        let count_info = self.count.smb_to_bytes("item_count", spanned, Some(quote! {
+        let count_info = self.count.smb_to_bytes(spanned, "item_count", Some(quote! {
           #token.len()
         }));
-        let offset_info = self.offset
-            .as_ref()
-            .map_or(quote! {}, |offset| offset.smb_to_bytes("item_offset", spanned, None));
+        let offset_info = self.offset.smb_to_bytes(spanned, "item_offset", None);
         let align = self.align;
 
         quote_spanned! { spanned.span()=>
@@ -277,6 +316,99 @@ impl Vector {
                 //     println!("item with align {} initial starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
                 // }
                 current_pos = get_aligned_pos(#align, current_pos);
+                item[current_pos..(current_pos + item_bytes.len())].copy_from_slice(&item_bytes);
+                // if (#align > 0) {
+                //     println!("adding item with align {} at starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
+                // }
+                current_pos += item_bytes.len();
+            }
+        }
+    }
+
+    pub(crate) fn attr_byte_size(&self) -> usize { 0 }
+}
+
+#[derive(Debug, FromDeriveInput, FromAttributes, FromField, Eq, PartialEq)]
+#[darling(attributes(smb_string))]
+#[darling(and_then = "SMBString::match_attr_info")]
+pub struct SMBString {
+    pub order: usize,
+    #[darling(default)]
+    pub start: AttributeInfo,
+    pub length: AttributeInfo,
+    pub underlying: String,
+}
+
+impl SMBString {
+    fn match_attr_info(self) -> darling::Result<Self> {
+        let Self {
+            order,
+            start,
+            mut length,
+            underlying
+        } = self;
+        if let AttributeInfo::NullTerminated(_) = &length {
+            length = AttributeInfo::NullTerminated(underlying.clone())
+        }
+        Ok(Self {
+            order,
+            start,
+            length,
+            underlying,
+        })
+    }
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> TokenStream {
+        let length = self.length.smb_from_bytes(spanned, "item_count");
+        let start = self.start.smb_from_bytes(spanned, "item_offset");
+        let vec_name = format_ident!("{}_vec", name);
+        let string_parser = match self.underlying.as_str() {
+            "u8" => quote! {
+                let #name = String::from_utf8(#vec_name).map_err(|e| SMBError::ParseError("some_err"))?;
+            },
+            "u16" => quote! {
+                let #name = String::from_utf16(&#vec_name).map_err(|e| SMBError::ParseError("some_err"))?;
+            },
+            _ => quote! {}
+        };
+
+        let num_type = get_type(&self.underlying, spanned);
+
+        quote_spanned! { spanned.span() =>
+            #start
+            let item_offset = item_offset as usize;
+            #length
+            let (remaining, #vec_name): (&[u8], Vec<#num_type>) = ::smb_core::SMBVecFromBytes::smb_from_bytes_vec(&input[item_offset..], (item_count/2) as usize)?;
+            #string_parser
+            current_pos = item_offset + ::smb_core::SMBVecByteSize::smb_byte_size_vec(&#name, 0, item_offset);
+        }
+    }
+
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
+        let count_info = self.length.smb_to_bytes(spanned, "item_count", Some(quote! {
+          #token.len()
+        }));
+        let offset_info = self.start.smb_to_bytes(spanned, "item_offset", None);
+
+        // TODO make this work to convert back to u8 & u16 vecs
+        let string_to_bytes = match self.underlying.as_str() {
+            "u8" => quote! {
+                let token_vec = #token.as_bytes();
+            },
+            "u16" => quote! {
+                let token_vec = #token.encode_utf16();
+            },
+            _ => quote! {}
+        };
+        quote_spanned! { spanned.span()=>
+            #count_info
+            #offset_info
+            #string_to_bytes
+            for entry in token_vec {
+                let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(&entry);
+                // if (#align > 0) {
+                //     println!("item with align {} initial starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
+                // }
+                // current_pos = get_aligned_pos(#align, current_pos);
                 item[current_pos..(current_pos + item_bytes.len())].copy_from_slice(&item_bytes);
                 // if (#align > 0) {
                 //     println!("adding item with align {} at starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);

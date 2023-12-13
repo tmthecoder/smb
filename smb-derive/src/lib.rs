@@ -24,7 +24,7 @@ mod smb_byte_size;
 mod smb_to_bytes;
 
 
-#[proc_macro_derive(SMBFromBytes, attributes(smb_direct, smb_buffer, smb_vector, smb_skip, smb_byte_tag, smb_string_tag))]
+#[proc_macro_derive(SMBFromBytes, attributes(smb_direct, smb_buffer, smb_vector, smb_string, smb_skip, smb_byte_tag, smb_string_tag))]
 pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 
@@ -33,7 +33,7 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
     parse_token.into()
 }
 
-#[proc_macro_derive(SMBToBytes, attributes(smb_direct, smb_buffer, smb_vector, smb_skip, smb_byte_tag, smb_string_tag))]
+#[proc_macro_derive(SMBToBytes, attributes(smb_direct, smb_buffer, smb_vector, smb_string, smb_skip, smb_byte_tag, smb_string_tag))]
 pub fn smb_to_bytes(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 

@@ -30,7 +30,7 @@ impl<T: SMBByteSize> SMBVecByteSize for Vec<T> {
         let align = std::cmp::max(align, 1);
         self.iter().fold(start, |prev, x| {
             if align > 1 {
-                println!("Start position for item at {prev} with align {align}");
+                // println!("Start position for item at {prev} with align {align}");
             }
             let size = x.smb_byte_size();
             let aligned_start = if prev % align == 0 {
@@ -39,7 +39,7 @@ impl<T: SMBByteSize> SMBVecByteSize for Vec<T> {
                 prev + (align - prev % align)
             };
             if align > 1 {
-                println!("adj Start position for item at {aligned_start} with align {align} and size {size}");
+                // println!("adj Start position for item at {aligned_start} with align {align} and size {size}");
             }
             aligned_start + size
         }) - start
@@ -74,21 +74,16 @@ impl SMBVecFromBytes for String {
     }
 }
 
-impl SMBToBytes for String {
-    fn smb_to_bytes(&self) -> Vec<u8> {
-        self.encode_utf16().map(|x| x.to_be_bytes()).collect::<Vec<[u8; 2]>>().concat()
-    }
-}
-
-impl SMBByteSize for String {
-    fn smb_byte_size(&self) -> usize {
-        self.as_bytes().len()
+impl SMBVecByteSize for String {
+    fn smb_byte_size_vec(&self, align: usize, start: usize) -> usize {
+        self.as_bytes().len() * align
     }
 }
 
 pub trait SMBVecFromBytes {
     fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized;
 }
+
 
 impl<T: SMBFromBytes> SMBVecFromBytes for Vec<T> {
     fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized {

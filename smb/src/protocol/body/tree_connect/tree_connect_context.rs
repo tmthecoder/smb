@@ -3,7 +3,6 @@ use std::marker::PhantomData;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use smb_core::SMBFromBytes;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
@@ -12,17 +11,31 @@ pub enum SMBTreeConnectContext {
     RemotedIdentity(RemotedIdentity),
 }
 
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBToBytes, SMBByteSize)]
 pub struct RemotedIdentity {
+    #[smb_direct(start(inner(start = 4, num_type = "u16")))]
     user: SidAttrData,
-    user_name: String,
-    domain: String,
+    #[smb_direct(start(inner(start = 6, num_type = "u16")))]
+    user_name: SidArrayData,
+    #[smb_direct(start(inner(start = 8, num_type = "u16")))]
+    domain: SidArrayData,
+    #[smb_direct(start(inner(start = 10, num_type = "u16")))]
     groups: SidArrayData,
+    #[smb_direct(start(inner(start = 12, num_type = "u16")))]
     restricted_groups: SidArrayData,
+    #[smb_direct(start(inner(start = 14, num_type = "u16")))]
     privileges: PrivilegeArrayData,
+    #[smb_direct(start(inner(start = 16, num_type = "u16")))]
     primary_group: SidArrayData,
+    #[smb_direct(start(inner(start = 18, num_type = "u16")))]
     owner: BlobData,
+    #[smb_direct(start(inner(start = 20, num_type = "u16")))]
     default_dacl: BlobData,
+    #[smb_direct(start(inner(start = 22, num_type = "u16")))]
+    device_groups: SidArrayData,
+    #[smb_direct(start(inner(start = 24, num_type = "u16")))]
     user_claims: BlobData,
+    #[smb_direct(start(inner(start = 26, num_type = "u16")))]
     device_claims: BlobData,
 }
 
@@ -30,7 +43,7 @@ pub struct RemotedIdentity {
 pub struct BlobData {
     #[smb_skip(start = 0, length = 2)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 0, num_type = "u16"))]
+    #[smb_vector(order = 1, count(inner(start = 0, num_type = "u16")))]
     data: Vec<u8>,
 }
 
@@ -46,7 +59,7 @@ pub struct SidAttrData {
 pub struct SidArrayData {
     #[smb_skip(start = 0, length = 2)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 0, num_type = "u16"))]
+    #[smb_vector(order = 1, count(inner(start = 0, num_type = "u16")))]
     array: Vec<SidAttrData>,
 }
 
@@ -64,7 +77,7 @@ pub type PrivilegeData = BlobData;
 pub struct PrivilegeArrayData {
     #[smb_skip(start = 0, length = 2)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 0, num_type = "u16"))]
+    #[smb_vector(order = 1, count(inner(start = 0, num_type = "u16")))]
     array: Vec<PrivilegeData>,
 }
 

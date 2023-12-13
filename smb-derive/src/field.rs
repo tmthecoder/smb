@@ -7,7 +7,7 @@ use quote::{format_ident, quote, quote_spanned};
 use syn::{Attribute, Field, Type};
 use syn::spanned::Spanned;
 
-use crate::attrs::{Buffer, ByteTag, Direct, DirectStart, Skip, StringTag, Vector};
+use crate::attrs::{AttributeInfo, Buffer, ByteTag, Direct, Skip, SMBString, StringTag, Vector};
 use crate::SMBDeriveError;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -23,6 +23,7 @@ pub enum SMBFieldType {
     Direct(Direct),
     Buffer(Buffer),
     Vector(Vector),
+    String(SMBString),
     Skip(Skip),
     ByteTag(ByteTag),
     StringTag(StringTag),
@@ -115,24 +116,36 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
     pub(crate) fn get_smb_message_size(&self, size_tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let tmp = SMBFieldType::Skip(Skip::new(0, 0));
         let (start_val, ty) = self.val_type.iter().fold((0, &tmp), |prev, val| {
-            if let SMBFieldType::Skip(skip) = val && skip.length + skip.start > prev.0 { (skip.length + skip.start, val) } else if val.weight_of_enum() == 2 || val.find_start_val() > prev.0 { (val.find_start_val(), val) } else { prev }
+            if let SMBFieldType::Skip(skip) = val && skip.length + skip.start > prev.0 {
+                (skip.length + skip.start, val)
+            } else if val.weight_of_enum() == 2 || val.find_start_val() > prev.0 {
+                (val.find_start_val(), val)
+            } else {
+                prev
+            }
         });
 
         let align = if let SMBFieldType::Vector(vec) = ty {
             if vec.align > 0 { vec.align } else { 1 }
+        } else if let SMBFieldType::String(str) = ty {
+            if str.underlying == "u8" {
+                1
+            } else {
+                2
+            }
         } else {
             1
         };
 
         let offset = if let SMBFieldType::Vector(vec) = ty {
-            vec.offset.as_ref()
+            Some(&vec.offset)
         } else if let SMBFieldType::Buffer(buf) = ty {
             Some(&buf.offset)
         } else {
             None
         };
 
-        let min_start = if let Some(start) = offset.map(|offset| offset.min_val.saturating_sub(offset.subtract)) {
+        let min_start = if let Some(start) = offset.map(|offset| offset.get_pos()) {
             start
         } else {
             0
@@ -140,11 +153,6 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
 
         if ty.weight_of_enum() == 2 {
             quote_spanned! {self.spanned.span()=>
-                // let align_value = if size % #align == 0 {
-                //     0
-                // } else {
-                //     #align - (size % #align)
-                // };
                 let size = ::std::cmp::max(size, #min_start) + ::smb_core::SMBVecByteSize::smb_byte_size_vec(&#size_tokens, #align, size);
             }
         } else {
@@ -182,6 +190,7 @@ impl SMBFieldType {
             SMBFieldType::Direct(direct) => direct.smb_from_bytes(field, name, ty),
             SMBFieldType::Buffer(buffer) => buffer.smb_from_bytes(field, name),
             SMBFieldType::Vector(vector) => vector.smb_from_bytes(field, name, ty),
+            SMBFieldType::String(string) => string.smb_from_bytes(field, name),
             SMBFieldType::Skip(skip) => skip.smb_from_bytes(field, name, ty),
             SMBFieldType::ByteTag(byte_tag) => byte_tag.smb_from_bytes(field),
             SMBFieldType::StringTag(string_tag) => string_tag.smb_from_bytes(field),
@@ -192,6 +201,7 @@ impl SMBFieldType {
             SMBFieldType::Direct(direct) => direct.smb_to_bytes(field, token),
             SMBFieldType::Buffer(buffer) => buffer.smb_to_bytes(field, token),
             SMBFieldType::Vector(vector) => vector.smb_to_bytes(field, token),
+            SMBFieldType::String(string) => string.smb_to_bytes(field, token),
             SMBFieldType::Skip(skip) => skip.smb_to_bytes(field),
             SMBFieldType::ByteTag(byte_tag) => byte_tag.smb_to_bytes(field),
             SMBFieldType::StringTag(string_tag) => string_tag.smb_to_bytes(field),
@@ -202,6 +212,7 @@ impl SMBFieldType {
             SMBFieldType::Direct(direct) => direct.attr_byte_size(),
             SMBFieldType::Buffer(buffer) => buffer.attr_byte_size(),
             SMBFieldType::Vector(vector) => vector.attr_byte_size(),
+            SMBFieldType::String(string) => string.attr_byte_size(),
             SMBFieldType::Skip(skip) => skip.attr_byte_size(),
             SMBFieldType::ByteTag(byte_tag) => byte_tag.attr_byte_size(),
             SMBFieldType::StringTag(string_tag) => string_tag.attr_byte_size(),
@@ -237,11 +248,14 @@ impl SMBFieldType {
     fn find_start_val(&self) -> usize {
         match self {
             Self::Direct(x) => match x.start {
-                DirectStart::Fixed(idx) => idx,
-                DirectStart::CurrentPos | DirectStart::Inner(_) => x.order
+                AttributeInfo::Fixed(idx) => idx,
+                AttributeInfo::CurrentPos |
+                AttributeInfo::Inner(_) |
+                AttributeInfo::NullTerminated(_) => x.order
             },
             Self::Buffer(x) => x.order,
             Self::Vector(x) => x.order,
+            Self::String(x) => x.order,
             Self::Skip(x) => x.start,
             Self::ByteTag(x) => x.order,
             Self::StringTag(x) => x.order,
@@ -252,7 +266,7 @@ impl SMBFieldType {
         match self {
             Self::ByteTag(_) | Self::StringTag(_) => 0,
             Self::Direct(_) | Self::Skip(_) => 1,
-            Self::Buffer(_) | Self::Vector(_) => 2,
+            Self::Buffer(_) | Self::Vector(_) | Self::String(_) => 2,
         }
     }
 }
@@ -265,6 +279,8 @@ impl FromAttributes for SMBFieldType {
             Ok(SMBFieldType::Direct(direct))
         } else if let Ok(vector) = Vector::from_attributes(attrs) {
             Ok(SMBFieldType::Vector(vector))
+        } else if let Ok(string) = SMBString::from_attributes(attrs) {
+            Ok(SMBFieldType::String(string))
         } else if let Ok(skip) = Skip::from_attributes(attrs) {
             Ok(SMBFieldType::Skip(skip))
         } else if let Ok(string_tag) = StringTag::from_attributes(attrs) {

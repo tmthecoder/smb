@@ -317,9 +317,9 @@ impl NegotiateContext {
 pub struct PreAuthIntegrityCapabilities {
     #[smb_skip(start = 0, length = 10)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 6, num_type = "u16"))]
+    #[smb_vector(order = 1, count(inner(start = 6, num_type = "u16")))]
     pub(crate) hash_algorithms: Vec<HashAlgorithm>,
-    #[smb_vector(order = 2, count(start = 8, num_type = "u16"))]
+    #[smb_vector(order = 2, count(inner(start = 8, num_type = "u16")))]
     pub(crate) salt: Vec<u8>,
 }
 
@@ -366,7 +366,7 @@ impl PreAuthIntegrityCapabilities {
 pub struct EncryptionCapabilities {
     #[smb_skip(start = 0, length = 8)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 6, num_type = "u16"))]
+    #[smb_vector(order = 1, count(inner(start = 6, num_type = "u16")))]
     pub(crate) ciphers: Vec<EncryptionCipher>,
 }
 
@@ -409,7 +409,7 @@ impl EncryptionCapabilities {
 pub struct CompressionCapabilities {
     #[smb_direct(start(fixed = 10))]
     pub(crate) flags: CompressionCapabilitiesFlags,
-    #[smb_vector(order = 1, count(start = 6, num_type = "u16"))]
+    #[smb_vector(order = 1, count(inner(start = 6, num_type = "u16")))]
     pub(crate) compression_algorithms: Vec<CompressionAlgorithm>,
 }
 
@@ -474,8 +474,8 @@ impl CompressionCapabilities {
 pub struct NetnameNegotiateContextID {
     #[smb_skip(start = 0, length = 6)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 0, num_type = "u16"))]
-    pub(crate) netname: Vec<u8>,
+    #[smb_string(order = 1, length(inner(start = 0, num_type = "u16")), underlying = "u16")]
+    pub(crate) netname: String,
 }
 
 impl NetnameNegotiateContextID {
@@ -487,11 +487,11 @@ impl NetnameNegotiateContextID {
         let (remaining, name_len) = le_u16(bytes)?;
         let (remaining, _) = take(4_usize)(remaining)?;
         let (remaining, netname) = take(name_len)(remaining)?;
-        Ok((remaining, Self { reserved: PhantomData, netname: netname.to_vec() }))
+        Ok((remaining, Self { reserved: PhantomData, netname: String::from_utf8(netname.to_vec()).unwrap() }))
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
-        self.netname.clone()
+        self.netname.as_bytes().to_vec()
     }
 }
 
@@ -532,7 +532,7 @@ impl TransportCapabilities {
 pub struct RDMATransformCapabilities {
     #[smb_skip(start = 0, length = 14)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 6, num_type = "u16"))]
+    #[smb_vector(order = 1, count(inner(start = 6, num_type = "u16")))]
     pub(crate) transform_ids: Vec<RDMATransformID>,
 }
 
@@ -572,7 +572,7 @@ impl RDMATransformCapabilities {
 pub struct SigningCapabilities {
     #[smb_skip(start = 0, length = 8)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 6, num_type = "u16"))]
+    #[smb_vector(order = 1, count(inner(start = 6, num_type = "u16")))]
     pub(crate) signing_algorithms: Vec<SigningAlgorithm>,
 }
 

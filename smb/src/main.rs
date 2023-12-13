@@ -64,7 +64,7 @@ fn main() -> anyhow::Result<()> {
                             SPNEGOToken::parse(&request.get_buffer_copy()).unwrap().1;
                         println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
                         let helper = NTLMAuthProvider::new(
-                            vec![User::new("tejasmehta".into(), "Password".into())],
+                            vec![User::new("tejasmehta".into(), "password".into())],
                             true,
                         );
                         let (status, output) = match spnego_init_buffer {

@@ -26,9 +26,9 @@ pub struct SMBNegotiateRequest {
     client_uuid: Uuid,
     #[smb_skip(start = 28, length = 8)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_vector(order = 1, count(start = 2, num_type = "u16"))]
+    #[smb_vector(order = 1, count(inner(start = 2, num_type = "u16")))]
     dialects: Vec<SMBDialect>,
-    #[smb_vector(order = 2, align = 8, count(start = 32, num_type = "u16"), offset(start = 28, num_type = "u32", subtract = 64))]
+    #[smb_vector(order = 2, align = 8, count(inner(start = 32, num_type = "u16")), offset(inner(start = 28, num_type = "u32", subtract = 64)))]
     negotiate_contexts: Vec<NegotiateContext>,
 }
 
@@ -97,9 +97,9 @@ pub struct SMBNegotiateResponse {
     system_time: FileTime,
     #[smb_direct(start(fixed = 48))]
     server_start_time: FileTime,
-    #[smb_buffer(offset(start = 56, num_type = "u16", subtract = 64, min_val = 128), length(start = 58, num_type = "u16"), order = 1)]
+    #[smb_buffer(offset(inner(start = 56, num_type = "u16", subtract = 64, min_val = 128)), length(inner(start = 58, num_type = "u16")), order = 1)]
     buffer: Vec<u8>,
-    #[smb_vector(order = 2, align = 8, count(start = 6, num_type = "u16"), offset(start = 60, num_type = "u32", subtract = 64))]
+    #[smb_vector(order = 2, align = 8, count(inner(start = 6, num_type = "u16")), offset(inner(start = 60, num_type = "u32", subtract = 64)))]
     negotiate_contexts: Vec<NegotiateContext>,
 }
 
