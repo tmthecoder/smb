@@ -2,6 +2,7 @@ use smb_core::{error::SMBError, SMBToBytes};
 use smb_reader::protocol::body::{Body, Capabilities, FileTime, SMBBody, SMBDialect};
 use smb_reader::protocol::body::negotiate::{NegotiateSecurityMode, SMBNegotiateResponse};
 use smb_reader::protocol::body::session_setup::SMBSessionSetupResponse;
+use smb_reader::protocol::body::tree_connect::SMBTreeConnectResponse;
 use smb_reader::protocol::header::{Header, SMBCommandCode, SMBFlags, SMBSyncHeader};
 use smb_reader::protocol::message::SMBMessage;
 use smb_reader::SMBListener;
@@ -92,6 +93,17 @@ fn main() -> anyhow::Result<()> {
                         println!("Test response: {:?}", resp.smb_to_bytes());
                         println!("Actu response: {:?}", resp.as_bytes());
                         let resp_body = SMBBody::SessionSetupResponse(resp);
+                        let resp_header = message.header.create_response_header(0, 1010);
+                        let resp_msg = SMBMessage::new(resp_header, resp_body);
+
+                        cloned_connection.send_message(resp_msg)?;
+                    }
+                },
+                SMBCommandCode::TreeConnect => {
+                    println!("Got tree connect");
+                    if let SMBBody::TreeConnectRequest(request) = message.body {
+                        println!("Tree connect request: {:?}", request);
+                        let resp_body = SMBBody::TreeConnectResponse(SMBTreeConnectResponse::default());
                         let resp_header = message.header.create_response_header(0, 1010);
                         let resp_msg = SMBMessage::new(resp_header, resp_body);
 

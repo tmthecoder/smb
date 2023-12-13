@@ -12,6 +12,7 @@ use crate::protocol::body::Body;
 use crate::protocol::body::logoff::{SMBLogoffRequest, SMBLogoffResponse};
 use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
 use crate::protocol::body::session_setup::{SMBSessionSetupRequest, SMBSessionSetupResponse};
+use crate::protocol::body::tree_connect::{SMBTreeConnectRequest, SMBTreeConnectResponse};
 use crate::protocol::header::LegacySMBCommandCode;
 use crate::protocol::header::LegacySMBHeader;
 use crate::protocol::header::SMBCommandCode;
@@ -24,6 +25,8 @@ pub enum SMBBody {
     NegotiateResponse(SMBNegotiateResponse),
     SessionSetupRequest(SMBSessionSetupRequest),
     SessionSetupResponse(SMBSessionSetupResponse),
+    TreeConnectRequest(SMBTreeConnectRequest),
+    TreeConnectResponse(SMBTreeConnectResponse),
     LogoffRequest(SMBLogoffRequest),
     LogoffResponse(SMBLogoffResponse),
     LegacyCommand(LegacySMBBody),
@@ -47,6 +50,10 @@ impl Body<SMBSyncHeader> for SMBBody {
             SMBCommandCode::LogOff => {
                 let (remaining, body) = SMBLogoffRequest::smb_from_bytes(bytes)?;
                 Ok((remaining, SMBBody::LogoffRequest(body)))
+            },
+            SMBCommandCode::TreeConnect => {
+                let (remaining, body) = SMBTreeConnectRequest::smb_from_bytes(bytes)?;
+                Ok((remaining, SMBBody::TreeConnectRequest(body)))
             }
             _ => Err(SMBError::ParseError("Unknown body parse failure")),
         }
@@ -62,7 +69,8 @@ impl Body<SMBSyncHeader> for SMBBody {
             },
             SMBBody::LogoffResponse(x) => {
                 x.smb_to_bytes()
-            }
+            },
+            SMBBody::TreeConnectResponse(x) => x.smb_to_bytes(),
             _ => Vec::new()
         }
     }

@@ -143,16 +143,17 @@ impl AttributeInfo {
             Self::NullTerminated(num_ty) => {
                 let ty = get_type(num_ty, spanned);
                 quote! {
-                    let #name_ident = 0;
-                    let val = &input[item_offset..];
-                    let size = ::smb_core::SMBByteSize::smb_byte_size(0 as #ty);
-                    while let Ok(num) = SMBFromBytes::smb_from_bytes::<#ty>(val) {
-                        val = val[size..];
-                        #name_ident += size;
+                    let mut val = &input[item_offset..];
+                    let size = ::smb_core::SMBByteSize::smb_byte_size(&(0 as #ty));
+                    let mut count = 0;
+                    while let Ok((rest, num)) = <#ty>::smb_from_bytes(val) {
+                        val = rest;
+                        count += size;
                         if num == 0 {
                             break;
                         }
                     }
+                    let #name_ident = count;
                 }
             }
         }

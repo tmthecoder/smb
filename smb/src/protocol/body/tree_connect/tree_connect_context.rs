@@ -3,12 +3,36 @@ use std::marker::PhantomData;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
+use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult};
+use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub enum SMBTreeConnectContext {
     RemotedIdentity(RemotedIdentity),
+}
+
+impl SMBByteSize for SMBTreeConnectContext {
+    fn smb_byte_size(&self) -> usize {
+        match self {
+            Self::RemotedIdentity(identity) => identity.smb_byte_size()
+        }
+    }
+}
+
+impl SMBFromBytes for SMBTreeConnectContext {
+    fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
+        let (remaining, ctx_type) = u16::smb_from_bytes(input)?;
+        match ctx_type {
+            0x01 => {
+                let (remaining, identity) = RemotedIdentity::smb_from_bytes(input)?;
+                Ok((remaining, Self::RemotedIdentity(identity)))
+            },
+            _ => Err(SMBError::ParseError("Invalid context type for tree connect context"))
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBToBytes, SMBByteSize)]
