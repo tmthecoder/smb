@@ -21,7 +21,7 @@ fn create_parser_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq +
 
     Ok(quote! {
         impl ::smb_core::SMBFromBytes for #name {
-            #[allow(unused_variables, unused_assignments)]
+            #[allow(unused_variables, unused_assignments, unnecessary_cast)]
             fn smb_from_bytes(input: &[u8]) -> ::smb_core::SMBParseResult<&[u8], Self, ::smb_core::error::SMBError> {
                 #parser
             }
