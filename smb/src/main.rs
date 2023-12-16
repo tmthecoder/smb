@@ -103,7 +103,10 @@ fn main() -> anyhow::Result<()> {
                     println!("Got tree connect");
                     if let SMBBody::TreeConnectRequest(request) = message.body {
                         println!("Tree connect request: {:?}", request);
-                        let resp_body = SMBBody::TreeConnectResponse(SMBTreeConnectResponse::default());
+                        let resp_body = match request.path().contains("IPC$") {
+                            true => SMBBody::TreeConnectResponse(SMBTreeConnectResponse::IPC()),
+                            false => SMBBody::TreeConnectResponse(SMBTreeConnectResponse::default()),
+                        };
                         let resp_header = message.header.create_response_header(0, 1010);
                         let resp_msg = SMBMessage::new(resp_header, resp_body);
 

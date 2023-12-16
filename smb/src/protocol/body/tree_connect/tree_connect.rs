@@ -4,9 +4,9 @@ use bitflags::bitflags;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes, SMBVecByteSize, SMBVecFromBytes};
 use smb_core::error::SMBError;
-use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
+use smb_core::SMBFromBytes;
+use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBFromBytes, SMBToBytes};
 
 use crate::protocol::body::tree_connect::SMBTreeConnectContext;
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
@@ -16,8 +16,17 @@ use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_by
 pub struct SMBTreeConnectRequest {
     #[smb_direct(start(fixed = 2))]
     flags: SMBTreeConnectFlags,
-    #[smb_direct(start(fixed = 0))]
+    #[smb_enum(start(fixed = 4), discriminator(inner(start = 3, num_type = "u8")))]
     buffer: SMBTreeConnectBuffer,
+}
+
+impl SMBTreeConnectRequest {
+    pub fn path(&self) -> &str {
+        match &self.buffer {
+            SMBTreeConnectBuffer::Path(x) => x,
+            SMBTreeConnectBuffer::Extension(x) => &x.path_name
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes, SMBToBytes)]
@@ -31,15 +40,25 @@ pub struct SMBTreeConnectResponse {
     share_flags: SMBShareFlags,
     #[smb_direct(start(fixed = 8))]
     capabilities: SMBTreeConnectCapabilities,
-    #[smb_direct(start(fixed = 12))]
-    maximal_access: SMBDirectoryAccessMask,
+    #[smb_enum(start(fixed = 12), discriminator(inner(start = 2, num_type = "u8")))]
+    maximal_access: SMBAccessMask,
 }
 
 impl SMBTreeConnectResponse {
     pub fn default() -> Self {
         Self {
-            maximal_access: SMBDirectoryAccessMask::GENERIC_ALL,
+            maximal_access: SMBAccessMask::Directory(SMBDirectoryAccessMask::GENERIC_ALL),
             share_type: SMBShareType::DISK,
+            reserved: PhantomData,
+            share_flags: SMBShareFlags::NO_CACHING,
+            capabilities: SMBTreeConnectCapabilities::empty(),
+        }
+    }
+
+    pub fn IPC() -> Self {
+        Self {
+            maximal_access: SMBAccessMask::FilePipePrinter(SMBFilePipePrinterAccessMask::from_bits_truncate(2032127)),
+            share_type: SMBShareType::PIPE,
             reserved: PhantomData,
             share_flags: SMBShareFlags::NO_CACHING,
             capabilities: SMBTreeConnectCapabilities::empty(),
@@ -56,9 +75,13 @@ bitflags! {
         const RESERVED             = 0b0;
     }
 }
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize)]
 enum SMBTreeConnectBuffer {
+    #[smb_discriminator(value = 0x0)]
+    #[smb_string(order = 0, start(inner(start = 0, num_type = "u16", subtract = 68)), length(inner(start = 2, num_type = "u16")), underlying = "u16")]
     Path(String),
+    #[smb_direct(start(fixed = 0))]
+    #[smb_discriminator(value = 0x1)]
     Extension(SMBTreeConnectExtension),
 }
 
@@ -105,9 +128,13 @@ bitflags! {
         const REDIRECT_TO_OWNER       = 0x100;
     }
 }
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize, SMBToBytes)]
 enum SMBAccessMask {
+    #[smb_discriminator(value = 0x2, value = 0x3)]
+    #[smb_direct(start(fixed = 0))]
     FilePipePrinter(SMBFilePipePrinterAccessMask),
+    #[smb_discriminator(value = 0x1)]
+    #[smb_direct(start(fixed = 0))]
     Directory(SMBDirectoryAccessMask),
 }
 
@@ -162,70 +189,61 @@ bitflags! {
         const GENERIC_READ           = 0x80000000;
     }
 }
-impl SMBByteSize for SMBTreeConnectBuffer {
-    fn smb_byte_size(&self) -> usize {
-        match self {
-            Self::Path(path) => path.smb_byte_size_vec(2, 0),
-            Self::Extension(extension) => extension.smb_byte_size()
-        }
-    }
-}
+// impl SMBFromBytes for SMBTreeConnectBuffer {
+//     fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
+//         let (_, num) = u16::smb_from_bytes(&input[2..])?;
+//         match num & 0b100 {
+//             0b0100 => SMBTreeConnectExtension::smb_from_bytes(&input[8..])
+//                 .map(|(remaining, result)| (remaining, Self::Extension(result))),
+//             _ => {
+//                 let (_, offset) = u16::smb_from_bytes(&input[4..]).map(|(r, i)| (r, i as usize))?;
+//                 let (_, length) = u16::smb_from_bytes(&input[6..]).map(|(r, i)| (r, i as usize))?;
+//                 let buffer = &input[(offset - 64)..(offset - 64 + length)];
+//                 let (remaining, buffer) = Vec::<u16>::smb_from_bytes_vec(buffer, buffer.len() / 2)?;
+//                 println!("Got vector: {:?}", buffer);
+//                 Ok((remaining, Self::Path(String::from_utf16(&buffer).map_err(|_| SMBError::ParseError("Invalid string"))?)))
+//             },
+//         }
+//     }
+// }
 
-impl SMBFromBytes for SMBTreeConnectBuffer {
-    fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
-        let (_, num) = u16::smb_from_bytes(&input[2..])?;
-        match num & 0b100 {
-            0b0100 => SMBTreeConnectExtension::smb_from_bytes(&input[8..])
-                .map(|(remaining, result)| (remaining, Self::Extension(result))),
-            _ => {
-                let (_, offset) = u16::smb_from_bytes(&input[4..]).map(|(r, i)| (r, i as usize))?;
-                let (_, length) = u16::smb_from_bytes(&input[6..]).map(|(r, i)| (r, i as usize))?;
-                let buffer = &input[(offset - 64)..(offset - 64 + length)];
-                let (remaining, buffer) = Vec::<u16>::smb_from_bytes_vec(buffer, buffer.len() / 2)?;
-                println!("Got vector: {:?}", buffer);
-                Ok((remaining, Self::Path(String::from_utf16(&buffer).map_err(|_| SMBError::ParseError("Invalid string"))?)))
-            },
-        }
-    }
-}
+// impl SMBByteSize for SMBAccessMask {
+//     fn smb_byte_size(&self) -> usize {
+//         let size = match self {
+//             Self::FilePipePrinter(mask) => mask.smb_byte_size(),
+//             Self::Directory(mask) => mask.smb_byte_size()
+//         };
+//         size + 10
+//     }
+// }
 
-impl SMBByteSize for SMBAccessMask {
-    fn smb_byte_size(&self) -> usize {
-        let size = match self {
-            Self::FilePipePrinter(mask) => mask.smb_byte_size(),
-            Self::Directory(mask) => mask.smb_byte_size()
-        };
-        size + 10
-    }
-}
+// impl SMBFromBytes for SMBAccessMask {
+//     fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
+//         match input[0] {
+//             1 => {
+//                 let (remaining, mask) = SMBDirectoryAccessMask::smb_from_bytes(&input[10..])?;
+//                 Ok((remaining, Self::Directory(mask)))
+//             },
+//             2 | 3 | _ => {
+//                 let (remaining, mask) = SMBFilePipePrinterAccessMask::smb_from_bytes(&input[10..])?;
+//                 Ok((remaining, Self::FilePipePrinter(mask)))
+//             }
+//         }
+//     }
+// }
 
-impl SMBFromBytes for SMBAccessMask {
-    fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
-        match input[0] {
-            1 => {
-                let (remaining, mask) = SMBDirectoryAccessMask::smb_from_bytes(&input[10..])?;
-                Ok((remaining, Self::Directory(mask)))
-            },
-            2 | 3 | _ => {
-                let (remaining, mask) = SMBFilePipePrinterAccessMask::smb_from_bytes(&input[10..])?;
-                Ok((remaining, Self::FilePipePrinter(mask)))
-            }
-        }
-    }
-}
-
-impl SMBToBytes for SMBAccessMask {
-    fn smb_to_bytes(&self) -> Vec<u8> {
-        let bytes = match self {
-            Self::FilePipePrinter(mask) => mask.smb_to_bytes(),
-            Self::Directory(mask) => mask.smb_to_bytes(),
-        };
-        [
-            vec![0; 10],
-            bytes
-        ].concat()
-    }
-}
+// impl SMBToBytes for SMBAccessMask {
+//     fn smb_to_bytes(&self) -> Vec<u8> {
+//         let bytes = match self {
+//             Self::FilePipePrinter(mask) => mask.smb_to_bytes(),
+//             Self::Directory(mask) => mask.smb_to_bytes(),
+//         };
+//         [
+//             vec![0; 10],
+//             bytes
+//         ].concat()
+//     }
+// }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes)]
 struct SMBTreeConnectExtension {

@@ -1,6 +1,6 @@
 use darling::{FromAttributes, FromDeriveInput, FromField, FromMeta};
 use darling::ast::NestedMeta;
-use proc_macro2::{Ident, TokenStream, TokenTree};
+use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
 use syn::{Attribute, DeriveInput, Expr, Lit, Meta, Path, Token, Type, TypePath};
 use syn::punctuated::Punctuated;
@@ -206,12 +206,12 @@ impl Direct {
         }
     }
 
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenStream) -> TokenStream {
         let start = self.start.smb_to_bytes(spanned, "item_start", None);
         quote_spanned! { spanned.span()=>
             #start
-            let size = ::smb_core::SMBByteSize::smb_byte_size(&#token);
-            let bytes = ::smb_core::SMBToBytes::smb_to_bytes(&#token);
+            let size = ::smb_core::SMBByteSize::smb_byte_size(#token);
+            let bytes = ::smb_core::SMBToBytes::smb_to_bytes(#token);
             item[(item_start as usize)..(item_start as usize + size)].copy_from_slice(&bytes);
             current_pos = item_start as usize + size;
         }
@@ -243,14 +243,14 @@ impl Buffer {
         }
     }
 
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenStream) -> TokenStream {
         let offset_info = self.offset.smb_to_bytes(spanned, "offset", None);
         let length_info = self.length.smb_to_bytes(spanned, "length", Some(quote! {
             bytes.len()
         }));
 
         quote_spanned! {spanned.span()=>
-            let bytes = &#token;
+            let bytes = #token;
 
             #offset_info
             #length_info
@@ -293,9 +293,9 @@ impl Vector {
         }
     }
 
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, raw_token: &TokenStream) -> TokenStream {
         let count_info = self.count.smb_to_bytes(spanned, "item_count", Some(quote! {
-          #token.len()
+          #raw_token.len()
         }));
         let offset_info = self.offset.smb_to_bytes(spanned, "item_offset", None);
         let align = self.align;
@@ -311,7 +311,7 @@ impl Vector {
             };
             current_pos = get_aligned_pos(#align, current_pos);
             #offset_info
-            for entry in #token.iter() {
+            for entry in #raw_token.iter() {
                 let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(entry);
                 // if (#align > 0) {
                 //     println!("item with align {} initial starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
@@ -384,19 +384,19 @@ impl SMBString {
         }
     }
 
-    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenTree) -> TokenStream {
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, raw_token: &TokenStream) -> TokenStream {
         let count_info = self.length.smb_to_bytes(spanned, "item_count", Some(quote! {
-          #token.len()
+          #raw_token.len()
         }));
         let offset_info = self.start.smb_to_bytes(spanned, "item_offset", None);
 
         // TODO make this work to convert back to u8 & u16 vecs
         let string_to_bytes = match self.underlying.as_str() {
             "u8" => quote! {
-                let token_vec = #token.as_bytes();
+                let token_vec = #raw_token.as_bytes();
             },
             "u16" => quote! {
-                let token_vec = #token.encode_utf16();
+                let token_vec = #raw_token.encode_utf16();
             },
             _ => quote! {}
         };
@@ -416,6 +416,49 @@ impl SMBString {
                 // }
                 current_pos += item_bytes.len();
             }
+        }
+    }
+
+    pub(crate) fn attr_byte_size(&self) -> usize { 0 }
+}
+
+#[derive(Debug, FromDeriveInput, FromAttributes, FromField, Eq, PartialEq)]
+#[darling(attributes(smb_discriminator))]
+pub struct Discriminator {
+    #[darling(multiple, rename = "value")]
+    pub values: Vec<u64>,
+}
+
+#[derive(Debug, FromDeriveInput, FromAttributes, FromField, Eq, PartialEq)]
+#[darling(attributes(smb_enum))]
+pub struct SMBEnum {
+    pub discriminator: AttributeInfo,
+    #[darling(default)]
+    pub start: AttributeInfo,
+    #[darling(default)]
+    pub order: usize,
+}
+
+impl SMBEnum {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> TokenStream {
+        let discriminator_info = self.discriminator.smb_from_bytes(spanned, "item_discriminator");
+        let start_info = self.start.smb_from_bytes(spanned, "item_start");
+
+        quote! {
+            #start_info
+            #discriminator_info
+            let (remaining, #name) = ::smb_core::SMBEnumFromBytes::smb_enum_from_bytes(&input[item_start..], item_discriminator as u64)?;
+        }
+    }
+
+    pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenStream) -> TokenStream {
+        let start_info = self.start.smb_to_bytes(spanned, "item_start", None);
+        quote! {
+            #start_info
+            let size = ::smb_core::SMBByteSize::smb_byte_size(#token);
+            let bytes = ::smb_core::SMBToBytes::smb_to_bytes(#token);
+            item[(item_start as usize)..(item_start as usize + size)].copy_from_slice(&bytes);
+            current_pos = item_start as usize + size;
         }
     }
 

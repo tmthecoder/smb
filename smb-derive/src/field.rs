@@ -2,12 +2,12 @@ use std::cmp::{max, Ordering};
 use std::fmt::Debug;
 
 use darling::FromAttributes;
-use proc_macro2::{Delimiter, Group, Ident, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
 use syn::{Attribute, Field, Type};
 use syn::spanned::Spanned;
 
-use crate::attrs::{AttributeInfo, Buffer, ByteTag, Direct, Skip, SMBString, StringTag, Vector};
+use crate::attrs::{AttributeInfo, Buffer, ByteTag, Direct, Skip, SMBEnum, SMBString, StringTag, Vector};
 use crate::SMBDeriveError;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -24,6 +24,7 @@ pub enum SMBFieldType {
     Buffer(Buffer),
     Vector(Vector),
     String(SMBString),
+    Enum(SMBEnum),
     Skip(Skip),
     ByteTag(ByteTag),
     StringTag(StringTag),
@@ -39,6 +40,10 @@ impl<'a, T: Spanned> SMBField<'a, T> {
         }
     }
 
+    pub(crate) fn spanned(&self) -> &T {
+        self.spanned
+    }
+
     pub(crate) fn smb_from_bytes(&self) -> proc_macro2::TokenStream {
         let name = &self.name;
         let field = self.spanned;
@@ -49,21 +54,35 @@ impl<'a, T: Spanned> SMBField<'a, T> {
         }
     }
 
-    pub(crate) fn smb_to_bytes_struct(&self) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_to_bytes_struct(&self, variant: bool) -> proc_macro2::TokenStream {
         let name = &self.name;
-        let name_self = TokenTree::Group(Group::new(Delimiter::Parenthesis, quote! {self.#name}));
+        let item_name = match variant {
+            true => quote! { #name },
+            false => quote! { self.#name },
+        };
+        let name_token = TokenTree::Group(Group::new(Delimiter::Parenthesis, item_name));
+        let raw_token = quote! { #name_token };
+        let name_token_adj = match variant {
+            true => quote! { #name_token },
+            false => quote! { &#name_token },
+        };
         let field = self.spanned;
-        let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_to_bytes(&name_self, field));
+        let ty = &self.ty;
+        let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_to_bytes(&name_token_adj, &raw_token, field));
         quote! {
             #(#all_bytes)*
         }
     }
 
-    pub(crate) fn smb_to_bytes_enum(&self) -> proc_macro2::TokenStream {
+    pub(crate) fn smb_to_bytes_enum(&self) -> TokenStream {
         let ty = &self.ty;
         let group = TokenTree::Group(Group::new(Delimiter::Parenthesis, quote! {(*self) as #ty}));
+        let raw_token = quote! { #group };
+        let token_adj = quote! {
+            &#group
+        };
         let field = self.spanned;
-        let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_to_bytes(&group, field));
+        let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_to_bytes(&token_adj, &raw_token, field));
         quote! {
             #(#all_bytes)*
         }
@@ -90,30 +109,34 @@ impl<'a, T: Spanned> SMBField<'a, T> {
 }
 
 impl<'a, T: Spanned + Debug> SMBField<'a, T> {
-    fn error(spanned: &T) -> proc_macro2::TokenStream {
+    fn error(spanned: &T) -> TokenStream {
         quote_spanned! {spanned.span()=>
             ::std::compile_error!("Error generating byte size for field")
         }
     }
 
-    pub(crate) fn get_named_token(&self) -> proc_macro2::TokenStream {
-        format!("self.{}", &self.name.to_string()).parse()
+    pub(crate) fn get_named_token(&self) -> TokenStream {
+        format!("&self.{}", &self.name.to_string()).parse()
             .unwrap_or_else(|_e| Self::error(self.spanned))
     }
 
-    pub(crate) fn get_unnamed_token(&self, idx: usize) -> proc_macro2::TokenStream {
-        format!("self.{}", idx).parse()
+    pub(crate) fn get_unnamed_token(&self, idx: usize) -> TokenStream {
+        format!("&self.{}", idx).parse()
             .unwrap_or_else(|_e| Self::error(self.spanned))
     }
 
-    pub(crate) fn get_enum_token(&self) -> proc_macro2::TokenStream {
+    pub(crate) fn get_num_enum_token(&self) -> TokenStream {
         let ty = &self.ty;
         quote! {
-            (*self as #ty)
+           & (*self as #ty)
         }
     }
 
-    pub(crate) fn get_smb_message_size(&self, size_tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    pub(crate) fn get_disc_enum_token(&self) -> TokenStream {
+        format!("Self::{}", &self.name.to_string()).parse().unwrap_or_else(|_e| Self::error(self.spanned))
+    }
+
+    pub(crate) fn get_smb_message_size(&self, size_tokens: TokenStream) -> TokenStream {
         let tmp = SMBFieldType::Skip(Skip::new(0, 0));
         let (start_val, ty) = self.val_type.iter().fold((0, &tmp), |prev, val| {
             if let SMBFieldType::Skip(skip) = val && skip.length + skip.start > prev.0 {
@@ -153,11 +176,11 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
 
         if ty.weight_of_enum() == 2 {
             quote_spanned! {self.spanned.span()=>
-                let size = ::std::cmp::max(size, #min_start) + ::smb_core::SMBVecByteSize::smb_byte_size_vec(&#size_tokens, #align, size);
+                let size = ::std::cmp::max(size, #min_start) + ::smb_core::SMBVecByteSize::smb_byte_size_vec(#size_tokens, #align, size);
             }
         } else {
             quote_spanned! {self.spanned.span()=>
-                let size = #start_val + ::smb_core::SMBByteSize::smb_byte_size(&#size_tokens);
+                let size = #start_val + ::smb_core::SMBByteSize::smb_byte_size(#size_tokens);
             }
         }
     }
@@ -191,17 +214,19 @@ impl SMBFieldType {
             SMBFieldType::Buffer(buffer) => buffer.smb_from_bytes(field, name),
             SMBFieldType::Vector(vector) => vector.smb_from_bytes(field, name, ty),
             SMBFieldType::String(string) => string.smb_from_bytes(field, name),
+            SMBFieldType::Enum(smb_enum) => smb_enum.smb_from_bytes(field, name),
             SMBFieldType::Skip(skip) => skip.smb_from_bytes(field, name, ty),
             SMBFieldType::ByteTag(byte_tag) => byte_tag.smb_from_bytes(field),
             SMBFieldType::StringTag(string_tag) => string_tag.smb_from_bytes(field),
         }
     }
-    fn smb_to_bytes<T: Spanned>(&self, token: &TokenTree, field: &T) -> proc_macro2::TokenStream {
+    fn smb_to_bytes<T: Spanned>(&self, token: &TokenStream, raw_token: &TokenStream, field: &T) -> TokenStream {
         match self {
             SMBFieldType::Direct(direct) => direct.smb_to_bytes(field, token),
             SMBFieldType::Buffer(buffer) => buffer.smb_to_bytes(field, token),
-            SMBFieldType::Vector(vector) => vector.smb_to_bytes(field, token),
-            SMBFieldType::String(string) => string.smb_to_bytes(field, token),
+            SMBFieldType::Vector(vector) => vector.smb_to_bytes(field, raw_token),
+            SMBFieldType::String(string) => string.smb_to_bytes(field, raw_token),
+            SMBFieldType::Enum(smb_enum) => smb_enum.smb_to_bytes(field, token),
             SMBFieldType::Skip(skip) => skip.smb_to_bytes(field),
             SMBFieldType::ByteTag(byte_tag) => byte_tag.smb_to_bytes(field),
             SMBFieldType::StringTag(string_tag) => string_tag.smb_to_bytes(field),
@@ -213,6 +238,7 @@ impl SMBFieldType {
             SMBFieldType::Buffer(buffer) => buffer.attr_byte_size(),
             SMBFieldType::Vector(vector) => vector.attr_byte_size(),
             SMBFieldType::String(string) => string.attr_byte_size(),
+            SMBFieldType::Enum(smb_enum) => smb_enum.attr_byte_size(),
             SMBFieldType::Skip(skip) => skip.attr_byte_size(),
             SMBFieldType::ByteTag(byte_tag) => byte_tag.attr_byte_size(),
             SMBFieldType::StringTag(string_tag) => string_tag.attr_byte_size(),
@@ -253,6 +279,12 @@ impl SMBFieldType {
                 AttributeInfo::Inner(_) |
                 AttributeInfo::NullTerminated(_) => x.order
             },
+            Self::Enum(x) => match x.start {
+                AttributeInfo::Fixed(idx) => idx,
+                AttributeInfo::CurrentPos |
+                AttributeInfo::Inner(_) |
+                AttributeInfo::NullTerminated(_) => x.order
+            }
             Self::Buffer(x) => x.order,
             Self::Vector(x) => x.order,
             Self::String(x) => x.order,
@@ -265,7 +297,7 @@ impl SMBFieldType {
     fn weight_of_enum(&self) -> usize {
         match self {
             Self::ByteTag(_) | Self::StringTag(_) => 0,
-            Self::Direct(_) | Self::Skip(_) => 1,
+            Self::Direct(_) | Self::Skip(_) | Self::Enum(_) => 1,
             Self::Buffer(_) | Self::Vector(_) | Self::String(_) => 2,
         }
     }
@@ -281,6 +313,9 @@ impl FromAttributes for SMBFieldType {
             Ok(SMBFieldType::Vector(vector))
         } else if let Ok(string) = SMBString::from_attributes(attrs) {
             Ok(SMBFieldType::String(string))
+        } else if let Ok(smb_enum) = SMBEnum::from_attributes(attrs) {
+            println!("Got enum: {:?}", smb_enum);
+            Ok(SMBFieldType::Enum(smb_enum))
         } else if let Ok(skip) = Skip::from_attributes(attrs) {
             Ok(SMBFieldType::Skip(skip))
         } else if let Ok(string_tag) = StringTag::from_attributes(attrs) {

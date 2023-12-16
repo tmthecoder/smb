@@ -10,19 +10,21 @@ use crate::field_mapping::SMBFieldMapping;
 pub(crate) struct ByteSizeCreator {}
 
 impl CreatorFn for ByteSizeCreator {
-    fn call<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(self, mapping: Result<SMBFieldMapping<T, U>, SMBDeriveError<U>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
-        create_byte_size_impl(mapping, name)
+    fn call<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(self, mappings: Result<Vec<SMBFieldMapping<T, U>>, SMBDeriveError<U>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
+        create_byte_size_impl(mappings, name)
     }
 }
 
-fn create_byte_size_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(mapping: Result<SMBFieldMapping<T, U>, SMBDeriveError<U>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
-    let mapping = mapping?;
-    let size = smb_byte_size_impl(&mapping);
+fn create_byte_size_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(mappings: Result<Vec<SMBFieldMapping<T, U>>, SMBDeriveError<U>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
+    let mappings = mappings?;
+    let size = mappings.iter().map(|mapping| smb_byte_size_impl(mapping));
     Ok(quote! {
         impl ::smb_core::SMBByteSize for #name {
             #[allow(unused_variables, unused_assignments, modulo_one)]
             fn smb_byte_size(&self) -> usize {
-                #size
+                match self {
+                    #(#size)*
+                }
             }
         }
     })

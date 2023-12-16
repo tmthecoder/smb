@@ -84,6 +84,9 @@ pub trait SMBVecFromBytes {
     fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized;
 }
 
+pub trait SMBEnumFromBytes {
+    fn smb_enum_from_bytes(input: &[u8], discriminator: u64) -> SMBParseResult<&[u8], Self> where Self: Sized;
+}
 
 impl<T: SMBFromBytes> SMBVecFromBytes for Vec<T> {
     fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized {
