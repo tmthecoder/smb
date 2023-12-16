@@ -11,7 +11,7 @@ use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBFromBytes, SMBToBytes};
 use crate::protocol::body::tree_connect::SMBTreeConnectContext;
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes, SMBToBytes)]
 #[smb_byte_tag(value = 09)]
 pub struct SMBTreeConnectRequest {
     #[smb_direct(start(fixed = 2))]
@@ -75,7 +75,7 @@ bitflags! {
         const RESERVED             = 0b0;
     }
 }
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize, SMBToBytes)]
 enum SMBTreeConnectBuffer {
     #[smb_discriminator(value = 0x0)]
     #[smb_string(order = 0, start(inner(start = 0, num_type = "u16", subtract = 68)), length(inner(start = 2, num_type = "u16")), underlying = "u16")]
@@ -190,7 +190,7 @@ bitflags! {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes, SMBToBytes)]
 struct SMBTreeConnectExtension {
     #[smb_skip(start = 12, length = 2)]
     reserved: PhantomData<Vec<u8>>,

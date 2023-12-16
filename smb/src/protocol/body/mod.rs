@@ -11,6 +11,8 @@ pub mod session_setup;
 
 pub mod logoff;
 pub mod tree_connect;
+pub mod tree_disconnect;
+pub mod empty;
 
 pub type SMBBody = body::SMBBody;
 

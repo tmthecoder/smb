@@ -13,6 +13,7 @@ use crate::protocol::body::logoff::{SMBLogoffRequest, SMBLogoffResponse};
 use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
 use crate::protocol::body::session_setup::{SMBSessionSetupRequest, SMBSessionSetupResponse};
 use crate::protocol::body::tree_connect::{SMBTreeConnectRequest, SMBTreeConnectResponse};
+use crate::protocol::body::tree_disconnect::{SMBTreeDisconnectRequest, SMBTreeDisconnectResponse};
 use crate::protocol::header::LegacySMBCommandCode;
 use crate::protocol::header::LegacySMBHeader;
 use crate::protocol::header::SMBCommandCode;
@@ -29,6 +30,8 @@ pub enum SMBBody {
     TreeConnectResponse(SMBTreeConnectResponse),
     LogoffRequest(SMBLogoffRequest),
     LogoffResponse(SMBLogoffResponse),
+    TreeDisconnectRequest(SMBTreeDisconnectRequest),
+    TreeDisconnectResponse(SMBTreeDisconnectResponse),
     LegacyCommand(LegacySMBBody),
 }
 

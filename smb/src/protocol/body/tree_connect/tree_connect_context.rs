@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult};
+use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
@@ -32,6 +32,19 @@ impl SMBFromBytes for SMBTreeConnectContext {
             },
             _ => Err(SMBError::ParseError("Invalid context type for tree connect context"))
         }
+    }
+}
+
+impl SMBToBytes for SMBTreeConnectContext {
+    fn smb_to_bytes(&self) -> Vec<u8> {
+        let (ctx_type, bytes) = match self {
+            Self::RemotedIdentity(x) => (0x01_u16, x.smb_to_bytes()),
+        };
+        let ctx_bytes = ctx_type.smb_to_bytes();
+        [
+            ctx_bytes,
+            bytes
+        ].concat()
     }
 }
 

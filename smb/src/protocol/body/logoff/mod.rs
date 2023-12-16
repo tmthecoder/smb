@@ -1,4 +1,4 @@
-mod logoff;
+use crate::protocol::body::empty::SMBEmpty;
 
-pub type SMBLogoffRequest = logoff::SMBLogoff;
-pub type SMBLogoffResponse = logoff::SMBLogoff;
+pub type SMBLogoffRequest = SMBEmpty;
+pub type SMBLogoffResponse = SMBEmpty;
