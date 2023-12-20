@@ -37,3 +37,4 @@ cmac = "0.7.2"
 aes = "0.8.2"
 smb-derive = { path = "../smb-derive" }
 smb-core = { path = "../smb-core" }
+bytes = { version = "1.5.0" }

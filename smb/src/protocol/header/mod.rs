@@ -33,5 +33,4 @@ pub trait Header: SMBFromBytes + SMBToBytes {
         // .map_err(|_e| );
         Ok((remaining, (message, command)))
     }
-    fn as_bytes(&self) -> Vec<u8>;
 }

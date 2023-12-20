@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
-use crate::byte_helper::{u16_to_bytes, u32_to_bytes, u64_to_bytes};
 use crate::protocol::header::{
     Header, LegacySMBCommandCode, LegacySMBFlags, LegacySMBFlags2, SMBCommandCode, SMBExtra,
     SMBFlags, SMBStatus,
@@ -66,25 +65,25 @@ impl Header for SMBSyncHeader {
         self.command
     }
 
-    fn as_bytes(&self) -> Vec<u8> {
-        [
-            &[0xFE_u8],
-            &b"SMB"[0..],
-            &[64, 0],                             // Structure size,
-            &[1, 0],                              // Credit
-            &u32_to_bytes(self.channel_sequence), // Reserved/Status/TODO
-            &u16_to_bytes(self.command as u16),
-            &[1, 0], // CreditResponse,
-            &u32_to_bytes(self.flags.bits()),
-            &[0; 4], // Next Command,
-            &u64_to_bytes(self.message_id),
-            &[0, 0, 0xFE, 0xFF], // Reserved
-            &u32_to_bytes(self.tree_id),
-            &u64_to_bytes(self.session_id),
-            &self.signature,
-        ]
-        .concat()
-    }
+    // fn as_bytes(&self) -> Vec<u8> {
+    //     [
+    //         &[0xFE_u8],
+    //         &b"SMB"[0..],
+    //         &[64, 0],                             // Structure size,
+    //         &[1, 0],                              // Credit
+    //         &u32_to_bytes(self.channel_sequence), // Reserved/Status/TODO
+    //         &u16_to_bytes(self.command as u16),
+    //         &[1, 0], // CreditResponse,
+    //         &u32_to_bytes(self.flags.bits()),
+    //         &[0; 4], // Next Command,
+    //         &u64_to_bytes(self.message_id),
+    //         &[0, 0, 0xFE, 0xFF], // Reserved
+    //         &u32_to_bytes(self.tree_id),
+    //         &u64_to_bytes(self.session_id),
+    //         &self.signature,
+    //     ]
+    //     .concat()
+    // }
 }
 
 impl Header for LegacySMBHeader {
@@ -94,22 +93,22 @@ impl Header for LegacySMBHeader {
         self.command
     }
 
-    fn as_bytes(&self) -> Vec<u8> {
-        [
-            &[0xFF_u8],
-            &b"SMB"[0..],
-            &[self.command as u8],
-            &*self.status.as_bytes(),
-            &[self.flags.bits()],
-            &u16_to_bytes(self.flags2.bits()),
-            &*self.extra.as_bytes(),
-            &u16_to_bytes(self.tid),
-            &u16_to_bytes(self.pid),
-            &u16_to_bytes(self.uid),
-            &u16_to_bytes(self.mid),
-        ]
-        .concat()
-    }
+    // fn as_bytes(&self) -> Vec<u8> {
+    //     [
+    //         &[0xFF_u8],
+    //         &b"SMB"[0..],
+    //         &[self.command as u8],
+    //         &*self.status.as_bytes(),
+    //         &[self.flags.bits()],
+    //         &u16_to_bytes(self.flags2.bits()),
+    //         &*self.extra.as_bytes(),
+    //         &u16_to_bytes(self.tid),
+    //         &u16_to_bytes(self.pid),
+    //         &u16_to_bytes(self.uid),
+    //         &u16_to_bytes(self.mid),
+    //     ]
+    //     .concat()
+    // }
 }
 
 impl SMBSyncHeader {

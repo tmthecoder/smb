@@ -4,8 +4,6 @@ extern crate core;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 
-use smb_core::SMBFromBytes;
-
 use crate::protocol::body::{LegacySMBBody, SMBBody};
 use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
@@ -37,6 +35,7 @@ pub struct SMBMessageStreamIterator<'a> {
 
 pub struct SMBMessageIterator<'a> {
     connection: &'a mut SMBMessageStream,
+    buffer: Vec<u8>,
     carryover: [u8; 512],
     carryover_len: usize
 }
@@ -58,6 +57,7 @@ impl SMBMessageStream {
     pub fn messages(&mut self) -> SMBMessageIterator {
         SMBMessageIterator {
             connection: self,
+            buffer: Vec::new(),
             carryover: [0; 512],
             carryover_len: 0
         }
@@ -92,35 +92,29 @@ impl Iterator for SMBMessageIterator<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut buffer = [0_u8; 512];
-        // println!("In next: {} W carryover: {:?}", self.carryover_len, self.carryover);
-        if self.carryover_len >= 32 && self.carryover.starts_with(b"SMB") {
-            let (_, (header, _)) = SMBSyncHeader::parse(&self.carryover).ok()?;
-            return Some(SMBMessage { header, body: SMBBody::None });
+
+        if let Ok(read) = self.connection.stream.read(&mut buffer) {
+            self.buffer.extend_from_slice(&buffer[..read]);
         }
-        match self.connection.stream.read(&mut buffer) {
-            Ok(read) => {
-                if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
-                    if buffer[(pos)..].starts_with(b"SMB") {
-                        // println!("header: {:?}", SMBSyncHeader::smb_from_bytes(&buffer[(pos - 1)..read]));
-                        // println!("Current buffer: {:?}", &buffer[(pos)..]);
-                        let (carryover, message) = if let Ok((remaining, msg)) = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[(pos-1)..read]) {
-                            (remaining, msg)
-                        } else {
-                            let (remaining, legacy_msg) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::parse(&buffer[(pos-1)..read]).ok()?;
-                            let m = SMBMessage::<SMBSyncHeader, SMBBody>::from_legacy(legacy_msg)?;
-                            (remaining, m)
-                        };
-                        for (idx, byte) in carryover.iter().enumerate() {
-                            self.carryover[self.carryover_len + idx] = *byte;
-                        }
-                        self.carryover_len += carryover.len();
-                        return Some(message);
-                    }
-                }
-                None
+
+        if let Some(pos) = self.buffer.iter().position(|x| *x == b'S') {
+            if self.buffer[(pos)..].starts_with(b"SMB") {
+                // println!("header: {:?}", SMBSyncHeader::smb_from_bytes(&buffer[(pos - 1)..read]));
+                // println!("Current buffer: {:?}", &buffer[(pos)..]);
+                let (carryover, message) = if let Ok((remaining, msg)) = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&self.buffer[(pos - 1)..]) {
+                    (remaining, msg)
+                } else {
+                    let (remaining, legacy_msg) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::parse(&self.buffer[(pos - 1)..]).ok()?;
+                    let m = SMBMessage::<SMBSyncHeader, SMBBody>::from_legacy(legacy_msg)?;
+                    (remaining, m)
+                };
+
+                self.buffer = carryover.to_vec();
+                return Some(message);
             }
-            _ => None
         }
+
+        None
     }
 }
 

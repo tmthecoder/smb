@@ -76,7 +76,7 @@ impl SMBNegotiateRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBToBytes, SMBByteSize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBToBytes, SMBByteSize, SMBFromBytes)]
 #[smb_byte_tag(value = 65)]
 pub struct SMBNegotiateResponse {
     #[smb_direct(start(fixed = 2))]

@@ -1,4 +1,4 @@
-use smb_core::SMBParseResult;
+use smb_core::{SMBEnumFromBytes, SMBFromBytes, SMBParseResult, SMBToBytes};
 
 use crate::protocol::header::Header;
 
@@ -24,7 +24,7 @@ pub type FileTime = filetime::FileTime;
 
 pub type SMBDialect = dialect::SMBDialect;
 
-pub trait Body<S: Header> {
+pub trait Body<S: Header>: SMBEnumFromBytes + SMBToBytes {
     fn parse_with_cc(bytes: &[u8], command_code: S::CommandCode) -> SMBParseResult<&[u8], Self> where Self: Sized;
     fn as_bytes(&self) -> Vec<u8>;
 }
