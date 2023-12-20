@@ -40,7 +40,7 @@ impl SMBMessage<SMBSyncHeader, SMBBody> {
     }
 }
 
-impl<S: Header, T: Body<S>> Message for SMBMessage<S, T> {
+impl<S: Header + Debug, T: Body<S>> Message for SMBMessage<S, T> {
     fn as_bytes(&self) -> Vec<u8> {
         let smb2_message = [self.header.smb_to_bytes(), self.body.smb_to_bytes()].concat();
         let mut len_bytes = u16_to_bytes(smb2_message.len() as u16);
@@ -50,6 +50,7 @@ impl<S: Header, T: Body<S>> Message for SMBMessage<S, T> {
 
     fn parse(bytes: &[u8]) -> SMBParseResult<&[u8], Self> {
         let (remaining, header) = S::smb_from_bytes(bytes)?;
+        println!("header: {:?}", header);
         let (remaining, body) = T::parse_with_cc(remaining, header.command_code())?;
         Ok((remaining, Self { header, body }))
     }

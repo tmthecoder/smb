@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 
 use crate::protocol::body::{LegacySMBBody, SMBBody};
-use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
+use crate::protocol::header::{LegacySMBHeader, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
 
 pub mod protocol;

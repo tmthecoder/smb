@@ -5,7 +5,7 @@ use nom::multi::many1;
 use nom::number::complete::le_u8;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBByteSize, SMBEnumFromBytes, SMBFromBytes, SMBParseResult, SMBToBytes};
+use smb_core::{SMBByteSize, SMBEnumFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_derive::{SMBEnumFromBytes, SMBToBytes};
 
@@ -34,7 +34,7 @@ pub enum SMBBody {
     #[smb_discriminator(value = 0x995)]
     #[smb_direct(start(fixed = 0))]
     SessionSetupResponse(SMBSessionSetupResponse),
-    #[smb_discriminator(value = 0x4)]
+    #[smb_discriminator(value = 0x3)]
     #[smb_direct(start(fixed = 0))]
     TreeConnectRequest(SMBTreeConnectRequest),
     #[smb_discriminator(value = 0x996)]
@@ -77,45 +77,11 @@ impl SMBByteSize for SMBBody {
 
 impl Body<SMBSyncHeader> for SMBBody {
     fn parse_with_cc(bytes: &[u8], command_code: SMBCommandCode) -> SMBParseResult<&[u8], Self> {
-        match command_code {
-            SMBCommandCode::Negotiate => {
-                let (remaining, body) = SMBNegotiateRequest::smb_from_bytes(bytes)?;
-                // println!("Test: {:?}", SMBNegotiateRequest::smb_from_bytes(bytes).unwrap());
-                // println!("Actu: {:?}", body);
-                Ok((remaining, SMBBody::NegotiateRequest(body)))
-            },
-            SMBCommandCode::SessionSetup => {
-                let (remaining, body) = SMBSessionSetupRequest::smb_from_bytes(bytes)?;
-                // println!("Actu: {:?} {:?}", remaining, body);
-                // println!("Test: {:?}", SMBSessionSetupRequest::smb_from_bytes(bytes).unwrap());
-                Ok((remaining, SMBBody::SessionSetupRequest(body)))
-            },
-            SMBCommandCode::LogOff => {
-                let (remaining, body) = SMBLogoffRequest::smb_from_bytes(bytes)?;
-                Ok((remaining, SMBBody::LogoffRequest(body)))
-            },
-            SMBCommandCode::TreeConnect => {
-                let (remaining, body) = SMBTreeConnectRequest::smb_from_bytes(bytes)?;
-                Ok((remaining, SMBBody::TreeConnectRequest(body)))
-            }
-            _ => Err(SMBError::ParseError("Unknown body parse failure")),
-        }
+        Self::smb_enum_from_bytes(bytes, command_code as u64)
     }
 
     fn as_bytes(&self) -> Vec<u8> {
-        match self {
-            SMBBody::NegotiateResponse(x) => {
-                x.smb_to_bytes()
-            },
-            SMBBody::SessionSetupResponse(x) => {
-                x.smb_to_bytes()
-            },
-            SMBBody::LogoffResponse(x) => {
-                x.smb_to_bytes()
-            },
-            SMBBody::TreeConnectResponse(x) => x.smb_to_bytes(),
-            _ => Vec::new()
-        }
+        self.smb_to_bytes()
     }
 }
 
@@ -171,6 +137,6 @@ impl Body<LegacySMBHeader> for LegacySMBBody {
     }
 
     fn as_bytes(&self) -> Vec<u8> {
-        todo!()
+        self.smb_to_bytes()
     }
 }

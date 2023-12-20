@@ -324,6 +324,9 @@ impl SMBServer {
                             cloned_connection.send_message(resp_msg)?;
                         }
                     }
+                    SMBCommandCode::LogOff => {
+                        break;
+                    }
                     _ => {}
                 }
             }
