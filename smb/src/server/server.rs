@@ -1,13 +1,27 @@
 use std::collections::HashMap;
+use std::net::{SocketAddr, ToSocketAddrs};
 
 use uuid::Uuid;
 
-use crate::protocol::body::{FileTime, SMBDialect};
+use smb_core::error::SMBError;
+use smb_core::SMBToBytes;
+
+use crate::protocol::body::{Capabilities, FileTime, SMBBody, SMBDialect};
+use crate::protocol::body::negotiate::{NegotiateSecurityMode, SMBNegotiateResponse};
+use crate::protocol::body::session_setup::SMBSessionSetupResponse;
+use crate::protocol::body::tree_connect::SMBTreeConnectResponse;
+use crate::protocol::header::{Header, SMBCommandCode, SMBFlags, SMBSyncHeader};
+use crate::protocol::message::SMBMessage;
 use crate::server::{SMBClient, SMBLeaseTable};
 use crate::server::connection::Connection;
 use crate::server::open::Open;
 use crate::server::session::Session;
 use crate::server::share::SharedResource;
+use crate::SMBListener;
+use crate::util::auth::{AuthProvider, User};
+use crate::util::auth::nt_status::NTStatus;
+use crate::util::auth::ntlm::{NTLMAuthContext, NTLMAuthProvider, NTLMMessage};
+use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenInitBody, SPNEGOTokenResponseBody};
 
 #[derive(Default)]
 pub struct SMBServer {
@@ -36,6 +50,7 @@ pub struct SMBServer {
     max_cluster_dialect: SMBDialect,
     tree_connect_extension: bool,
     named_pipe_access_over_quic: bool,
+    local_listener: SMBListener
 }
 
 pub struct SMBServerBuilder {
@@ -53,6 +68,7 @@ pub struct SMBServerBuilder {
     max_cluster_dialect: SMBDialect,
     tree_connect_extension: bool,
     named_pipe_access_over_quic: bool,
+    address: Vec<SocketAddr>,
 }
 
 impl Default for SMBServerBuilder {
@@ -72,82 +88,91 @@ impl Default for SMBServerBuilder {
             tree_connect_extension: true,
             named_pipe_access_over_quic: false,
             anonymous_access: false,
+            address: ToSocketAddrs::to_socket_addrs("127.0.0.1:445").unwrap().collect()
         }
     }
 }
 
 impl SMBServerBuilder {
-    fn add_share(&mut self, name: String, share: Box<dyn SharedResource>) -> &mut Self {
+    pub fn new() -> Self {
+        Default::default()
+    }
+    pub fn add_share(&mut self, name: String, share: Box<dyn SharedResource>) -> &mut Self {
         self.share_list.insert(name, share);
         self
     }
 
-    fn set_guid(&mut self, guid: Uuid) -> &mut Self {
+    pub fn set_guid(&mut self, guid: Uuid) -> &mut Self {
         self.guid = guid;
         self
     }
 
-    fn set_copy_max_chunks(&mut self, copy_max_chunks: u64) -> &mut Self {
+    pub fn set_copy_max_chunks(&mut self, copy_max_chunks: u64) -> &mut Self {
         self.copy_max_chunks = copy_max_chunks;
         self
     }
 
-    fn set_copy_max_chunk_size(&mut self, copy_max_chunk_size: u64) -> &mut Self {
+    pub fn set_copy_max_chunk_size(&mut self, copy_max_chunk_size: u64) -> &mut Self {
         self.copy_max_chunk_size = copy_max_chunk_size;
         self
     }
 
-    fn set_copy_max_data_size(&mut self, copy_max_data_size: u64) -> &mut Self {
+    pub fn set_copy_max_data_size(&mut self, copy_max_data_size: u64) -> &mut Self {
         self.copy_max_data_size = copy_max_data_size;
         self
     }
 
-    fn set_hash_level(&mut self, hash_level: HashLevel) -> &mut Self {
+    pub fn set_hash_level(&mut self, hash_level: HashLevel) -> &mut Self {
         self.hash_level = hash_level;
         self
     }
 
-    fn set_max_resiliency_timeout(&mut self, max_resiliency_timeout: u64) -> &mut Self {
+    pub fn set_max_resiliency_timeout(&mut self, max_resiliency_timeout: u64) -> &mut Self {
         self.max_resiliency_timeout = max_resiliency_timeout;
         self
     }
 
-    fn encrypts_data(&mut self, encrypt_data: bool) -> &mut Self {
+    pub fn encrypts_data(&mut self, encrypt_data: bool) -> &mut Self {
         self.encrypt_data = encrypt_data;
         self
     }
 
-    fn allows_unencrypted_access(&mut self, unencrypted_access: bool) -> &mut Self {
+    pub fn allows_unencrypted_access(&mut self, unencrypted_access: bool) -> &mut Self {
         self.unencrypted_access = unencrypted_access;
         self
     }
 
-    fn is_multi_channel_capable(&mut self, multi_channel_capable: bool) -> &mut Self {
+    pub fn is_multi_channel_capable(&mut self, multi_channel_capable: bool) -> &mut Self {
         self.multi_channel_capable = multi_channel_capable;
         self
     }
 
-    fn set_max_cluster_dialect(&mut self, max_cluster_dialect: SMBDialect) -> &mut Self {
+    pub fn set_max_cluster_dialect(&mut self, max_cluster_dialect: SMBDialect) -> &mut Self {
         self.max_cluster_dialect = max_cluster_dialect;
         self
     }
 
-    fn supports_tree_connect_extension(&mut self, tree_connect_extension: bool) -> &mut Self {
+    pub fn supports_tree_connect_extension(&mut self, tree_connect_extension: bool) -> &mut Self {
         self.tree_connect_extension = tree_connect_extension;
         self
     }
 
-    fn allows_anonymous_access(&mut self, anonymous_access: bool) -> &mut Self {
+    pub fn allows_anonymous_access(&mut self, anonymous_access: bool) -> &mut Self {
         self.anonymous_access = anonymous_access;
         self
     }
 
-    fn allows_named_pipe_access_over_quic(&mut self, named_pipe_access_over_quic: bool) -> &mut Self {
+    pub fn allows_named_pipe_access_over_quic(&mut self, named_pipe_access_over_quic: bool) -> &mut Self {
         self.named_pipe_access_over_quic = named_pipe_access_over_quic;
         self
     }
 
-    fn build(self) -> SMBServer {
+    pub fn set_address<A: ToSocketAddrs>(&mut self, address: A) -> &mut Self {
+        self.address = address.to_socket_addrs().unwrap().collect();
+        self
+    }
+
+    pub fn build(self) -> SMBServer {
         SMBServer {
             statistics: Default::default(),
             enabled: false,
@@ -174,6 +199,7 @@ impl SMBServerBuilder {
             max_cluster_dialect: self.max_cluster_dialect,
             tree_connect_extension: self.tree_connect_extension,
             named_pipe_access_over_quic: self.named_pipe_access_over_quic,
+            local_listener: SMBListener::new(&*self.address).unwrap()
         }
     }
 }
@@ -202,6 +228,110 @@ impl SMBServer {
 
     pub fn remove_share(&mut self, name: &str) {
         self.share_list.remove(name);
+    }
+
+    pub fn start(&mut self) -> anyhow::Result<()> {
+        let mut ctx = NTLMAuthContext::new();
+        for mut connection in self.local_listener.connections() {
+            let mut cloned_connection = connection.try_clone()?;
+            for message in connection.messages() {
+                match message.header.command_code() {
+                    SMBCommandCode::LegacyNegotiate => {
+                        let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::new(
+                            NegotiateSecurityMode::empty(),
+                            SMBDialect::V2_X_X,
+                            Capabilities::empty(),
+                            100,
+                            100,
+                            100,
+                            FileTime::default(),
+                            Vec::new(),
+                        ));
+                        let resp_header = SMBSyncHeader::new(
+                            SMBCommandCode::Negotiate,
+                            SMBFlags::SERVER_TO_REDIR,
+                            0,
+                            0,
+                            65535,
+                            65535,
+                            [0; 16],
+                        );
+                        let resp_msg = SMBMessage::new(resp_header, resp_body);
+                        cloned_connection.send_message(resp_msg)?;
+                    }
+                    SMBCommandCode::Negotiate => {
+                        if let SMBBody::NegotiateRequest(request) = message.body {
+                            println!("Test to bytes: {:?}, {:?}", message.header.smb_to_bytes(), request.smb_to_bytes());
+                            let init_buffer = SPNEGOToken::Init(SPNEGOTokenInitBody::<NTLMAuthProvider>::new());
+                            let neg_resp = SMBNegotiateResponse::from_request(request, init_buffer.as_bytes(true))
+                                .unwrap();
+                            println!("New rp: {:02x?}", neg_resp.smb_to_bytes());
+                            println!("Actual: {:02x?}", neg_resp.as_bytes());
+                            let resp_body = SMBBody::NegotiateResponse(neg_resp);
+                            let resp_header = message.header.create_response_header(0x0, 0);
+                            let resp_msg = SMBMessage::new(resp_header, resp_body);
+                            cloned_connection.send_message(resp_msg)?;
+                        }
+                    }
+                    SMBCommandCode::SessionSetup => {
+                        if let SMBBody::SessionSetupRequest(request) = message.body {
+                            let spnego_init_buffer: SPNEGOToken<NTLMAuthProvider> =
+                                SPNEGOToken::parse(&request.get_buffer_copy()).unwrap().1;
+                            println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
+                            let helper = NTLMAuthProvider::new(
+                                vec![User::new("tejasmehta".into(), "password".into())],
+                                true,
+                            );
+                            let (status, output) = match spnego_init_buffer {
+                                SPNEGOToken::Init(init_msg) => {
+                                    let mech_token = init_msg.mech_token.ok_or(SMBError::ParseError("Parse failure"))?;
+                                    let ntlm_msg =
+                                        NTLMMessage::parse(&mech_token).map_err(|_e| SMBError::ParseError("Parse failure"))?.1;
+                                    helper.accept_security_context(&ntlm_msg, &mut ctx)
+                                }
+                                SPNEGOToken::Response(resp_msg) => {
+                                    let response_token = resp_msg.response_token.ok_or(SMBError::ParseError("Parse failure"))?;
+                                    let ntlm_msg =
+                                        NTLMMessage::parse(&response_token).map_err(|_e| SMBError::ParseError("Parse failure"))?.1;
+                                    println!("NTLM: {:?}", ntlm_msg);
+                                    helper.accept_security_context(&ntlm_msg, &mut ctx)
+                                }
+                                _ => { (NTStatus::StatusSuccess, NTLMMessage::Dummy) }
+                            };
+                            println!("status: {:?}, output: {:?}", status, output);
+                            let spnego_response_body = SPNEGOTokenResponseBody::<NTLMAuthProvider>::new(status.clone(), output);
+                            let resp = SMBSessionSetupResponse::from_request(
+                                request,
+                                spnego_response_body.as_bytes(),
+                            ).unwrap();
+                            println!("Test response: {:?}", resp.smb_to_bytes());
+                            println!("Actu response: {:?}", resp.as_bytes());
+                            let resp_body = SMBBody::SessionSetupResponse(resp);
+                            let resp_header = message.header.create_response_header(0, 1010);
+                            let resp_msg = SMBMessage::new(resp_header, resp_body);
+
+                            cloned_connection.send_message(resp_msg)?;
+                        }
+                    },
+                    SMBCommandCode::TreeConnect => {
+                        println!("Got tree connect");
+                        if let SMBBody::TreeConnectRequest(request) = message.body {
+                            println!("Tree connect request: {:?}", request);
+                            let resp_body = match request.path().contains("IPC$") {
+                                true => SMBBody::TreeConnectResponse(SMBTreeConnectResponse::IPC()),
+                                false => SMBBody::TreeConnectResponse(SMBTreeConnectResponse::default()),
+                            };
+                            let resp_header = message.header.create_response_header(0, 1010);
+                            let resp_msg = SMBMessage::new(resp_header, resp_body);
+
+                            cloned_connection.send_message(resp_msg)?;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(())
     }
 }
 

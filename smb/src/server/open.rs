@@ -1,5 +1,7 @@
 use std::fs::File;
 
+use uuid::Uuid;
+
 use crate::protocol::body::create::SMBCreateOptions;
 use crate::protocol::body::tree_connect::SMBAccessMask;
 use crate::server::{SMBConnection, SMBLease, SMBSession, SMBTreeConnect};
@@ -32,9 +34,8 @@ pub struct SMBOpen<T: SharedResource> {
     resume_key: u32,
     file_name: String,
     create_options: SMBCreateOptions,
-    file_attributes: Vec<u8>,
-    // TODO
-    client_guid: Vec<u8>,
+    file_attributes: FileAttributes,
+    client_guid: Uuid,
     lease: Option<SMBLease>,
     is_resilient: bool,
     resiliency_timeout: u32,
@@ -50,6 +51,9 @@ pub struct SMBOpen<T: SharedResource> {
     application_instance_version_high: u64,
     application_instance_version_low: u64,
 }
+
+// TODO: From MS-FSCC section 2.6
+struct FileAttributes;
 
 pub enum SMBOplockLevel {
     None,

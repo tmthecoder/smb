@@ -22,5 +22,7 @@ pub type SMBPreauthSession = preauth_session::SMBPreauthSession;
 pub type SMBRequest<T> = request::SMBRequest<T>;
 pub type SMBSession<T> = session::SMBSession<T>;
 pub type SMBServer = server::SMBServer;
+
+pub type SMBServerBuilder = server::SMBServerBuilder;
 pub type SMBShare<ConnectArgs, FileSecArgs, ConnectAllowed, FilePerms> = share::SMBShare<ConnectArgs, FileSecArgs, ConnectAllowed, FilePerms>;
 pub type SMBTreeConnect<T> = tree_connect::SMBTreeConnect<T>;

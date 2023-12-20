@@ -20,6 +20,12 @@ pub struct SMBListener {
     socket: TcpListener
 }
 
+impl Default for SMBListener {
+    fn default() -> Self {
+        Self::new("127.0.0.1:445").unwrap()
+    }
+}
+
 #[derive(Debug)]
 pub struct SMBMessageStream {
     stream: TcpStream
@@ -86,7 +92,7 @@ impl Iterator for SMBMessageIterator<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut buffer = [0_u8; 512];
-        println!("In next: {} W carryover: {:?}", self.carryover_len, self.carryover);
+        // println!("In next: {} W carryover: {:?}", self.carryover_len, self.carryover);
         if self.carryover_len >= 32 && self.carryover.starts_with(b"SMB") {
             let (_, (header, _)) = SMBSyncHeader::parse(&self.carryover).ok()?;
             return Some(SMBMessage { header, body: SMBBody::None });
@@ -95,8 +101,8 @@ impl Iterator for SMBMessageIterator<'_> {
             Ok(read) => {
                 if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
                     if buffer[(pos)..].starts_with(b"SMB") {
-                        println!("header: {:?}", SMBSyncHeader::smb_from_bytes(&buffer[(pos - 1)..read]));
-                        println!("Current buffer: {:?}", &buffer[(pos)..]);
+                        // println!("header: {:?}", SMBSyncHeader::smb_from_bytes(&buffer[(pos - 1)..read]));
+                        // println!("Current buffer: {:?}", &buffer[(pos)..]);
                         let (carryover, message) = if let Ok((remaining, msg)) = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[(pos-1)..read]) {
                             (remaining, msg)
                         } else {

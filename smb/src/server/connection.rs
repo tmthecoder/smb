@@ -10,12 +10,11 @@ use crate::server::share::SharedResource;
 pub trait Connection {}
 
 pub struct SMBConnection<T: SharedResource> {
-    command_sequence_window: Vec<u8>, // TODO
+    command_sequence_window: Vec<u32>,
     request_list: HashMap<u64, SMBRequest<T>>,
     client_capabilities: Capabilities,
-    negotiate_dialect: SMBDialect, // TODO
-    async_command_list: Vec<u8>,
-    // TODO
+    negotiate_dialect: SMBDialect,
+    async_command_list: HashMap<u64, SMBRequest<T>>,
     dialect: SMBDialect,
     should_sign: bool,
     client_name: String,
