@@ -364,10 +364,10 @@ impl SMBString {
         let vec_name = format_ident!("{}_vec", name);
         let string_parser = match self.underlying.as_str() {
             "u8" => quote! {
-                let #name = String::from_utf8(#vec_name).map_err(|e| SMBError::ParseError("some_err"))?;
+                let #name = String::from_utf8(#vec_name).map_err(|e| ::smb_core::error::SMBError::ParseError("some_err"))?;
             },
             "u16" => quote! {
-                let #name = String::from_utf16(&#vec_name).map_err(|e| SMBError::ParseError("some_err"))?;
+                let #name = String::from_utf16(&#vec_name).map_err(|e| ::smb_core::error::SMBError::ParseError("some_err"))?;
             },
             _ => quote! {}
         };

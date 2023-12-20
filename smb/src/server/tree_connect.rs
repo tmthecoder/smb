@@ -1,14 +1,15 @@
-use crate::body::FileTime;
+use crate::protocol::body::FileTime;
+use crate::protocol::body::tree_connect::SMBAccessMask;
 use crate::server::session::SMBSession;
-use crate::server::SMBShare;
+use crate::server::share::SharedResource;
 
-pub struct SMBTreeConnect {
+pub struct SMBTreeConnect<T: SharedResource> {
     tree_id: u32,
-    session: SMBSession,
-    share: SMBShare,
+    session: SMBSession<T>,
+    share: T,
     open_count: u64,
     tree_global_id: u64,
     creation_time: FileTime,
-    maximal_access: ??,
-    remoted_identity_security_context: ??
+    maximal_access: SMBAccessMask,
+    remoted_identity_security_context: Vec<u8> // TODO
 }

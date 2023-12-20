@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+
 use bitflags::bitflags;
 use uuid::Uuid;
-use crate::server::SMBOpen;
+
+use crate::server::open::Open;
 
 pub struct SMBLeaseTable {
     client_guid: Uuid,
@@ -15,7 +17,7 @@ pub struct SMBLease {
     lease_state: SMBLeaseState,
     break_to_lease_state: SMBLeaseState,
     lease_break_timeout: u64,
-    lease_opens: Vec<SMBOpen>,
+    lease_opens: Vec<Box<dyn Open>>,
     breaking: bool,
     held: bool,
     break_notification: SMBLeaseBreakNotification,

@@ -13,6 +13,7 @@ pub mod logoff;
 pub mod tree_connect;
 pub mod tree_disconnect;
 pub mod empty;
+pub mod create;
 
 pub type SMBBody = body::SMBBody;
 

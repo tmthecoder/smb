@@ -4,11 +4,10 @@ use bitflags::bitflags;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 
-use smb_core::error::SMBError;
 use smb_core::SMBFromBytes;
-use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBFromBytes, SMBToBytes};
+use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
-use crate::protocol::body::tree_connect::SMBTreeConnectContext;
+use crate::protocol::body::tree_connect::{SMBAccessMask, SMBDirectoryAccessMask, SMBFilePipePrinterAccessMask, SMBTreeConnectBuffer};
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes, SMBToBytes)]
@@ -22,10 +21,7 @@ pub struct SMBTreeConnectRequest {
 
 impl SMBTreeConnectRequest {
     pub fn path(&self) -> &str {
-        match &self.buffer {
-            SMBTreeConnectBuffer::Path(x) => x,
-            SMBTreeConnectBuffer::Extension(x) => &x.path_name
-        }
+        self.buffer.path()
     }
 }
 
@@ -48,7 +44,7 @@ impl SMBTreeConnectResponse {
     pub fn default() -> Self {
         Self {
             maximal_access: SMBAccessMask::Directory(SMBDirectoryAccessMask::GENERIC_ALL),
-            share_type: SMBShareType::DISK,
+            share_type: SMBShareType::Disk,
             reserved: PhantomData,
             share_flags: SMBShareFlags::NO_CACHING,
             capabilities: SMBTreeConnectCapabilities::empty(),
@@ -58,7 +54,7 @@ impl SMBTreeConnectResponse {
     pub fn IPC() -> Self {
         Self {
             maximal_access: SMBAccessMask::FilePipePrinter(SMBFilePipePrinterAccessMask::from_bits_truncate(2032127)),
-            share_type: SMBShareType::PIPE,
+            share_type: SMBShareType::Pipe,
             reserved: PhantomData,
             share_flags: SMBShareFlags::NO_CACHING,
             capabilities: SMBTreeConnectCapabilities::empty(),
@@ -75,27 +71,24 @@ bitflags! {
         const RESERVED             = 0b0;
     }
 }
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize, SMBToBytes)]
-enum SMBTreeConnectBuffer {
-    #[smb_discriminator(value = 0x0)]
-    #[smb_string(order = 0, start(inner(start = 0, num_type = "u16", subtract = 68)), length(inner(start = 2, num_type = "u16")), underlying = "u16")]
-    Path(String),
-    #[smb_direct(start(fixed = 0))]
-    #[smb_discriminator(value = 0x1)]
-    Extension(SMBTreeConnectExtension),
-}
 
 #[repr(u8)]
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Copy, Clone, SMBByteSize, SMBFromBytes, SMBToBytes, TryFromPrimitive)]
-enum SMBShareType {
-    DISK = 0x01,
-    PIPE,
-    PRINT,
+pub enum SMBShareType {
+    Disk = 0x01,
+    Pipe,
+    Print,
+}
+
+impl Default for SMBShareType {
+    fn default() -> Self {
+        Self::Disk
+    }
 }
 
 bitflags! {
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-    struct SMBShareFlags: u32 {
+    pub struct SMBShareFlags: u32 {
         const MANUAL_CACHING              = 0x000000;
         const AUTO_CACHING                = 0x000010;
         const VDO_CACHING                 = 0x000020;
@@ -116,6 +109,12 @@ bitflags! {
     }
 }
 
+impl Default for SMBShareFlags {
+    fn default() -> Self {
+        Self::MANUAL_CACHING
+    }
+}
+
 
 bitflags! {
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
@@ -128,78 +127,6 @@ bitflags! {
         const REDIRECT_TO_OWNER       = 0x100;
     }
 }
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize, SMBToBytes)]
-enum SMBAccessMask {
-    #[smb_discriminator(value = 0x2, value = 0x3)]
-    #[smb_direct(start(fixed = 0))]
-    FilePipePrinter(SMBFilePipePrinterAccessMask),
-    #[smb_discriminator(value = 0x1)]
-    #[smb_direct(start(fixed = 0))]
-    Directory(SMBDirectoryAccessMask),
-}
-
-bitflags! {
-    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-    struct SMBFilePipePrinterAccessMask: u32 {
-        const FILE_READ_DATA         = 0x00000001;
-        const FILE_WRITE_DATA        = 0x00000002;
-        const FILE_APPEND_DATA       = 0x00000004;
-        const FILE_READ_EA           = 0x00000008;
-        const FILE_WRITE_EA          = 0x00000010;
-        const FILE_DELETE_CHILD      = 0x00000040;
-        const FILE_EXECUTE           = 0x00000020;
-        const FILE_READ_ATTRIBUTES   = 0x00000080;
-        const FILE_WRITE_ATTRIBUTES  = 0x00000100;
-        const DELTE                  = 0x00010000;
-        const READ_CONTROL           = 0x00020000;
-        const WRITE_DAC              = 0x00040000;
-        const WRITE_OWNER            = 0x00080000;
-        const SYNCHRONIZE            = 0x00100000;
-        const ACCESS_SYSTEM_SECURITY = 0x01000000;
-        const MAXIMUM_ALLOWED        = 0x02000000;
-        const GENERIC_ALL            = 0x10000000;
-        const GENERIC_EXECUTE        = 0x20000000;
-        const GENERIC_WRITE          = 0x40000000;
-        const GENERIC_READ           = 0x80000000;
-    }
-}
-
-bitflags! {
-    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
-    struct SMBDirectoryAccessMask: u32 {
-        const FILE_LIST_DIRECTORY    = 0x00000001;
-        const FILE_ADD_FILE          = 0x00000002;
-        const FILE_ADD_SUBDIRECTORY  = 0x00000004;
-        const FILE_READ_EA           = 0x00000008;
-        const FILE_WRITE_EA          = 0x00000010;
-        const FILE_TRAVERSE          = 0x00000020;
-        const FILE_DELETE_CHILD      = 0x00000040;
-        const FILE_READ_ATTRIBUTES   = 0x00000080;
-        const FILE_WRITE_ATTRIBUTES  = 0x00000100;
-        const DELTE                  = 0x00010000;
-        const READ_CONTROL           = 0x00020000;
-        const WRITE_DAC              = 0x00040000;
-        const WRITE_OWNER            = 0x00080000;
-        const SYNCHRONIZE            = 0x00100000;
-        const ACCESS_SYSTEM_SECURITY = 0x01000000;
-        const MAXIMUM_ALLOWED        = 0x02000000;
-        const GENERIC_ALL            = 0x10000000;
-        const GENERIC_EXECUTE        = 0x20000000;
-        const GENERIC_WRITE          = 0x40000000;
-        const GENERIC_READ           = 0x80000000;
-    }
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes, SMBToBytes)]
-struct SMBTreeConnectExtension {
-    #[smb_skip(start = 12, length = 2)]
-    reserved: PhantomData<Vec<u8>>,
-    #[smb_string(order = 1, start(inner(start = 2, num_type = "u16", subtract = 64)), length = "null_terminated", underlying = "u16")]
-    path_name: String,
-    #[smb_vector(order = 2, count(inner(start = 10, num_type = "u16")), offset(inner(start = 6, num_type = "u32", subtract = 64)))]
-    tree_connect_contexts: Vec<SMBTreeConnectContext>,
-}
-
-impl_smb_byte_size_for_bitflag! { SMBTreeConnectFlags SMBShareFlags SMBTreeConnectCapabilities SMBFilePipePrinterAccessMask SMBDirectoryAccessMask }
-impl_smb_to_bytes_for_bitflag! { SMBTreeConnectFlags SMBShareFlags SMBTreeConnectCapabilities SMBFilePipePrinterAccessMask SMBDirectoryAccessMask }
-impl_smb_from_bytes_for_bitflag! { SMBTreeConnectFlags SMBShareFlags SMBTreeConnectCapabilities SMBFilePipePrinterAccessMask SMBDirectoryAccessMask }
+impl_smb_byte_size_for_bitflag! { SMBTreeConnectFlags SMBShareFlags SMBTreeConnectCapabilities }
+impl_smb_to_bytes_for_bitflag! { SMBTreeConnectFlags SMBShareFlags SMBTreeConnectCapabilities }
+impl_smb_from_bytes_for_bitflag! { SMBTreeConnectFlags SMBShareFlags SMBTreeConnectCapabilities }

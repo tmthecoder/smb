@@ -1,3 +1,4 @@
+#![feature(tuple_trait)]
 extern crate core;
 
 use std::io::{Read, Write};
@@ -11,7 +12,7 @@ use crate::protocol::message::{Message, SMBMessage};
 
 pub mod protocol;
 pub mod util;
-// pub mod server;
+pub mod server;
 mod byte_helper;
 
 #[derive(Debug)]

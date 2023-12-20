@@ -1,5 +1,6 @@
 use uuid::Uuid;
-use crate::body::SMBDialect;
+
+use crate::protocol::body::SMBDialect;
 
 pub struct SMBClient {
     client_guid: Uuid,
