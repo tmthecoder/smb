@@ -91,8 +91,9 @@ pub enum LegacySMBBody {
     Negotiate(Vec<String>)
 }
 
-impl SMBEnumFromBytes for LegacySMBBody {
+impl smb_core::SMBEnumFromBytes for LegacySMBBody {
     fn smb_enum_from_bytes(input: &[u8], discriminator: u64) -> SMBParseResult<&[u8], Self> where Self: Sized {
+        while let some_num = <SMBNegotiateRequest as smb_core::SMBFromBytes>::smb_from_bytes(input) {}
         match LegacySMBCommandCode::try_from(discriminator as u8).map(|x| x == LegacySMBCommandCode::Negotiate) {
             Ok(true) => {
                 let (remaining, cnt) = le_u8(input)
@@ -116,7 +117,7 @@ impl SMBEnumFromBytes for LegacySMBBody {
     }
 }
 
-impl SMBToBytes for LegacySMBBody {
+impl smb_core::SMBToBytes for LegacySMBBody {
     fn smb_to_bytes(&self) -> Vec<u8> {
         todo!()
     }

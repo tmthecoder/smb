@@ -40,7 +40,7 @@ impl DirectInner {
         let ty = self.get_type(spanned);
         let chunk = if self.num_type != "direct" {
             quote! {
-                let (remaining, #name) = <#ty>::smb_from_bytes(&input[#start..])?;
+                let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBFromBytes::smb_from_bytes(&input[#start..])?;
             }
         } else {
             quote! { let #name = current_pos; }
@@ -146,7 +146,7 @@ impl AttributeInfo {
                     let mut val = &input[item_offset..];
                     let size = ::smb_core::SMBByteSize::smb_byte_size(&(0 as #ty));
                     let mut count = 0;
-                    while let Ok((rest, num)) = <#ty>::smb_from_bytes(val) {
+                    while let Ok((rest, num)) = <#ty as ::smb_core::SMBFromBytes>::smb_from_bytes(val) {
                         val = rest;
                         count += size;
                         if num == 0 {
@@ -201,7 +201,7 @@ impl Direct {
         let start = self.start.smb_from_bytes(spanned, "item_start");
         quote_spanned! { spanned.span() =>
             #start
-            let (remaining, #name) = <#ty>::smb_from_bytes(&input[(item_start as usize)..])?;
+            let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBFromBytes::smb_from_bytes(&input[(item_start as usize)..])?;
             current_pos = ::smb_core::SMBByteSize::smb_byte_size(&#name) + item_start as usize;
         }
     }
