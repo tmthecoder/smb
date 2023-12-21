@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::marker::{PhantomData, Tuple};
 
 use bitflags::bitflags;
@@ -5,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::body::tree_connect::{SMBAccessMask, SMBShareFlags, SMBShareType};
 
-pub trait SharedResource {
+pub trait SharedResource: Debug {
     fn name(&self) -> &String;
 }
 

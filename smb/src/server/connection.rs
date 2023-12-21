@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 use uuid::Uuid;
 
@@ -7,7 +8,7 @@ use crate::protocol::body::negotiate::{CompressionAlgorithm, NegotiateSecurityMo
 use crate::server::{SMBPreauthSession, SMBRequest, SMBSession};
 use crate::server::share::SharedResource;
 
-pub trait Connection {}
+pub trait Connection: Debug {}
 
 pub struct SMBConnection<T: SharedResource> {
     command_sequence_window: Vec<u32>,

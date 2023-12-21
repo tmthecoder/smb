@@ -5,11 +5,13 @@ use uuid::Uuid;
 
 use crate::server::open::Open;
 
+#[derive(Debug)]
 pub struct SMBLeaseTable {
     client_guid: Uuid,
     lease_list: HashMap<u64, SMBLease>
 }
 
+#[derive(Debug)]
 pub struct SMBLease {
     lease_key: u128,
     client_lease_id: u64,
@@ -27,6 +29,7 @@ pub struct SMBLease {
     version: u8
 }
 
+#[derive(Debug)]
 pub struct SMBLeaseBreakNotification {
     new_epoch: u16,
     flags: SMBLeaseBreakNotificationFlags,
@@ -36,6 +39,7 @@ pub struct SMBLeaseBreakNotification {
 }
 
 bitflags! {
+    #[derive(Debug)]
     pub struct SMBLeaseState: u8 {
         const READ_CACHING = 0x1;
         const WRITE_CACHING = 0x2;
@@ -44,6 +48,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Debug)]
     pub struct SMBLeaseBreakNotificationFlags: u32 {
         const NOTIFY_BREAK_LEASE_FLAG_ACK_REQUIRED = 0x01;
     }

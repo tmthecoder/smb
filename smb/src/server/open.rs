@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::fs::File;
 
 use uuid::Uuid;
@@ -7,7 +8,7 @@ use crate::protocol::body::tree_connect::SMBAccessMask;
 use crate::server::{SMBConnection, SMBLease, SMBSession, SMBTreeConnect};
 use crate::server::share::SharedResource;
 
-pub trait Open {}
+pub trait Open: Debug {}
 
 pub struct SMBOpen<T: SharedResource> {
     file_id: u32,

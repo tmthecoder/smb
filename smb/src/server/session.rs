@@ -1,10 +1,11 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 use crate::server::{SMBChannel, SMBOpen, SMBTreeConnect};
 use crate::server::share::SharedResource;
 use crate::util::auth::AuthContext;
 
-pub trait Session {}
+pub trait Session: Debug {}
 
 pub struct SMBSession<T: SharedResource> {
     session_id: u64,
