@@ -4,10 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
-use crate::protocol::header::{
-    Header, LegacySMBCommandCode, LegacySMBFlags, LegacySMBFlags2, SMBCommandCode, SMBExtra,
-    SMBFlags, SMBStatus,
-};
+use crate::protocol::header::{Header, LegacySMBCommandCode, LegacySMBFlags, LegacySMBFlags2, SMBCommandCode, SMBExtra, SMBFlags, SMBSender, SMBStatus};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBToBytes, SMBByteSize)]
 #[smb_byte_tag(value = 0xFE, order = 0)]
@@ -65,25 +62,13 @@ impl Header for SMBSyncHeader {
         self.command
     }
 
-    // fn as_bytes(&self) -> Vec<u8> {
-    //     [
-    //         &[0xFE_u8],
-    //         &b"SMB"[0..],
-    //         &[64, 0],                             // Structure size,
-    //         &[1, 0],                              // Credit
-    //         &u32_to_bytes(self.channel_sequence), // Reserved/Status/TODO
-    //         &u16_to_bytes(self.command as u16),
-    //         &[1, 0], // CreditResponse,
-    //         &u32_to_bytes(self.flags.bits()),
-    //         &[0; 4], // Next Command,
-    //         &u64_to_bytes(self.message_id),
-    //         &[0, 0, 0xFE, 0xFF], // Reserved
-    //         &u32_to_bytes(self.tree_id),
-    //         &u64_to_bytes(self.session_id),
-    //         &self.signature,
-    //     ]
-    //     .concat()
-    // }
+    fn sender(&self) -> SMBSender {
+        if self.flags.contains(SMBFlags::SERVER_TO_REDIR) {
+            SMBSender::Server
+        } else {
+            SMBSender::Client
+        }
+    }
 }
 
 impl Header for LegacySMBHeader {
@@ -93,22 +78,13 @@ impl Header for LegacySMBHeader {
         self.command
     }
 
-    // fn as_bytes(&self) -> Vec<u8> {
-    //     [
-    //         &[0xFF_u8],
-    //         &b"SMB"[0..],
-    //         &[self.command as u8],
-    //         &*self.status.as_bytes(),
-    //         &[self.flags.bits()],
-    //         &u16_to_bytes(self.flags2.bits()),
-    //         &*self.extra.as_bytes(),
-    //         &u16_to_bytes(self.tid),
-    //         &u16_to_bytes(self.pid),
-    //         &u16_to_bytes(self.uid),
-    //         &u16_to_bytes(self.mid),
-    //     ]
-    //     .concat()
-    // }
+    fn sender(&self) -> SMBSender {
+        if self.flags.contains(LegacySMBFlags::SERVER_TO_REDIR) {
+            SMBSender::Server
+        } else {
+            SMBSender::Client
+        }
+    }
 }
 
 impl SMBSyncHeader {
@@ -127,7 +103,7 @@ impl SMBSyncHeader {
             flags,
             next_command,
             message_id,
-            reserved: PhantomData::default(),
+            reserved: PhantomData,
             tree_id,
             session_id,
             signature,
@@ -142,7 +118,7 @@ impl SMBSyncHeader {
                 channel_sequence: 0,
                 next_command: 0,
                 message_id: legacy_header.mid as u64,
-                reserved: PhantomData::default(),
+                reserved: PhantomData,
                 tree_id: legacy_header.tid as u32,
                 session_id: legacy_header.uid as u64,
                 signature: [0; 16],
@@ -158,7 +134,7 @@ impl SMBSyncHeader {
             channel_sequence,
             next_command: 0,
             message_id: self.message_id,
-            reserved: PhantomData::default(),
+            reserved: PhantomData,
             tree_id: self.tree_id,
             session_id,
             signature: [0; 16],

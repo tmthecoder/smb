@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use smb_core::{SMBByteSize, SMBEnumFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
-use smb_derive::{SMBEnumFromBytes, SMBToBytes};
+use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBToBytes};
 
 use crate::protocol::body::Body;
 use crate::protocol::body::logoff::{SMBLogoffRequest, SMBLogoffResponse};
@@ -20,61 +20,47 @@ use crate::protocol::header::LegacySMBHeader;
 use crate::protocol::header::SMBCommandCode;
 use crate::protocol::header::SMBSyncHeader;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBToBytes)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBToBytes, SMBByteSize)]
 pub enum SMBBody {
     #[smb_discriminator(value = 0x0)]
     #[smb_direct(start(fixed = 0))]
     NegotiateRequest(SMBNegotiateRequest),
-    #[smb_discriminator(value = 0x994)]
+    #[smb_discriminator(value = 0x0)]
+    #[smb_discriminator(flag = 0b10000)]
     #[smb_direct(start(fixed = 0))]
     NegotiateResponse(SMBNegotiateResponse),
     #[smb_discriminator(value = 0x1)]
     #[smb_direct(start(fixed = 0))]
     SessionSetupRequest(SMBSessionSetupRequest),
-    #[smb_discriminator(value = 0x995)]
+    #[smb_discriminator(value = 0x1)]
+    #[smb_discriminator(flag = 0b10000)]
     #[smb_direct(start(fixed = 0))]
     SessionSetupResponse(SMBSessionSetupResponse),
     #[smb_discriminator(value = 0x3)]
     #[smb_direct(start(fixed = 0))]
     TreeConnectRequest(SMBTreeConnectRequest),
-    #[smb_discriminator(value = 0x996)]
+    #[smb_discriminator(value = 0x3)]
+    #[smb_discriminator(flag = 0b10000)]
     #[smb_direct(start(fixed = 0))]
     TreeConnectResponse(SMBTreeConnectResponse),
     #[smb_discriminator(value = 0x2)]
     #[smb_direct(start(fixed = 0))]
     LogoffRequest(SMBLogoffRequest),
-    #[smb_discriminator(value = 0x997)]
+    #[smb_discriminator(value = 0x2)]
+    #[smb_discriminator(flag = 0b10000)]
     #[smb_direct(start(fixed = 0))]
     LogoffResponse(SMBLogoffResponse),
     #[smb_discriminator(value = 0x4)]
     #[smb_direct(start(fixed = 0))]
     TreeDisconnectRequest(SMBTreeDisconnectRequest),
-    #[smb_discriminator(value = 0x998)]
+    #[smb_discriminator(value = 0x4)]
+    #[smb_discriminator(flag = 0b10000)]
     #[smb_direct(start(fixed = 0))]
     TreeDisconnectResponse(SMBTreeDisconnectResponse),
     #[smb_discriminator(value = 0x999)]
     #[smb_enum(start(fixed = 0), discriminator(inner(start = 0, num_type = "u8")))]
     LegacyCommand(LegacySMBBody),
 }
-
-impl SMBByteSize for SMBBody {
-    fn smb_byte_size(&self) -> usize {
-        match self {
-            SMBBody::NegotiateRequest(x) => x.smb_byte_size(),
-            SMBBody::NegotiateResponse(x) => x.smb_byte_size(),
-            SMBBody::SessionSetupRequest(x) => x.smb_byte_size(),
-            SMBBody::SessionSetupResponse(x) => x.smb_byte_size(),
-            SMBBody::TreeConnectRequest(x) => x.smb_byte_size(),
-            SMBBody::TreeConnectResponse(x) => x.smb_byte_size(),
-            SMBBody::LogoffRequest(x) => x.smb_byte_size(),
-            SMBBody::LogoffResponse(x) => x.smb_byte_size(),
-            SMBBody::TreeDisconnectRequest(x) => x.smb_byte_size(),
-            SMBBody::TreeDisconnectResponse(x) => x.smb_byte_size(),
-            SMBBody::LegacyCommand(x) => x.smb_byte_size(),
-        }
-    }
-}
-
 impl Body<SMBSyncHeader> for SMBBody {
     fn parse_with_cc(bytes: &[u8], command_code: SMBCommandCode) -> SMBParseResult<&[u8], Self> {
         Self::smb_enum_from_bytes(bytes, command_code as u64)
@@ -93,7 +79,6 @@ pub enum LegacySMBBody {
 
 impl smb_core::SMBEnumFromBytes for LegacySMBBody {
     fn smb_enum_from_bytes(input: &[u8], discriminator: u64) -> SMBParseResult<&[u8], Self> where Self: Sized {
-        while let some_num = <SMBNegotiateRequest as smb_core::SMBFromBytes>::smb_from_bytes(input) {}
         match LegacySMBCommandCode::try_from(discriminator as u8).map(|x| x == LegacySMBCommandCode::Negotiate) {
             Ok(true) => {
                 let (remaining, cnt) = le_u8(input)

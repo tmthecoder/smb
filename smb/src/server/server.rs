@@ -230,7 +230,7 @@ pub struct ServerDiagnostics {
     bytes_received: u64,
     average_response: u32,
     request_buffer_need: u32,
-    big_bugger_need: u32,
+    big_buffer_need: u32,
 }
 
 impl ServerDiagnostics {

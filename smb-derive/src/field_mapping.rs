@@ -117,7 +117,7 @@ pub(crate) fn get_num_enum_mapping(input: &DeriveInput, parent_attrs: Vec<SMBFie
 pub(crate) fn get_desc_enum_mapping(info: &DataEnum) -> Result<Vec<SMBFieldMapping<Fields, Field>>, SMBDeriveError<Field>> {
     info.variants.iter().map(|variant| {
         println!("attrs: {:?}", variant.attrs);
-        let discriminators = Discriminator::from_attributes(&variant.attrs).map(|d| d.values)
+        let discriminators = Discriminator::from_attributes(&variant.attrs).map(|d| d.values.iter().map(|val| val | d.flag).collect())
             .map_err(|_e| SMBDeriveError::MissingField)?;
 
         println!("Discs: {:?}", discriminators);

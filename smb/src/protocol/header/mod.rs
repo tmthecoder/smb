@@ -21,8 +21,13 @@ pub type LegacySMBHeader = header::LegacySMBHeader;
 pub type LegacySMBFlags = flags::LegacySMBFlags;
 pub type LegacySMBFlags2 = flags2::LegacySMBFlags2;
 
+pub enum SMBSender {
+    Client,
+    Server,
+}
+
 pub trait Header: SMBFromBytes + SMBToBytes {
-    type CommandCode;
+    type CommandCode: Into<u64>;
 
     fn command_code(&self) -> Self::CommandCode;
 
@@ -33,4 +38,6 @@ pub trait Header: SMBFromBytes + SMBToBytes {
         // .map_err(|_e| );
         Ok((remaining, (message, command)))
     }
+
+    fn sender(&self) -> SMBSender;
 }

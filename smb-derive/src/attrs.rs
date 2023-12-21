@@ -427,6 +427,8 @@ impl SMBString {
 pub struct Discriminator {
     #[darling(multiple, rename = "value")]
     pub values: Vec<u64>,
+    #[darling(default)]
+    pub flag: u64,
 }
 
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, Eq, PartialEq)]
