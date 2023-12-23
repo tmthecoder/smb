@@ -30,7 +30,7 @@ impl SMBFromBytes for SMBTreeConnectContext {
                 let (remaining, identity) = RemotedIdentity::smb_from_bytes(input)?;
                 Ok((remaining, Self::RemotedIdentity(identity)))
             },
-            _ => Err(SMBError::ParseError("Invalid context type for tree connect context"))
+            _ => Err(SMBError::parse_error("Invalid context type for tree connect context"))
         }
     }
 }

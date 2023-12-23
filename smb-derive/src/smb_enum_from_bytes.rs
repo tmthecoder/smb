@@ -25,7 +25,7 @@ fn enum_from_bytes_parser_impl<T: Spanned + PartialEq + Eq, U: Spanned + Partial
                 println!("disc: {:?}, input: {:02x?}", discriminator, input);
                 match discriminator {
                     #(#parser)*
-                    _ => Err(::smb_core::error::SMBError::ParseError("Invalid discriminator"))
+                    _ => Err(::smb_core::error::SMBError::parse_error("Invalid discriminator"))
                 }
             }
         }

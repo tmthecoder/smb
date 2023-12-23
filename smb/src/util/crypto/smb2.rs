@@ -19,7 +19,7 @@ pub fn calculate_signature(signing_key: &[u8], dialect: SMBDialect, buffer: &[u8
             .to_vec()
     } else {
         <Cmac<Aes128>>::new_from_slice(signing_key)
-            .map_err(|_| SMBError::CryptoError("Invalid Key Length"))?
+            .map_err(|_| SMBError::crypto_error("Invalid Key Length"))?
             .chain_update(buffer)
             .finalize()
             .into_bytes()
@@ -54,5 +54,5 @@ pub fn generate_signing_key(session_key: &[u8], dialect: SMBDialect, preauth_int
 
 fn new_sha256_from_slice(slice: &[u8]) -> SMBResult<Hmac<Sha256>> {
     <Hmac<Sha256>>::new_from_slice(slice)
-        .map_err(|_| SMBError::CryptoError("Invalid Key Length"))
+        .map_err(|_| SMBError::crypto_error("Invalid Key Length"))
 }

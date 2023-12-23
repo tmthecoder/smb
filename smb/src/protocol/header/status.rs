@@ -68,7 +68,7 @@ impl SMBByteSize for SMBStatus {
 
 impl SMBFromBytes for SMBStatus {
     fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
-        Self::parse(input).map_err(|_e| SMBError::ParseError("Invalid format"))
+        Self::parse(input).map_err(|_e| SMBError::parse_error("Invalid format"))
     }
 }
 

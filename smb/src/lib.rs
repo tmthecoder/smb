@@ -7,6 +7,7 @@ use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use crate::protocol::body::{LegacySMBBody, SMBBody};
 use crate::protocol::header::{LegacySMBHeader, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
+use crate::server::SMBServerDiagnostics;
 
 pub mod protocol;
 pub mod util;
@@ -69,8 +70,13 @@ impl SMBMessageStream {
         })
     }
 
-    pub fn send_message<T: Message>(&mut self, message: T) -> std::io::Result<()> {
-        self.stream.write_all(&message.as_bytes())
+    pub fn send_message<T: Message>(&mut self, message: T, diagnostics: Option<&mut SMBServerDiagnostics>) -> std::io::Result<()> {
+        let bytes = message.as_bytes();
+        self.stream.write_all(&bytes)?;
+        if let Some(diagnostics) = diagnostics {
+            diagnostics.on_received(bytes.len() as u64);
+        }
+        Ok(())
     }
 }
 

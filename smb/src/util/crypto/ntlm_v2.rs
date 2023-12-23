@@ -70,5 +70,5 @@ fn ntowf_v2(password: &str, user: &str, domain: &str) -> SMBResult<Vec<u8>> {
 }
 
 fn new_hmac_from_slice(slice: &[u8]) -> SMBResult<Hmac<Md5>> {
-    <Hmac<Md5>>::new_from_slice(slice).map_err(|_| SMBError::CryptoError("Invalid length for key"))
+    <Hmac<Md5>>::new_from_slice(slice).map_err(|_| SMBError::crypto_error("Invalid length for key"))
 }

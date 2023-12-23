@@ -257,7 +257,7 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq
         SMBFieldMappingType::NumEnum => {
             quote! {
                 #(#recurse)*
-                let value = Self::try_from(#(#names)*).map_err(|_e| ::smb_core::error::SMBError::ParseError("Invalid primitive value"))?;
+                let value = Self::try_from(#(#names)*).map_err(|_e| ::smb_core::error::SMBError::parse_error("Invalid primitive value"))?;
                 Ok((remaining, value))
             }
         },

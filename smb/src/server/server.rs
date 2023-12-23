@@ -12,9 +12,8 @@ use crate::protocol::body::negotiate::{NegotiateSecurityMode, SMBNegotiateRespon
 use crate::protocol::body::session_setup::SMBSessionSetupResponse;
 use crate::protocol::body::tree_connect::SMBTreeConnectResponse;
 use crate::protocol::header::{Header, SMBCommandCode, SMBFlags, SMBSyncHeader};
-use crate::protocol::message::SMBMessage;
-use crate::server::{SMBClient, SMBLeaseTable};
-use crate::server::connection::Connection;
+use crate::protocol::message::{Message, SMBMessage};
+use crate::server::{SMBClient, SMBConnection, SMBLeaseTable};
 use crate::server::open::Open;
 use crate::server::session::Session;
 use crate::server::share::SharedResource;
@@ -27,18 +26,18 @@ use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenInitBody, SPNEGOTokenRes
 #[derive(Debug, Builder)]
 #[builder(pattern = "owned")]
 pub struct SMBServer {
-    #[builder(default = "ServerDiagnostics::new()")]
-    statistics: ServerDiagnostics,
+    #[builder(default = "SMBServerDiagnostics::new()")]
+    statistics: SMBServerDiagnostics,
     #[builder(default = "false")]
     enabled: bool,
-    #[builder(default = "HashMap::new()")]
+    #[builder(field(type = "HashMap<String, Box<dyn SharedResource>>"))]
     share_list: HashMap<String, Box<dyn SharedResource>>,
-    #[builder(default = "HashMap::new()")]
+    #[builder(field(type = "HashMap<u64, Box<dyn Open>>"))]
     open_table: HashMap<u64, Box<dyn Open>>,
-    #[builder(default = "HashMap::new()")]
+    #[builder(field(type = "HashMap<u64, Box<dyn Session>>"))]
     session_table: HashMap<u64, Box<dyn Session>>,
-    #[builder(default = "HashMap::new()")]
-    connection_list: HashMap<u64, Box<dyn Connection>>,
+    #[builder(field(type = "HashMap<String, SMBConnection>"))]
+    connection_list: HashMap<String, SMBConnection>,
     #[builder(default = "Uuid::new_v4()")]
     guid: Uuid,
     #[builder(default = "FileTime::default()")]
@@ -53,13 +52,13 @@ pub struct SMBServer {
     copy_max_data_size: u64,
     #[builder(default = "HashLevel::EnableAll")]
     hash_level: HashLevel,
-    #[builder(default = "HashMap::new()")]
+    #[builder(field(type = "HashMap<Uuid, SMBLeaseTable>"))]
     lease_table_list: HashMap<Uuid, SMBLeaseTable>,
     #[builder(default = "5000")]
     max_resiliency_timeout: u64,
     #[builder(default = "5000")]
     resilient_open_scavenger_expiry_time: u64,
-    #[builder(default = "HashMap::new()")]
+    #[builder(field(type = "HashMap<Uuid, SMBClient>"))]
     client_table: HashMap<Uuid, SMBClient>,
     #[builder(default = "true")]
     encrypt_data: bool,
@@ -84,6 +83,11 @@ impl SMBServerBuilder {
     pub fn listener_address<S: ToSocketAddrs>(self, addr: S) -> std::io::Result<Self> {
         Ok(self.local_listener(SMBListener::new(addr)?))
     }
+
+    pub fn add_share<Key: Into<String>, S: SharedResource + 'static>(mut self, key: Key, share: S) -> Self {
+        self.share_list.insert(key.into(), Box::new(share));
+        self
+    }
 }
 
 #[derive(Debug, Default)]
@@ -96,7 +100,7 @@ pub enum HashLevel {
 
 impl SMBServer {
     pub fn initialize(&mut self) {
-        self.statistics = ServerDiagnostics::new();
+        self.statistics = SMBServerDiagnostics::new();
         self.guid = Uuid::new_v4();
         // *self = Self::new()
     }
@@ -107,6 +111,10 @@ impl SMBServer {
 
     pub fn remove_share(&mut self, name: &str) {
         self.share_list.remove(name);
+    }
+
+    pub fn add_connection<Key: Into<String>, Value: Into<SMBConnection>>(&mut self, name: Key, connection: Value) {
+        self.connection_list.insert(name.into(), connection.into());
     }
 
     pub fn start(&mut self) -> anyhow::Result<()> {
@@ -136,7 +144,7 @@ impl SMBServer {
                             [0; 16],
                         );
                         let resp_msg = SMBMessage::new(resp_header, resp_body);
-                        cloned_connection.send_message(resp_msg)?;
+                        cloned_connection.send_message(resp_msg, Some(&mut self.statistics))?;
                     }
                     SMBCommandCode::Negotiate => {
                         if let SMBBody::NegotiateRequest(request) = message.body {
@@ -146,7 +154,7 @@ impl SMBServer {
                             let resp_body = SMBBody::NegotiateResponse(neg_resp);
                             let resp_header = message.header.create_response_header(0x0, 0);
                             let resp_msg = SMBMessage::new(resp_header, resp_body);
-                            cloned_connection.send_message(resp_msg)?;
+                            cloned_connection.send_message(resp_msg, Some(&mut self.statistics))?;
                         }
                     }
                     SMBCommandCode::SessionSetup => {
@@ -160,15 +168,15 @@ impl SMBServer {
                             );
                             let (status, output) = match spnego_init_buffer {
                                 SPNEGOToken::Init(init_msg) => {
-                                    let mech_token = init_msg.mech_token.ok_or(SMBError::ParseError("Parse failure"))?;
+                                    let mech_token = init_msg.mech_token.ok_or(SMBError::parse_error("Parse failure"))?;
                                     let ntlm_msg =
-                                        NTLMMessage::parse(&mech_token).map_err(|_e| SMBError::ParseError("Parse failure"))?.1;
+                                        NTLMMessage::parse(&mech_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
                                     helper.accept_security_context(&ntlm_msg, &mut ctx)
                                 }
                                 SPNEGOToken::Response(resp_msg) => {
-                                    let response_token = resp_msg.response_token.ok_or(SMBError::ParseError("Parse failure"))?;
+                                    let response_token = resp_msg.response_token.ok_or(SMBError::parse_error("Parse failure"))?;
                                     let ntlm_msg =
-                                        NTLMMessage::parse(&response_token).map_err(|_e| SMBError::ParseError("Parse failure"))?.1;
+                                        NTLMMessage::parse(&response_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
                                     println!("NTLM: {:?}", ntlm_msg);
                                     helper.accept_security_context(&ntlm_msg, &mut ctx)
                                 }
@@ -186,7 +194,7 @@ impl SMBServer {
                             let resp_header = message.header.create_response_header(0, 1010);
                             let resp_msg = SMBMessage::new(resp_header, resp_body);
 
-                            cloned_connection.send_message(resp_msg)?;
+                            cloned_connection.send_message(resp_msg, Some(&mut self.statistics))?;
                         }
                     },
                     SMBCommandCode::TreeConnect => {
@@ -200,7 +208,7 @@ impl SMBServer {
                             let resp_header = message.header.create_response_header(0, 1010);
                             let resp_msg = SMBMessage::new(resp_header, resp_body);
 
-                            cloned_connection.send_message(resp_msg)?;
+                            cloned_connection.send_message(resp_msg, Some(&mut self.statistics))?;
                         }
                     }
                     SMBCommandCode::LogOff => {
@@ -215,7 +223,7 @@ impl SMBServer {
 }
 
 #[derive(Debug, Default)]
-pub struct ServerDiagnostics {
+pub struct SMBServerDiagnostics {
     start: u32,
     file_opens: u32,
     device_opens: u32,
@@ -233,8 +241,16 @@ pub struct ServerDiagnostics {
     big_buffer_need: u32,
 }
 
-impl ServerDiagnostics {
+impl SMBServerDiagnostics {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    pub fn on_received(&mut self, size: u64) {
+        self.bytes_received += size;
+    }
+
+    pub fn on_sent(&mut self, size: u64) {
+        self.bytes_sent += size;
     }
 }

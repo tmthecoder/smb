@@ -1,5 +1,4 @@
-use std::fmt::Debug;
-use std::marker::{PhantomData, Tuple};
+use std::fmt::{Debug, Formatter};
 
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
@@ -7,11 +6,16 @@ use serde::{Deserialize, Serialize};
 use crate::protocol::body::tree_connect::{SMBAccessMask, SMBShareFlags, SMBShareType};
 
 pub trait SharedResource: Debug {
-    fn name(&self) -> &String;
+    fn name(&self) -> &str;
 }
 
-#[derive(Debug)]
-pub struct SMBShare<ConnectArgs: Tuple, FileSecArgs: Tuple, ConnectAllowed: Fn(ConnectArgs) -> bool, FilePerms: Fn(FileSecArgs) -> SMBAccessMask> {
+impl<ConnectAllowed: Fn(u64) -> bool, FilePerms: Fn(u64) -> SMBAccessMask> SharedResource for SMBShare<ConnectAllowed, FilePerms> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+pub struct SMBShare<ConnectAllowed: Fn(u64) -> bool, FilePerms: Fn(u64) -> SMBAccessMask> {
     name: String,
     server_name: String,
     local_path: String,
@@ -35,8 +39,64 @@ pub struct SMBShare<ConnectArgs: Tuple, FileSecArgs: Tuple, ConnectAllowed: Fn(C
     encrypt_data: bool,
     supports_identity_remoting: bool,
     compress_data: bool,
-    connect_phantom: PhantomData<ConnectArgs>,
-    file_phantom: PhantomData<FileSecArgs>,
+}
+
+impl<ConnectAllowed: Fn(u64) -> bool, FilePerms: Fn(u64) -> SMBAccessMask> Debug for SMBShare<ConnectAllowed, FilePerms> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SMBServer")
+            .field("name", &self.name)
+            .field("server_name", &self.server_name)
+            .field("local_path", &self.local_path)
+            .field("csc_flags", &self.csc_flags)
+            .field("dfs_enabled", &self.dfs_enabled)
+            .field("do_access_based_directory_enumeration", &self.do_access_based_directory_enumeration)
+            .field("allow_namespace_caching", &self.allow_namespace_caching)
+            .field("force_shared_delete", &self.force_shared_delete)
+            .field("restrict_exclusive_options", &self.restrict_exclusive_options)
+            .field("share_type", &self.share_type)
+            .field("remark", &self.remark)
+            .field("max_uses", &self.max_uses)
+            .field("current_uses", &self.current_uses)
+            .field("force_level_2_oplock", &self.force_level_2_oplock)
+            .field("hash_enabled", &self.hash_enabled)
+            .field("snapshot_list", &self.snapshot_list)
+            .field("ca_timeout", &self.ca_timeout)
+            .field("continuously_available", &self.continuously_available)
+            .field("encrypt_data", &self.encrypt_data)
+            .field("supports_identity_remoting", &self.supports_identity_remoting)
+            .field("compress_data", &self.compress_data)
+            .finish()
+    }
+}
+
+impl<ConnectAllowed: Fn(u64) -> bool, FilePerms: Fn(u64) -> SMBAccessMask> SMBShare<ConnectAllowed, FilePerms> {
+    pub fn disk(name: String, connect_security: ConnectAllowed, file_security: FilePerms) -> Self {
+        Self {
+            name,
+            server_name: "localhost".into(),
+            local_path: "/".into(),
+            connect_security,
+            file_security,
+            csc_flags: SMBShareFlags::default(),
+            dfs_enabled: false,
+            do_access_based_directory_enumeration: false,
+            allow_namespace_caching: false,
+            force_shared_delete: false,
+            restrict_exclusive_options: false,
+            share_type: ResourceType::DISK,
+            remark: "some share comment".into(),
+            max_uses: 10,
+            current_uses: 0,
+            force_level_2_oplock: false,
+            hash_enabled: true,
+            snapshot_list: vec![],
+            ca_timeout: 1000,
+            continuously_available: true,
+            encrypt_data: true,
+            supports_identity_remoting: true,
+            compress_data: false,
+        }
+    }
 }
 
 bitflags! {

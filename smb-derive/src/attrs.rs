@@ -364,10 +364,10 @@ impl SMBString {
         let vec_name = format_ident!("{}_vec", name);
         let string_parser = match self.underlying.as_str() {
             "u8" => quote! {
-                let #name = String::from_utf8(#vec_name).map_err(|e| ::smb_core::error::SMBError::ParseError("some_err"))?;
+                let #name = String::from_utf8(#vec_name).map_err(|e| ::smb_core::error::SMBError::parse_error("Invalid UTF-8 string"))?;
             },
             "u16" => quote! {
-                let #name = String::from_utf16(&#vec_name).map_err(|e| ::smb_core::error::SMBError::ParseError("some_err"))?;
+                let #name = String::from_utf16(&#vec_name).map_err(|e| ::smb_core::error::SMBError::parse_error("Invalid UTF-16 string"))?;
             },
             _ => quote! {}
         };
@@ -520,7 +520,7 @@ impl StringTag {
                 current_pos += 1;
             }
             if (!tagged) {
-                return Err(::smb_core::error::SMBError::ParseError("struct did not have the valid starting tag"));
+                return Err(::smb_core::error::SMBError::parse_error("struct did not have the valid starting tag"));
             }
             let remaining = &input[next_pos..];
         }

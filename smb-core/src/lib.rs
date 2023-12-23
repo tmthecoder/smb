@@ -6,8 +6,8 @@ use error::SMBError;
 
 pub mod error;
 
-pub type SMBParseResult<'a, I, O, E = SMBError<'a>> = Result<(I, O), E>;
-pub type SMBResult<O, E = SMBError<'static>> = Result<O, E>;
+pub type SMBParseResult<'a, I, O, E = SMBError> = Result<(I, O), E>;
+pub type SMBResult<O, E = SMBError> = Result<O, E>;
 
 pub trait SMBByteSize {
     fn smb_byte_size(&self) -> usize;
@@ -69,7 +69,7 @@ impl SMBVecFromBytes for String {
     fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized {
         let (remaining, vec) = <Vec<u8>>::smb_from_bytes_vec(input, count)?;
         let str = String::from_utf8(vec)
-            .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
+            .map_err(|_e| SMBError::parse_error("Invalid byte slice"))?;
         Ok((remaining, str))
     }
 }
@@ -106,7 +106,7 @@ impl<T: SMBFromBytes> SMBVecFromBytes for Vec<T> {
 impl SMBFromBytes for Uuid {
     fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
         let uuid = Uuid::from_slice(&input[0..16])
-            .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
+            .map_err(|_e| SMBError::parse_error("Invalid byte slice"))?;
         let remaining = &input[uuid.smb_byte_size()..];
         Ok((remaining, uuid))
     }
@@ -127,7 +127,7 @@ impl SMBByteSize for Uuid {
 macro_rules! impl_parse_fixed_slice {
     ($size: expr, $input: expr) => {{
         let res = <[u8; $size]>::try_from(&$input[0..$size])
-            .map_err(|_e| SMBError::ParseError("Invalid byte slice"))?;
+            .map_err(|_e| SMBError::parse_error("Invalid byte slice"))?;
         Ok((&$input[$size..], res))
     }}
 }

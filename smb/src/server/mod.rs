@@ -12,9 +12,9 @@ mod session;
 mod share;
 mod tree_connect;
 
-pub type SMBChannel<T> = channel::SMBChannel<T>;
+pub type SMBChannel = channel::SMBChannel;
 pub type SMBClient = client::SMBClient;
-pub type SMBConnection<T> = connection::SMBConnection<T>;
+pub type SMBConnection = connection::SMBConnection;
 pub type SMBLease = lease::SMBLease;
 pub type SMBLeaseTable = lease::SMBLeaseTable;
 pub type SMBOpen<T> = open::SMBOpen<T>;
@@ -24,5 +24,6 @@ pub type SMBSession<T> = session::SMBSession<T>;
 pub type SMBServer = server::SMBServer;
 
 pub type SMBServerBuilder = server::SMBServerBuilder;
-pub type SMBShare<ConnectArgs, FileSecArgs, ConnectAllowed, FilePerms> = share::SMBShare<ConnectArgs, FileSecArgs, ConnectAllowed, FilePerms>;
+pub type SMBShare<ConnectAllowed, FilePerms> = share::SMBShare<ConnectAllowed, FilePerms>;
+pub type SMBServerDiagnostics = server::SMBServerDiagnostics;
 pub type SMBTreeConnect<T> = tree_connect::SMBTreeConnect<T>;

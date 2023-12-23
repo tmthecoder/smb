@@ -82,22 +82,22 @@ impl smb_core::SMBEnumFromBytes for LegacySMBBody {
         match LegacySMBCommandCode::try_from(discriminator as u8).map(|x| x == LegacySMBCommandCode::Negotiate) {
             Ok(true) => {
                 let (remaining, cnt) = le_u8(input)
-                    .map_err(|_: nom::Err<nom::error::Error<&[u8]>>| SMBError::ParseError("Invalid count"))?;
+                    .map_err(|_: nom::Err<nom::error::Error<&[u8]>>| SMBError::parse_error("Invalid count"))?;
                 let (_, protocol_vecs) = many1(take_till(|n: u8| n == 0x02))(remaining)
-                    .map_err(|_: nom::Err<nom::error::Error<&[u8]>>| SMBError::ParseError("No valid payload"))?;
+                    .map_err(|_: nom::Err<nom::error::Error<&[u8]>>| SMBError::parse_error("No valid payload"))?;
                 let mut protocol_strs = Vec::new();
                 for slice in protocol_vecs {
                     let mut vec = slice.to_vec();
                     vec.retain(|x| *x != 0);
                     protocol_strs.push(String::from_utf8(vec).map_err(
-                        |_| SMBError::ParseError("Could not map protocol to string")
-                    )?);
+                        |_| SMBError::parse_error("Could not map protocol to string"))?
+                    );
                 }
                 let (remaining, _) = take(cnt as usize)(input)
-                    .map_err(|_: nom::Err<nom::error::Error<&[u8]>>| SMBError::ParseError("Size too small for parse length"))?;
+                    .map_err(|_: nom::Err<nom::error::Error<&[u8]>>| SMBError::parse_error("Size too small for parse length"))?;
                 Ok((remaining, LegacySMBBody::Negotiate(protocol_strs)))
             },
-            _ => Err(SMBError::ParseError("Unknown parse error for LegacySMBBody")),
+            _ => Err(SMBError::parse_error("Unknown parse error for LegacySMBBody")),
         }
     }
 }

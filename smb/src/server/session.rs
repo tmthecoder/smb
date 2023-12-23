@@ -24,7 +24,7 @@ pub struct SMBSession<T: SharedResource> {
     creation_time: u64,
     idle_time: u64,
     user_name: String,
-    channel_list: HashMap<u64, SMBChannel<T>>,
+    channel_list: HashMap<u64, SMBChannel>,
     encrypt_data: bool,
     encryption_key: Vec<u8>,
     decryption_key: Vec<u8>,

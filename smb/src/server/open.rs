@@ -16,7 +16,7 @@ pub struct SMBOpen<T: SharedResource> {
     durable_file_id: u32,
     session: Option<SMBSession<T>>,
     tree_connect: Option<SMBTreeConnect<T>>,
-    connection: Option<SMBConnection<T>>,
+    connection: Option<SMBConnection>,
     local_open: File,
     // TODO make this an interface for different open types
     granted_access: SMBAccessMask,

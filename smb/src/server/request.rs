@@ -1,6 +1,9 @@
+use std::fmt::Debug;
+
 use crate::server::share::SharedResource;
 use crate::server::SMBOpen;
 
+pub trait Request: Debug {}
 pub struct SMBRequest<T: SharedResource> {
     message_id: u64,
     async_id: u64,
