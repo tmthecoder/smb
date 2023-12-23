@@ -5,17 +5,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::body::tree_connect::{SMBAccessMask, SMBShareFlags, SMBShareType};
 
-pub trait SharedResource: Debug {
+pub trait SharedResource: Debug + Send {
     fn name(&self) -> &str;
 }
 
-impl<ConnectAllowed: Fn(u64) -> bool, FilePerms: Fn(u64) -> SMBAccessMask> SharedResource for SMBShare<ConnectAllowed, FilePerms> {
+impl<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask + Send> SharedResource for SMBShare<ConnectAllowed, FilePerms> {
     fn name(&self) -> &str {
         &self.name
     }
 }
 
-pub struct SMBShare<ConnectAllowed: Fn(u64) -> bool, FilePerms: Fn(u64) -> SMBAccessMask> {
+pub struct SMBShare<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask + Send> {
     name: String,
     server_name: String,
     local_path: String,
@@ -41,7 +41,7 @@ pub struct SMBShare<ConnectAllowed: Fn(u64) -> bool, FilePerms: Fn(u64) -> SMBAc
     compress_data: bool,
 }
 
-impl<ConnectAllowed: Fn(u64) -> bool, FilePerms: Fn(u64) -> SMBAccessMask> Debug for SMBShare<ConnectAllowed, FilePerms> {
+impl<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask + Send> Debug for SMBShare<ConnectAllowed, FilePerms> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SMBServer")
             .field("name", &self.name)
@@ -69,7 +69,7 @@ impl<ConnectAllowed: Fn(u64) -> bool, FilePerms: Fn(u64) -> SMBAccessMask> Debug
     }
 }
 
-impl<ConnectAllowed: Fn(u64) -> bool, FilePerms: Fn(u64) -> SMBAccessMask> SMBShare<ConnectAllowed, FilePerms> {
+impl<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask + Send> SMBShare<ConnectAllowed, FilePerms> {
     pub fn disk(name: String, connect_security: ConnectAllowed, file_security: FilePerms) -> Self {
         Self {
             name,

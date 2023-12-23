@@ -8,7 +8,7 @@ use crate::protocol::body::tree_connect::SMBAccessMask;
 use crate::server::{SMBConnection, SMBLease, SMBSession, SMBTreeConnect};
 use crate::server::share::SharedResource;
 
-pub trait Open: Debug {}
+pub trait Open: Debug + Send {}
 
 pub struct SMBOpen<T: SharedResource> {
     file_id: u32,

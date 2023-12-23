@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use crate::server::share::SharedResource;
 use crate::server::SMBOpen;
 
-pub trait Request: Debug {}
+pub trait Request: Debug + Send + Sync {}
 pub struct SMBRequest<T: SharedResource> {
     message_id: u64,
     async_id: u64,

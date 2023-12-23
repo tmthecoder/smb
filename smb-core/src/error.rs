@@ -1,10 +1,13 @@
 use std::fmt::{Display, Formatter};
+use std::io;
 
 #[derive(Debug)]
 pub enum SMBError {
     ParseError(SMBParseError),
     CryptoError(SMBCryptoError),
     PreconditionFailed(SMBPreconditionFailedError),
+    IOError(SMBIOError),
+    ResponseError(SMBResponseError),
 }
 
 impl SMBError {
@@ -18,6 +21,14 @@ impl SMBError {
 
     pub fn precondition_failed<T: Into<SMBPreconditionFailedError>>(error: T) -> Self {
         Self::PreconditionFailed(error.into())
+    }
+
+    pub fn io_error<T: Into<SMBIOError>>(error: T) -> Self {
+        Self::IOError(error.into())
+    }
+
+    pub fn response_error<T: Into<SMBResponseError>>(error: T) -> Self {
+        Self::ResponseError(error.into())
     }
 }
 
@@ -78,12 +89,52 @@ impl Display for SMBPreconditionFailedError {
     }
 }
 
+#[derive(Debug)]
+pub struct SMBIOError {
+    error: io::Error,
+}
+
+impl<T: Into<io::Error>> From<T> for SMBIOError {
+    fn from(value: T) -> Self {
+        Self {
+            error: value.into()
+        }
+    }
+}
+
+impl Display for SMBIOError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SMB I/O operation failed with error: {}", self.error)
+    }
+}
+
+#[derive(Debug)]
+pub struct SMBResponseError {
+    message: String,
+}
+
+impl<T: Into<String>> From<T> for SMBResponseError {
+    fn from(value: T) -> Self {
+        Self {
+            message: value.into()
+        }
+    }
+}
+
+impl Display for SMBResponseError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SMB response generation failed with: {}", self.message)
+    }
+}
+
 impl Display for SMBError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ParseError(x) => write!(f, "{}", x),
             Self::CryptoError(x) => write!(f, "{}", x),
             Self::PreconditionFailed(x) => write!(f, "{}", x),
+            Self::IOError(x) => write!(f, "{}", x),
+            Self::ResponseError(x) => write!(f, "{}", x)
         }
     }
 }

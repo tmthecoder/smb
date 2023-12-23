@@ -1,33 +1,23 @@
 use std::collections::HashMap;
 use std::net::ToSocketAddrs;
+use std::sync::{Arc, mpsc, RwLock, Weak};
+use std::thread;
 
 use derive_builder::Builder;
 use uuid::Uuid;
 
-use smb_core::error::SMBError;
-use smb_core::SMBToBytes;
-
-use crate::protocol::body::{Capabilities, FileTime, SMBBody, SMBDialect};
-use crate::protocol::body::negotiate::{NegotiateSecurityMode, SMBNegotiateResponse};
-use crate::protocol::body::session_setup::SMBSessionSetupResponse;
-use crate::protocol::body::tree_connect::SMBTreeConnectResponse;
-use crate::protocol::header::{Header, SMBCommandCode, SMBFlags, SMBSyncHeader};
-use crate::protocol::message::{Message, SMBMessage};
+use crate::protocol::body::{FileTime, SMBDialect};
 use crate::server::{SMBClient, SMBConnection, SMBLeaseTable};
 use crate::server::open::Open;
 use crate::server::session::Session;
 use crate::server::share::SharedResource;
 use crate::SMBListener;
-use crate::util::auth::{AuthProvider, User};
-use crate::util::auth::nt_status::NTStatus;
-use crate::util::auth::ntlm::{NTLMAuthContext, NTLMAuthProvider, NTLMMessage};
-use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenInitBody, SPNEGOTokenResponseBody};
 
 #[derive(Debug, Builder)]
 #[builder(pattern = "owned")]
 pub struct SMBServer {
-    #[builder(default = "SMBServerDiagnostics::new()")]
-    statistics: SMBServerDiagnostics,
+    #[builder(default = "Default::default()")]
+    statistics: Arc<RwLock<SMBServerDiagnostics>>,
     #[builder(default = "false")]
     enabled: bool,
     #[builder(field(type = "HashMap<String, Box<dyn SharedResource>>"))]
@@ -36,8 +26,8 @@ pub struct SMBServer {
     open_table: HashMap<u64, Box<dyn Open>>,
     #[builder(field(type = "HashMap<u64, Box<dyn Session>>"))]
     session_table: HashMap<u64, Box<dyn Session>>,
-    #[builder(field(type = "HashMap<String, SMBConnection>"))]
-    connection_list: HashMap<String, SMBConnection>,
+    #[builder(field(type = "HashMap<String, Weak<RwLock<SMBConnection>>>"))]
+    connection_list: HashMap<String, Weak<RwLock<SMBConnection>>>,
     #[builder(default = "Uuid::new_v4()")]
     guid: Uuid,
     #[builder(default = "FileTime::default()")]
@@ -100,7 +90,7 @@ pub enum HashLevel {
 
 impl SMBServer {
     pub fn initialize(&mut self) {
-        self.statistics = SMBServerDiagnostics::new();
+        self.statistics = Default::default();
         self.guid = Uuid::new_v4();
         // *self = Self::new()
     }
@@ -113,116 +103,31 @@ impl SMBServer {
         self.share_list.remove(name);
     }
 
-    pub fn add_connection<Key: Into<String>, Value: Into<SMBConnection>>(&mut self, name: Key, connection: Value) {
-        self.connection_list.insert(name.into(), connection.into());
-    }
-
     pub fn start(&mut self) -> anyhow::Result<()> {
-        let mut ctx = NTLMAuthContext::new();
-        for mut connection in self.local_listener.connections() {
-            let mut cloned_connection = connection.try_clone()?;
-            for message in connection.messages() {
-                match message.header.command_code() {
-                    SMBCommandCode::LegacyNegotiate => {
-                        let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::new(
-                            NegotiateSecurityMode::empty(),
-                            SMBDialect::V2_X_X,
-                            Capabilities::empty(),
-                            100,
-                            100,
-                            100,
-                            FileTime::default(),
-                            Vec::new(),
-                        ));
-                        let resp_header = SMBSyncHeader::new(
-                            SMBCommandCode::Negotiate,
-                            SMBFlags::SERVER_TO_REDIR,
-                            0,
-                            0,
-                            65535,
-                            65535,
-                            [0; 16],
-                        );
-                        let resp_msg = SMBMessage::new(resp_header, resp_body);
-                        cloned_connection.send_message(resp_msg, Some(&mut self.statistics))?;
-                    }
-                    SMBCommandCode::Negotiate => {
-                        if let SMBBody::NegotiateRequest(request) = message.body {
-                            let init_buffer = SPNEGOToken::Init(SPNEGOTokenInitBody::<NTLMAuthProvider>::new());
-                            let neg_resp = SMBNegotiateResponse::from_request(request, init_buffer.as_bytes(true))
-                                .unwrap();
-                            let resp_body = SMBBody::NegotiateResponse(neg_resp);
-                            let resp_header = message.header.create_response_header(0x0, 0);
-                            let resp_msg = SMBMessage::new(resp_header, resp_body);
-                            cloned_connection.send_message(resp_msg, Some(&mut self.statistics))?;
-                        }
-                    }
-                    SMBCommandCode::SessionSetup => {
-                        if let SMBBody::SessionSetupRequest(request) = message.body {
-                            let spnego_init_buffer: SPNEGOToken<NTLMAuthProvider> =
-                                SPNEGOToken::parse(&request.get_buffer_copy()).unwrap().1;
-                            println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
-                            let helper = NTLMAuthProvider::new(
-                                vec![User::new("tejasmehta".into(), "password".into())],
-                                true,
-                            );
-                            let (status, output) = match spnego_init_buffer {
-                                SPNEGOToken::Init(init_msg) => {
-                                    let mech_token = init_msg.mech_token.ok_or(SMBError::parse_error("Parse failure"))?;
-                                    let ntlm_msg =
-                                        NTLMMessage::parse(&mech_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
-                                    helper.accept_security_context(&ntlm_msg, &mut ctx)
-                                }
-                                SPNEGOToken::Response(resp_msg) => {
-                                    let response_token = resp_msg.response_token.ok_or(SMBError::parse_error("Parse failure"))?;
-                                    let ntlm_msg =
-                                        NTLMMessage::parse(&response_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
-                                    println!("NTLM: {:?}", ntlm_msg);
-                                    helper.accept_security_context(&ntlm_msg, &mut ctx)
-                                }
-                                _ => { (NTStatus::StatusSuccess, NTLMMessage::Dummy) }
-                            };
-                            println!("status: {:?}, output: {:?}", status, output);
-                            let spnego_response_body = SPNEGOTokenResponseBody::<NTLMAuthProvider>::new(status.clone(), output);
-                            let resp = SMBSessionSetupResponse::from_request(
-                                request,
-                                spnego_response_body.as_bytes(),
-                            ).unwrap();
-                            println!("Test response: {:?}", resp.smb_to_bytes());
-                            println!("Actu response: {:?}", resp.as_bytes());
-                            let resp_body = SMBBody::SessionSetupResponse(resp);
-                            let resp_header = message.header.create_response_header(0, 1010);
-                            let resp_msg = SMBMessage::new(resp_header, resp_body);
-
-                            cloned_connection.send_message(resp_msg, Some(&mut self.statistics))?;
-                        }
-                    },
-                    SMBCommandCode::TreeConnect => {
-                        println!("Got tree connect");
-                        if let SMBBody::TreeConnectRequest(request) = message.body {
-                            println!("Tree connect request: {:?}", request);
-                            let resp_body = match request.path().contains("IPC$") {
-                                true => SMBBody::TreeConnectResponse(SMBTreeConnectResponse::IPC()),
-                                false => SMBBody::TreeConnectResponse(SMBTreeConnectResponse::default()),
-                            };
-                            let resp_header = message.header.create_response_header(0, 1010);
-                            let resp_msg = SMBMessage::new(resp_header, resp_body);
-
-                            cloned_connection.send_message(resp_msg, Some(&mut self.statistics))?;
-                        }
-                    }
-                    SMBCommandCode::LogOff => {
-                        break;
-                    }
-                    _ => {}
-                }
+        let (rx, tx) = mpsc::channel();
+        let diagnostics = self.statistics.clone();
+        thread::spawn(move || {
+            while let Ok(update) = tx.recv() {
+                diagnostics.write().unwrap().update(update);
             }
+        });
+        for connection in self.local_listener.connections() {
+            let smb_connection = SMBConnection::try_from(connection)?;
+            let name = smb_connection.name().to_string();
+            let wrapped_connection = Arc::new(RwLock::new(smb_connection));
+            self.connection_list.insert(name, Arc::downgrade(&wrapped_connection));
+            let update_channel = rx.clone();
+            thread::spawn(move || {
+                wrapped_connection.write().unwrap().start_message_handler(update_channel).unwrap();
+            });
         }
+
         Ok(())
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Builder)]
+#[builder(name = "SMBServerDiagnosticsUpdate", pattern = "owned", derive(Debug))]
 pub struct SMBServerDiagnostics {
     start: u32,
     file_opens: u32,
@@ -252,5 +157,53 @@ impl SMBServerDiagnostics {
 
     pub fn on_sent(&mut self, size: u64) {
         self.bytes_sent += size;
+    }
+
+    pub fn update(&mut self, update: SMBServerDiagnosticsUpdate) {
+        if let Some(start) = update.start {
+            self.start = start;
+        }
+        if let Some(file_opens) = update.file_opens {
+            self.file_opens += file_opens;
+        }
+        if let Some(device_opens) = update.device_opens {
+            self.device_opens = device_opens;
+        }
+        if let Some(jobs_queued) = update.jobs_queued {
+            self.jobs_queued += jobs_queued;
+        }
+        if let Some(session_opens) = update.session_opens {
+            self.session_opens = session_opens;
+        }
+        if let Some(session_timed_out) = update.session_timed_out {
+            self.session_timed_out += session_timed_out;
+        }
+        if let Some(session_error_out) = update.session_error_out {
+            self.session_error_out += session_error_out;
+        }
+        if let Some(password_errors) = update.password_errors {
+            self.password_errors += password_errors;
+        }
+        if let Some(permission_errors) = update.permission_errors {
+            self.permission_errors += permission_errors;
+        }
+        if let Some(system_errors) = update.system_errors {
+            self.system_errors += system_errors;
+        }
+        if let Some(bytes_sent) = update.bytes_sent {
+            self.bytes_sent += bytes_sent;
+        }
+        if let Some(bytes_received) = update.bytes_received {
+            self.bytes_received += bytes_received;
+        }
+        if let Some(average_response) = update.average_response {
+            self.average_response = average_response;
+        }
+        if let Some(request_buffer_need) = update.request_buffer_need {
+            self.request_buffer_need += request_buffer_need;
+        }
+        if let Some(big_buffer_need) = update.big_buffer_need {
+            self.big_buffer_need += big_buffer_need;
+        }
     }
 }

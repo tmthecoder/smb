@@ -3,11 +3,14 @@ extern crate core;
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use std::ops::{Deref, DerefMut};
+
+use smb_core::error::SMBError;
+use smb_core::SMBResult;
 
 use crate::protocol::body::{LegacySMBBody, SMBBody};
 use crate::protocol::header::{LegacySMBHeader, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
-use crate::server::SMBServerDiagnostics;
 
 pub mod protocol;
 pub mod util;
@@ -48,6 +51,20 @@ impl SMBListener {
     }
 }
 
+impl Deref for SMBListener {
+    type Target = TcpListener;
+
+    fn deref(&self) -> &Self::Target {
+        &self.socket
+    }
+}
+
+impl DerefMut for SMBListener {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.socket
+    }
+}
+
 impl SMBListener {
     pub fn connections(&self) -> SMBMessageStreamIterator {
         SMBMessageStreamIterator { server: self }
@@ -64,19 +81,31 @@ impl SMBMessageStream {
         }
     }
 
-    pub fn try_clone(&self) -> std::io::Result<Self> {
+    pub fn try_clone(&self) -> SMBResult<Self> {
         Ok(SMBMessageStream {
-            stream: self.stream.try_clone()?
+            stream: self.stream.try_clone()
+                .map_err(|e| SMBError::io_error(e))?
         })
     }
 
-    pub fn send_message<T: Message>(&mut self, message: T, diagnostics: Option<&mut SMBServerDiagnostics>) -> std::io::Result<()> {
+    pub fn send_message<T: Message>(&mut self, message: &T) -> SMBResult<usize> {
         let bytes = message.as_bytes();
-        self.stream.write_all(&bytes)?;
-        if let Some(diagnostics) = diagnostics {
-            diagnostics.on_received(bytes.len() as u64);
-        }
-        Ok(())
+        self.stream.write_all(&bytes).map_err(|e| SMBError::io_error(e))?;
+        Ok(bytes.len())
+    }
+}
+
+impl Deref for SMBMessageStream {
+    type Target = TcpStream;
+
+    fn deref(&self) -> &Self::Target {
+        &self.stream
+    }
+}
+
+impl DerefMut for SMBMessageStream {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.stream
     }
 }
 
