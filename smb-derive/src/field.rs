@@ -208,7 +208,7 @@ impl<'a> SMBField<'a, Field> {
 }
 
 impl SMBFieldType {
-    fn smb_from_bytes<T: Spanned>(&self, name: &Ident, field: &T, ty: &Type) -> proc_macro2::TokenStream {
+    fn smb_from_bytes<T: Spanned>(&self, name: &Ident, field: &T, ty: &Type) -> TokenStream {
         match self {
             SMBFieldType::Direct(direct) => direct.smb_from_bytes(field, name, ty),
             SMBFieldType::Buffer(buffer) => buffer.smb_from_bytes(field, name),

@@ -1,21 +1,25 @@
 use std::collections::HashMap;
-use std::net::ToSocketAddrs;
-use std::sync::{Arc, mpsc, RwLock, Weak};
+use std::sync::{Arc, mpsc, RwLock};
 use std::thread;
 
 use derive_builder::Builder;
+// use tokio::net::ToSocketAddrs;
+// use tokio::task;
+// use tokio_stream::StreamExt;
 use uuid::Uuid;
+
+use smb_core::SMBResult;
 
 use crate::protocol::body::{FileTime, SMBDialect};
 use crate::server::{SMBClient, SMBConnection, SMBLeaseTable};
 use crate::server::open::Open;
 use crate::server::session::Session;
 use crate::server::share::SharedResource;
-use crate::SMBListener;
+use crate::socket::listener::{SMBListener, SMBSocket};
 
 #[derive(Debug, Builder)]
 #[builder(pattern = "owned")]
-pub struct SMBServer {
+pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> {
     #[builder(default = "Default::default()")]
     statistics: Arc<RwLock<SMBServerDiagnostics>>,
     #[builder(default = "false")]
@@ -26,8 +30,8 @@ pub struct SMBServer {
     open_table: HashMap<u64, Box<dyn Open>>,
     #[builder(field(type = "HashMap<u64, Box<dyn Session>>"))]
     session_table: HashMap<u64, Box<dyn Session>>,
-    #[builder(field(type = "HashMap<String, Weak<RwLock<SMBConnection>>>"))]
-    connection_list: HashMap<String, Weak<RwLock<SMBConnection>>>,
+    #[builder(field(type = "HashMap<String, SMBConnection<Listener::ReadStream, Listener::WriteStream>>"))]
+    connection_list: HashMap<String, SMBConnection<Listener::ReadStream, Listener::WriteStream>>,
     #[builder(default = "Uuid::new_v4()")]
     guid: Uuid,
     #[builder(default = "FileTime::default()")]
@@ -66,12 +70,18 @@ pub struct SMBServer {
     tree_connect_extension: bool,
     #[builder(default = "true")]
     named_pipe_access_over_quic: bool,
-    local_listener: SMBListener
+    local_listener: SMBListener<Addrs, Listener>
 }
 
-impl SMBServerBuilder {
-    pub fn listener_address<S: ToSocketAddrs>(self, addr: S) -> std::io::Result<Self> {
+impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> SMBServerBuilder<Addrs, Listener> {
+    #[cfg(not(feature = "async"))]
+    pub fn listener_address(self, addr: Addrs) -> SMBResult<Self> {
         Ok(self.local_listener(SMBListener::new(addr)?))
+    }
+
+    #[cfg(feature = "async")]
+    pub async fn listener_address(self, addr: Addrs) -> SMBResult<Self> {
+        Ok(self.local_listener(SMBListener::new(addr).await?))
     }
 
     pub fn add_share<Key: Into<String>, S: SharedResource + 'static>(mut self, key: Key, share: S) -> Self {
@@ -88,7 +98,7 @@ pub enum HashLevel {
     EnableShare
 }
 
-impl SMBServer {
+impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> SMBServer<Addrs, Listener> {
     pub fn initialize(&mut self) {
         self.statistics = Default::default();
         self.guid = Uuid::new_v4();
@@ -111,15 +121,16 @@ impl SMBServer {
                 diagnostics.write().unwrap().update(update);
             }
         });
-        for connection in self.local_listener.connections() {
+        while let Some(connection) = self.local_listener.connections().next() {
+            println!("got connection");
             let smb_connection = SMBConnection::try_from(connection)?;
             let name = smb_connection.name().to_string();
-            let wrapped_connection = Arc::new(RwLock::new(smb_connection));
-            self.connection_list.insert(name, Arc::downgrade(&wrapped_connection));
+            let socket = smb_connection.underlying_socket();
+            // TODO make this non-ARC/RwLock & make the inner listener locked
+            self.connection_list.insert(name, smb_connection);
             let update_channel = rx.clone();
-            thread::spawn(move || {
-                wrapped_connection.write().unwrap().start_message_handler(update_channel).unwrap();
-            });
+            let mut stream = socket.lock().unwrap();
+            let _ = SMBConnection::start_message_handler(&mut stream, update_channel);
         }
 
         Ok(())

@@ -8,6 +8,7 @@ pub enum SMBError {
     PreconditionFailed(SMBPreconditionFailedError),
     IOError(SMBIOError),
     ResponseError(SMBResponseError),
+    PayloadTooSmall(SMBPayloadTooSmallError),
 }
 
 impl SMBError {
@@ -29,6 +30,10 @@ impl SMBError {
 
     pub fn response_error<T: Into<SMBResponseError>>(error: T) -> Self {
         Self::ResponseError(error.into())
+    }
+
+    pub fn payload_too_small<T: Into<usize>, U: Into<usize>>(expected: T, actual: U) -> Self {
+        Self::PayloadTooSmall((expected, actual).into())
     }
 }
 
@@ -127,6 +132,27 @@ impl Display for SMBResponseError {
     }
 }
 
+#[derive(Debug)]
+pub struct SMBPayloadTooSmallError {
+    expected: usize,
+    actual: usize,
+}
+
+impl<T: Into<usize>, U: Into<usize>> From<(T, U)> for SMBPayloadTooSmallError {
+    fn from(value: (T, U)) -> Self {
+        Self {
+            expected: value.0.into(),
+            actual: value.1.into(),
+        }
+    }
+}
+
+impl Display for SMBPayloadTooSmallError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Expected {} bytes, was actually {} bytes", self.expected, self.actual)
+    }
+}
+
 impl Display for SMBError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -134,7 +160,8 @@ impl Display for SMBError {
             Self::CryptoError(x) => write!(f, "{}", x),
             Self::PreconditionFailed(x) => write!(f, "{}", x),
             Self::IOError(x) => write!(f, "{}", x),
-            Self::ResponseError(x) => write!(f, "{}", x)
+            Self::ResponseError(x) => write!(f, "{}", x),
+            Self::PayloadTooSmall(x) => write!(f, "{}", x)
         }
     }
 }

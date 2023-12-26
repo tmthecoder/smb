@@ -7,16 +7,17 @@ use crate::protocol::body::create::SMBCreateOptions;
 use crate::protocol::body::tree_connect::SMBAccessMask;
 use crate::server::{SMBConnection, SMBLease, SMBSession, SMBTreeConnect};
 use crate::server::share::SharedResource;
+use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
 
 pub trait Open: Debug + Send {}
 
-pub struct SMBOpen<T: SharedResource> {
+pub struct SMBOpen<T: SharedResource, R: SMBReadStream, W: SMBWriteStream> {
     file_id: u32,
     file_global_id: u32,
     durable_file_id: u32,
-    session: Option<SMBSession<T>>,
-    tree_connect: Option<SMBTreeConnect<T>>,
-    connection: Option<SMBConnection>,
+    session: Option<SMBSession<T, R, W>>,
+    tree_connect: Option<SMBTreeConnect<T, R, W>>,
+    connection: Option<SMBConnection<R, W>>,
     local_open: File,
     // TODO make this an interface for different open types
     granted_access: SMBAccessMask,

@@ -1,32 +1,36 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 
 use uuid::Uuid;
 
-use smb_core::SMBResult;
 use smb_core::error::SMBError;
+use smb_core::SMBResult;
 
-use crate::{SMBMessageIterator, SMBMessageStream};
 use crate::protocol::body::{Capabilities, FileTime, SMBBody, SMBDialect};
 use crate::protocol::body::negotiate::{CompressionAlgorithm, NegotiateSecurityMode, RDMATransformID, SMBNegotiateResponse};
 use crate::protocol::body::session_setup::SMBSessionSetupResponse;
 use crate::protocol::body::tree_connect::SMBTreeConnectResponse;
 use crate::protocol::header::{Header, SMBCommandCode, SMBFlags, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
-use crate::server::SMBPreauthSession;
 use crate::server::request::Request;
 use crate::server::server::SMBServerDiagnosticsUpdate;
 use crate::server::session::Session;
+use crate::server::SMBPreauthSession;
+use crate::socket::message_stream::{SMBReadStream, SMBSocketConnection, SMBWriteStream};
 use crate::util::auth::{AuthProvider, User};
 use crate::util::auth::nt_status::NTStatus;
 use crate::util::auth::ntlm::{NTLMAuthContext, NTLMAuthProvider, NTLMMessage};
 use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenInitBody, SPNEGOTokenResponseBody};
 
+// use tokio::sync::Mutex;
+// use tokio_stream::StreamExt;
+
 pub trait Connection: Debug {}
 
 #[derive(Debug)]
-pub struct SMBConnection {
+pub struct SMBConnection<R: SMBReadStream, W: SMBWriteStream> {
     command_sequence_window: Vec<u32>,
     request_list: HashMap<u64, Box<dyn Request>>,
     client_capabilities: Capabilities,
@@ -57,26 +61,23 @@ pub struct SMBConnection {
     rdma_transform_ids: Vec<RDMATransformID>, // TODO ??
     signing_algorithm_id: u64,
     accept_transport_security: bool,
-    underlying_stream: SMBMessageStream,
+    underlying_stream: Arc<Mutex<SMBSocketConnection<R, W>>>,
 }
 
-impl SMBConnection {
+impl<R: SMBReadStream, W: SMBWriteStream> SMBConnection<R, W> {
     pub fn name(&self) -> &str {
         &self.client_name
     }
 
-    pub fn messages(&mut self) -> SMBMessageIterator {
-        self.underlying_stream.messages()
+    pub fn underlying_socket(&self) -> Arc<Mutex<SMBSocketConnection<R, W>>> {
+        self.underlying_stream.clone()
     }
 
-    pub fn send_message<T: Message>(&mut self, message: &T) -> SMBResult<usize> {
-        self.underlying_stream.send_message(message)
-    }
-
-    pub fn start_message_handler(&mut self, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
+    pub fn start_message_handler(stream: &mut SMBSocketConnection<R, W>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
         let mut ctx = NTLMAuthContext::new();
-        let mut cloned_connection = self.underlying_stream.try_clone()?;
-        for message in self.messages() {
+        let (read, write) = stream.streams();
+        println!("Start message handler");
+        while let Some(message) = read.messages().next() {
             let message = match message.header.command_code() {
                 SMBCommandCode::LegacyNegotiate => {
                     let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::new(
@@ -164,24 +165,28 @@ impl SMBConnection {
                     }
                 }
                 SMBCommandCode::LogOff => {
+                    println!("got logoff");
                     break;
                 }
                 _ => Err(SMBError::response_error("Invalid request payload"))
             };
             if let Ok(message) = message {
-                let sent = cloned_connection.send_message(&message)?;
-                update_channel.send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64));
+                let sent = write.write_message(&message)?;
+                let _ = update_channel.send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64));
             }
         }
+
+        // Close streams on message parse finish (logoff)
+        // let _ = read.shutdown(Shutdown::Both);
         Ok(())
     }
 }
 
-impl TryFrom<SMBMessageStream> for SMBConnection {
+impl<R: SMBReadStream, W: SMBWriteStream> TryFrom<SMBSocketConnection<R, W>> for SMBConnection<R, W> {
     type Error = SMBError;
 
-    fn try_from(value: SMBMessageStream) -> Result<Self, Self::Error> {
-        let client_name = value.stream.peer_addr().map_err(SMBError::io_error)?.to_string();
+    fn try_from(value: SMBSocketConnection<R, W>) -> Result<Self, Self::Error> {
+        let client_name = value.name().to_string();
         Ok(Self {
             command_sequence_window: vec![],
             request_list: Default::default(),
@@ -213,7 +218,7 @@ impl TryFrom<SMBMessageStream> for SMBConnection {
             rdma_transform_ids: vec![],
             signing_algorithm_id: 0,
             accept_transport_security: false,
-            underlying_stream: value,
+            underlying_stream: Arc::new(Mutex::new(value)),
         })
     }
 }
