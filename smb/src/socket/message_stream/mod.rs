@@ -45,7 +45,7 @@ pub trait SMBReadStream: Send + Sync {
 
 pub trait SMBWriteStream {
     #[cfg(feature = "async")]
-    async fn write_message<T: Message>(&mut self, message: &T) -> SMBResult<usize>;
+    fn write_message<T: Message + Sync>(&mut self, message: &T) -> impl Future<Output=SMBResult<usize>> + Send;
 
     #[cfg(not(feature = "async"))]
     fn write_message<T: Message>(&mut self, message: &T) -> SMBResult<usize>;

@@ -46,8 +46,8 @@ impl<'a, T: SMBReadStream> SMBMessageStream<'a, T> {
     }
 }
 
-impl<Writer> SMBWriteStream for Writer where Writer: AsyncWriteExt + Unpin {
-    async fn write_message<T: Message>(&mut self, message: &T) -> SMBResult<usize> {
+impl<Writer> SMBWriteStream for Writer where Writer: AsyncWriteExt + Unpin + Send + Sync {
+    async fn write_message<T: Message + Sync>(&mut self, message: &T) -> SMBResult<usize> {
         let bytes = message.as_bytes();
         self.write_all(&bytes).await.map_err(SMBError::io_error)?;
         Ok(bytes.len())
@@ -69,7 +69,7 @@ impl<Reader> SMBReadStream for Reader where Reader: AsyncReadExt + Unpin + Send 
 }
 
 impl<R: SMBReadStream, W: SMBWriteStream> SMBSocketConnection<R, W> {
-    pub async fn send_message<T: Message>(&mut self, message: &T) -> SMBResult<usize> {
+    pub async fn send_message<T: Message + Sync>(&mut self, message: &T) -> SMBResult<usize> {
         self.write().write_message(message).await
     }
 }

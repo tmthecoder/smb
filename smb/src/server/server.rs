@@ -4,9 +4,6 @@ use std::thread;
 
 use derive_builder::Builder;
 use tokio_stream::StreamExt;
-// use tokio::net::ToSocketAddrs;
-// use tokio::task;
-// use tokio_stream::StreamExt;
 use uuid::Uuid;
 
 use smb_core::SMBResult;
@@ -130,8 +127,10 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> SMBServer<Addrs, Listener> 
             // TODO make this non-ARC/RwLock & make the inner listener locked
             self.connection_list.insert(name, smb_connection);
             let update_channel = rx.clone();
-            let mut stream = socket.lock().unwrap();
-            let _ = SMBConnection::start_message_handler(&mut stream, update_channel).await;
+            tokio::spawn(async move {
+                let mut stream = socket.lock().await;
+                let _ = SMBConnection::start_message_handler(&mut stream, update_channel).await;
+            });
         }
 
         Ok(())

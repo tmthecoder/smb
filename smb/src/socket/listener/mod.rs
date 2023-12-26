@@ -14,8 +14,8 @@ mod listener_sync;
 mod listener_async;
 
 pub trait SMBSocket<T: Send + Sync>: Send + Sync {
-    type ReadStream: SMBReadStream + Send + Sync + Debug;
-    type WriteStream: SMBWriteStream + Send + Sync + Debug;
+    type ReadStream: SMBReadStream + Send + Sync + Debug + 'static;
+    type WriteStream: SMBWriteStream + Send + Sync + Debug + 'static;
     #[cfg(not(feature = "async"))]
     fn new_connection(&self) -> SMBResult<SMBSocketConnection<Self::ReadStream, Self::WriteStream>>;
 

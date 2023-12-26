@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
+use tokio::sync::Mutex;
 use tokio_stream::StreamExt;
 use uuid::Uuid;
 
