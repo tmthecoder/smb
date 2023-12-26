@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 
+use tokio_stream::StreamExt;
 use uuid::Uuid;
 
 use smb_core::error::SMBError;
@@ -73,11 +74,11 @@ impl<R: SMBReadStream, W: SMBWriteStream> SMBConnection<R, W> {
         self.underlying_stream.clone()
     }
 
-    pub fn start_message_handler(stream: &mut SMBSocketConnection<R, W>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
+    pub async fn start_message_handler(stream: &mut SMBSocketConnection<R, W>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
         let mut ctx = NTLMAuthContext::new();
         let (read, write) = stream.streams();
         println!("Start message handler");
-        while let Some(message) = read.messages().next() {
+        while let Some(message) = read.messages().next().await {
             let message = match message.header.command_code() {
                 SMBCommandCode::LegacyNegotiate => {
                     let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::new(
@@ -171,7 +172,7 @@ impl<R: SMBReadStream, W: SMBWriteStream> SMBConnection<R, W> {
                 _ => Err(SMBError::response_error("Invalid request payload"))
             };
             if let Ok(message) = message {
-                let sent = write.write_message(&message)?;
+                let sent = write.write_message(&message).await?;
                 let _ = update_channel.send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64));
             }
         }

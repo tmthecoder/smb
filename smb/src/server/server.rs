@@ -3,6 +3,7 @@ use std::sync::{Arc, mpsc, RwLock};
 use std::thread;
 
 use derive_builder::Builder;
+use tokio_stream::StreamExt;
 // use tokio::net::ToSocketAddrs;
 // use tokio::task;
 // use tokio_stream::StreamExt;
@@ -113,7 +114,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> SMBServer<Addrs, Listener> 
         self.share_list.remove(name);
     }
 
-    pub fn start(&mut self) -> anyhow::Result<()> {
+    pub async fn start(&mut self) -> anyhow::Result<()> {
         let (rx, tx) = mpsc::channel();
         let diagnostics = self.statistics.clone();
         thread::spawn(move || {
@@ -121,7 +122,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> SMBServer<Addrs, Listener> 
                 diagnostics.write().unwrap().update(update);
             }
         });
-        while let Some(connection) = self.local_listener.connections().next() {
+        while let Some(connection) = self.local_listener.connections().next().await {
             println!("got connection");
             let smb_connection = SMBConnection::try_from(connection)?;
             let name = smb_connection.name().to_string();
@@ -130,7 +131,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> SMBServer<Addrs, Listener> 
             self.connection_list.insert(name, smb_connection);
             let update_channel = rx.clone();
             let mut stream = socket.lock().unwrap();
-            let _ = SMBConnection::start_message_handler(&mut stream, update_channel);
+            let _ = SMBConnection::start_message_handler(&mut stream, update_channel).await;
         }
 
         Ok(())

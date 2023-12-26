@@ -1,5 +1,7 @@
 use std::future::Future;
 
+use tokio_util::sync::ReusableBoxFuture;
+
 use smb_core::{SMBParseResult, SMBResult};
 use smb_core::error::SMBError;
 
@@ -65,6 +67,11 @@ impl<'a, R: SMBReadStream> SMBMessageIterator<'a, R> {
     pub fn fields_mut(&mut self) -> (&mut R, &mut Vec<u8>) {
         (&mut self.reader, &mut self.buffer)
     }
+}
+
+#[cfg(feature = "async")]
+pub struct SMBMessageStream<'a, T: SMBReadStream> {
+    pub(crate) inner: ReusableBoxFuture<'a, (SMBResult<SMBMessage<SMBSyncHeader, SMBBody>>, SMBMessageIterator<'a, T>)>,
 }
 
 #[derive(Debug)]
