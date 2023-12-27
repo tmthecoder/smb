@@ -1,14 +1,7 @@
 use std::marker::PhantomData;
 
 use bitflags::bitflags;
-use nom::bytes::complete::take;
-use nom::combinator::{map, map_res};
-use nom::Err::Error;
-use nom::error::ErrorKind;
-use nom::IResult;
 use nom::multi::count;
-use nom::number::complete::{le_u16, le_u32};
-use nom::sequence::tuple;
 use num_enum::TryFromPrimitive;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -17,7 +10,9 @@ use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
-use crate::byte_helper::{u16_to_bytes, u32_to_bytes};
+use crate::byte_helper::u16_to_bytes;
+use crate::server::SMBConnection;
+use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
 const PRE_AUTH_INTEGRITY_CAPABILITIES_TAG: u16 = 0x01;
@@ -194,66 +189,10 @@ impl SMBToBytes for NegotiateContext {
 }
 
 impl NegotiateContext {
-    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (_, (ctx_type_num, ctx_len, _)) = tuple((le_u16, le_u16, take(4_usize)))(bytes)?;
-        let (remaining, _) = take(2_usize)(bytes)?;
-        match ctx_type_num {
-            0x01 => ctx_parse_enumify!(
-                Self::PreAuthIntegrityCapabilities,
-                PreAuthIntegrityCapabilities::parse,
-                remaining,
-                ctx_len
-            ),
-            0x02 => ctx_parse_enumify!(
-                Self::EncryptionCapabilities,
-                EncryptionCapabilities::parse,
-                remaining,
-                ctx_len
-            ),
-            0x03 => ctx_parse_enumify!(
-                Self::CompressionCapabilities,
-                CompressionCapabilities::parse,
-                remaining,
-                ctx_len
-            ),
-            0x05 => ctx_parse_enumify!(
-                Self::NetnameNegotiateContextID,
-                NetnameNegotiateContextID::parse,
-                remaining,
-                ctx_len
-            ),
-            0x06 => ctx_parse_enumify!(
-                Self::TransportCapabilities,
-                TransportCapabilities::parse,
-                remaining,
-                ctx_len
-            ),
-            0x07 => ctx_parse_enumify!(
-                Self::RDMATransformCapabilities,
-                RDMATransformCapabilities::parse,
-                remaining,
-                ctx_len
-            ),
-            0x08 => ctx_parse_enumify!(
-                Self::SigningCapabilities,
-                SigningCapabilities::parse,
-                remaining,
-                ctx_len
-            ),
-            _ => Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))),
-        }
-    }
-
-    pub fn as_bytes(&self) -> Vec<u8> {
-        match self {
-            NegotiateContext::PreAuthIntegrityCapabilities(body) => ctx_to_bytes!(body),
-            NegotiateContext::EncryptionCapabilities(body) => ctx_to_bytes!(body),
-            NegotiateContext::CompressionCapabilities(body) => ctx_to_bytes!(body),
-            NegotiateContext::NetnameNegotiateContextID(body) => ctx_to_bytes!(body),
-            NegotiateContext::TransportCapabilities(body) => ctx_to_bytes!(body),
-            NegotiateContext::RDMATransformCapabilities(body) => ctx_to_bytes!(body),
-            NegotiateContext::SigningCapabilities(body) => ctx_to_bytes!(body),
-        }
+    pub fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Vec<Self> {
+        let mut contexts = Vec::new();
+        // contexts.push
+        contexts
     }
 
     pub fn response_from_existing(&self) -> Option<Self> {
@@ -335,31 +274,6 @@ impl PreAuthIntegrityCapabilities {
     fn byte_code(&self) -> u16 {
         0x01
     }
-
-    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, (_, alg_cnt, salt_len)) = tuple((take(6_usize), le_u16, le_u16))(bytes)?;
-        let (remaining, hash_algorithms) =
-            count(map_res(le_u16, HashAlgorithm::try_from), alg_cnt as usize)(remaining)?;
-        let (remaining, salt) = map(take(salt_len), |s: &[u8]| s.to_vec())(remaining)?;
-        Ok((
-            remaining,
-            Self {
-                hash_algorithms,
-                salt,
-                reserved: PhantomData
-            },
-        ))
-    }
-
-    pub fn as_bytes(&self) -> Vec<u8> {
-        [
-            &u16_to_bytes(self.hash_algorithms.len() as u16),
-            &u16_to_bytes(self.salt.len() as u16),
-            &*enum_iter_to_bytes!(self.hash_algorithms.iter()),
-            &*self.salt,
-        ]
-        .concat()
-    }
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
@@ -384,24 +298,6 @@ pub enum EncryptionCipher {
 impl EncryptionCapabilities {
     fn byte_code(&self) -> u16 {
         0x02
-    }
-
-    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, _) = take(6_usize)(bytes)?;
-        let (remaining, cipher_cnt) = le_u16(remaining)?;
-        let (remaining, ciphers) = count(
-            map_res(le_u16, EncryptionCipher::try_from),
-            cipher_cnt as usize,
-        )(remaining)?;
-        Ok((remaining, Self { reserved: PhantomData, ciphers }))
-    }
-
-    pub fn as_bytes(&self) -> Vec<u8> {
-        [
-            &u16_to_bytes(self.ciphers.len() as u16)[0..],
-            &*enum_iter_to_bytes!(self.ciphers.iter()),
-        ]
-        .concat()
     }
 }
 
@@ -438,36 +334,6 @@ impl CompressionCapabilities {
     fn byte_code(&self) -> u16 {
         0x03
     }
-
-    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, (_, alg_cnt, _, flags)) = tuple((
-            take(6_usize),
-            le_u16,
-            le_u16,
-            map_res(le_u32, CompressionCapabilitiesFlags::try_from),
-        ))(bytes)?;
-        let (remaining, compression_algorithms) = count(
-            map_res(le_u16, CompressionAlgorithm::try_from),
-            alg_cnt as usize,
-        )(remaining)?;
-        Ok((
-            remaining,
-            Self {
-                flags,
-                compression_algorithms,
-            },
-        ))
-    }
-
-    pub fn as_bytes(&self) -> Vec<u8> {
-        [
-            &u16_to_bytes(self.compression_algorithms.len() as u16)[0..],
-            &[0, 0],
-            &u32_to_bytes(self.flags as u32),
-            &*enum_iter_to_bytes!(self.compression_algorithms.iter()),
-        ]
-        .concat()
-    }
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
@@ -481,17 +347,6 @@ pub struct NetnameNegotiateContextID {
 impl NetnameNegotiateContextID {
     fn byte_code(&self) -> u16 {
         0x05
-    }
-
-    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, name_len) = le_u16(bytes)?;
-        let (remaining, _) = take(4_usize)(remaining)?;
-        let (remaining, netname) = take(name_len)(remaining)?;
-        Ok((remaining, Self { reserved: PhantomData, netname: String::from_utf8(netname.to_vec()).unwrap() }))
-    }
-
-    pub fn as_bytes(&self) -> Vec<u8> {
-        self.netname.as_bytes().to_vec()
     }
 }
 
@@ -516,16 +371,6 @@ impl TransportCapabilities {
     fn byte_code(&self) -> u16 {
         0x06
     }
-
-    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, flags) =
-            map(le_u32, TransportCapabilitiesFlags::from_bits_truncate)(bytes)?;
-        Ok((remaining, Self { flags }))
-    }
-
-    pub fn as_bytes(&self) -> Vec<u8> {
-        u32_to_bytes(self.flags.bits()).into()
-    }
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
@@ -547,24 +392,6 @@ pub enum RDMATransformID {
 impl RDMATransformCapabilities {
     fn byte_code(&self) -> u16 {
         0x07
-    }
-
-    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, transform_cnt) = le_u16(bytes)?;
-        let (remaining, transform_ids) = count(
-            map_res(le_u16, RDMATransformID::try_from),
-            transform_cnt as usize,
-        )(remaining)?;
-        Ok((remaining, Self { reserved: PhantomData, transform_ids }))
-    }
-
-    pub fn as_bytes(&self) -> Vec<u8> {
-        [
-            &u16_to_bytes(self.transform_ids.len() as u16)[0..],
-            &[0; 6],
-            &*enum_iter_to_bytes!(self.transform_ids.iter()),
-        ]
-        .concat()
     }
 }
 
@@ -589,23 +416,6 @@ pub enum SigningAlgorithm {
 impl SigningCapabilities {
     fn byte_code(&self) -> u16 {
         0x08
-    }
-
-    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (remaining, signing_alg_cnt) = le_u16(bytes)?;
-        let (remaining, signing_algorithms) = count(
-            map_res(le_u16, SigningAlgorithm::try_from),
-            signing_alg_cnt as usize,
-        )(remaining)?;
-        Ok((remaining, Self { reserved: PhantomData, signing_algorithms }))
-    }
-
-    pub fn as_bytes(&self) -> Vec<u8> {
-        [
-            &u16_to_bytes(self.signing_algorithms.len() as u16)[0..],
-            &*enum_iter_to_bytes!(self.signing_algorithms.iter()),
-        ]
-        .concat()
     }
 }
 
