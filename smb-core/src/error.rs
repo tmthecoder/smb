@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io;
 
@@ -39,20 +40,20 @@ impl SMBError {
 
 #[derive(Debug)]
 pub struct SMBParseError {
-    message: String,
+    error: Box<dyn Error + Send + Sync>,
 }
 
-impl<T: Into<String>> From<T> for SMBParseError {
+impl<T: Into<Box<dyn Error + Send + Sync>>> From<T> for SMBParseError {
     fn from(value: T) -> Self {
         Self {
-            message: value.into()
+            error: value.into()
         }
     }
 }
 
 impl Display for SMBParseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Parse failed with error: {}", self.message)
+        write!(f, "Parse failed with error: {}", self.error)
     }
 }
 

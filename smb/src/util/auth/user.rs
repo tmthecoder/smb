@@ -7,7 +7,7 @@ pub struct User {
 }
 
 impl User {
-    pub fn new(username: String, password: String) -> Self {
-        Self { username, password }
+    pub fn new<U: Into<String>, P: Into<String>>(username: U, password: P) -> Self {
+        Self { username: username.into(), password: password.into() }
     }
 }

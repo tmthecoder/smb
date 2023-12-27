@@ -4,14 +4,14 @@ use std::fmt::Debug;
 use crate::server::{SMBChannel, SMBOpen, SMBTreeConnect};
 use crate::server::share::SharedResource;
 use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
-use crate::util::auth::AuthContext;
+use crate::util::auth::GenericAuthContext;
 
 pub trait Session: Debug + Send + Sync {}
 
 pub struct SMBSession<T: SharedResource, R: SMBReadStream, W: SMBWriteStream> {
     session_id: u64,
     state: SessionState,
-    security_context: AuthContext,
+    security_context: GenericAuthContext,
     // TODO >>
     is_anonymous: bool,
     is_guest: bool,

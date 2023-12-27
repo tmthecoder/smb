@@ -14,10 +14,11 @@ use crate::server::open::Open;
 use crate::server::session::Session;
 use crate::server::share::SharedResource;
 use crate::socket::listener::{SMBListener, SMBSocket};
+use crate::util::auth::AuthProvider;
 
 #[derive(Debug, Builder)]
 #[builder(pattern = "owned")]
-pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> {
+pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> {
     #[builder(default = "Default::default()")]
     statistics: Arc<RwLock<SMBServerDiagnostics>>,
     #[builder(default = "false")]
@@ -68,10 +69,12 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> {
     tree_connect_extension: bool,
     #[builder(default = "true")]
     named_pipe_access_over_quic: bool,
-    local_listener: SMBListener<Addrs, Listener>
+    local_listener: SMBListener<Addrs, Listener>,
+    #[builder(setter(custom))]
+    auth_provider: Arc<Auth>,
 }
 
-impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> SMBServerBuilder<Addrs, Listener> {
+impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> SMBServerBuilder<Addrs, Listener, Auth> {
     #[cfg(not(feature = "async"))]
     pub fn listener_address(self, addr: Addrs) -> SMBResult<Self> {
         Ok(self.local_listener(SMBListener::new(addr)?))
@@ -80,6 +83,11 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> SMBServerBuilder<Addrs, Lis
     #[cfg(feature = "async")]
     pub async fn listener_address(self, addr: Addrs) -> SMBResult<Self> {
         Ok(self.local_listener(SMBListener::new(addr).await?))
+    }
+
+    pub fn auth_provider(mut self, provider: Auth) -> Self {
+        self.auth_provider = Some(Arc::new(provider));
+        self
     }
 
     pub fn add_share<Key: Into<String>, S: SharedResource + 'static>(mut self, key: Key, share: S) -> Self {
@@ -96,7 +104,7 @@ pub enum HashLevel {
     EnableShare
 }
 
-impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> SMBServer<Addrs, Listener> {
+impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider + 'static> SMBServer<Addrs, Listener, Auth> {
     pub fn initialize(&mut self) {
         self.statistics = Default::default();
         self.guid = Uuid::new_v4();
@@ -124,12 +132,13 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>> SMBServer<Addrs, Listener> 
             let smb_connection = SMBConnection::try_from(connection)?;
             let name = smb_connection.name().to_string();
             let socket = smb_connection.underlying_socket();
-            // TODO make this non-ARC/RwLock & make the inner listener locked
             self.connection_list.insert(name, smb_connection);
             let update_channel = rx.clone();
+            let auth_provider = self.auth_provider.clone();
             tokio::spawn(async move {
                 let mut stream = socket.lock().await;
-                let _ = SMBConnection::start_message_handler(&mut stream, update_channel).await;
+                let auth = auth_provider.clone();
+                let _ = SMBConnection::start_message_handler(&mut stream, auth, update_channel).await;
             });
         }
 

@@ -21,9 +21,9 @@ use crate::server::server::SMBServerDiagnosticsUpdate;
 use crate::server::session::Session;
 use crate::server::SMBPreauthSession;
 use crate::socket::message_stream::{SMBReadStream, SMBSocketConnection, SMBWriteStream};
-use crate::util::auth::{AuthProvider, User};
+use crate::util::auth::{AuthContext, AuthMessage, AuthProvider};
 use crate::util::auth::nt_status::NTStatus;
-use crate::util::auth::ntlm::{NTLMAuthContext, NTLMAuthProvider, NTLMMessage};
+use crate::util::auth::ntlm::NTLMAuthProvider;
 use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenInitBody, SPNEGOTokenResponseBody};
 
 // use tokio::sync::Mutex;
@@ -75,8 +75,8 @@ impl<R: SMBReadStream, W: SMBWriteStream> SMBConnection<R, W> {
         self.underlying_stream.clone()
     }
 
-    pub async fn start_message_handler(stream: &mut SMBSocketConnection<R, W>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
-        let mut ctx = NTLMAuthContext::new();
+    pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, auth_provider: Arc<A>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
+        let mut ctx = A::Context::init();
         let (read, write) = stream.streams();
         println!("Start message handler");
         while let Some(message) = read.messages().next().await {
@@ -120,28 +120,23 @@ impl<R: SMBReadStream, W: SMBWriteStream> SMBConnection<R, W> {
                         let spnego_init_buffer: SPNEGOToken<NTLMAuthProvider> =
                             SPNEGOToken::parse(&request.get_buffer_copy()).unwrap().1;
                         println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
-                        let helper = NTLMAuthProvider::new(
-                            vec![User::new("tejasmehta".into(), "password".into())],
-                            true,
-                        );
                         let (status, output) = match spnego_init_buffer {
                             SPNEGOToken::Init(init_msg) => {
                                 let mech_token = init_msg.mech_token.ok_or(SMBError::parse_error("Parse failure"))?;
                                 let ntlm_msg =
-                                    NTLMMessage::parse(&mech_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
-                                helper.accept_security_context(&ntlm_msg, &mut ctx)
+                                    A::Message::parse(&mech_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
+                                auth_provider.accept_security_context(&ntlm_msg, &mut ctx)
                             }
                             SPNEGOToken::Response(resp_msg) => {
                                 let response_token = resp_msg.response_token.ok_or(SMBError::parse_error("Parse failure"))?;
                                 let ntlm_msg =
-                                    NTLMMessage::parse(&response_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
-                                println!("NTLM: {:?}", ntlm_msg);
-                                helper.accept_security_context(&ntlm_msg, &mut ctx)
+                                    A::Message::parse(&response_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
+                                auth_provider.accept_security_context(&ntlm_msg, &mut ctx)
                             }
-                            _ => { (NTStatus::StatusSuccess, NTLMMessage::Dummy) }
+                            _ => { (NTStatus::StatusSuccess, A::Message::empty()) }
                         };
-                        println!("status: {:?}, output: {:?}", status, output);
-                        let spnego_response_body = SPNEGOTokenResponseBody::<NTLMAuthProvider>::new(status.clone(), output);
+                        // println!("status: {:?}, output: {:?}", status, output);
+                        let spnego_response_body = SPNEGOTokenResponseBody::<A>::new(status.clone(), output);
                         let resp = SMBSessionSetupResponse::from_request(
                             request,
                             spnego_response_body.as_bytes(),

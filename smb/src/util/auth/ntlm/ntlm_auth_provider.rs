@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::util::auth::{AuthProvider, User};
+use crate::util::auth::{AuthContext, AuthProvider, User};
 use crate::util::auth::nt_status::NTStatus;
 use crate::util::auth::ntlm::NTLMMessage;
 
@@ -78,6 +78,12 @@ impl NTLMAuthContext {
 
 impl Default for NTLMAuthContext {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AuthContext for NTLMAuthContext {
+    fn init() -> Self {
         Self::new()
     }
 }

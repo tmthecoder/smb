@@ -1,3 +1,7 @@
+use nom::ParseTo;
+
+use smb_core::SMBParseResult;
+
 use crate::util::as_bytes::AsByteVec;
 use crate::util::auth::nt_status::NTStatus;
 
@@ -8,13 +12,25 @@ mod user;
 pub mod nt_status;
 
 pub type User = user::User;
-pub type AuthContext = auth_context::AuthContext;
+pub type GenericAuthContext = auth_context::GenericAuthContext;
 
-pub trait AuthProvider {
-    type Message: AsByteVec;
-    type Context;
+pub trait AuthProvider: Send + Sync {
+    type Message: AuthMessage + Send + Sync + 'static;
+    type Context: AuthContext + Send + Sync + 'static;
 
     fn get_oid() -> Vec<u8>;
 
     fn accept_security_context(&self, input_token: &Self::Message, context: &mut Self::Context) -> (NTStatus, Self::Message);
+}
+
+pub trait AuthMessage {
+    fn parse(data: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized;
+
+    fn as_bytes(&self) -> Vec<u8>;
+
+    fn empty() -> Self;
+}
+
+pub trait AuthContext {
+    fn init() -> Self;
 }

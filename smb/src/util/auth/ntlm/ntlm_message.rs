@@ -1,12 +1,13 @@
 use bitflags::bitflags;
 use nom::bytes::complete::take;
-use nom::Err::Error;
-use nom::error::ErrorKind;
 use nom::IResult;
 use nom::number::complete::{le_u16, le_u32};
 use serde::{Deserialize, Serialize};
 
-use crate::util::as_bytes::AsByteVec;
+use smb_core::error::SMBError;
+use smb_core::SMBParseResult;
+
+use crate::util::auth::AuthMessage;
 use crate::util::auth::ntlm::{NTLMAuthenticateMessageBody, NTLMChallengeMessageBody, NTLMNegotiateMessageBody};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
@@ -17,39 +18,50 @@ pub enum NTLMMessage {
     Dummy
 }
 
-impl NTLMMessage {
-    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (_, msg_type) = take(8_usize)(bytes)
-            .and_then(|(remaining, _)| le_u32(remaining))?;
+impl AuthMessage for NTLMMessage {
+    fn parse(bytes: &[u8]) -> SMBParseResult<&[u8], Self> {
+        let (_, msg_type) = take::<usize, &[u8], nom::error::Error<&[u8]>>(8_usize)(bytes)
+            .and_then(|(remaining, _)| le_u32(remaining))
+            .map_err(|e| {
+                SMBError::parse_error(e.to_owned())
+            })?;
         match msg_type {
             0x01 => {
-                let (remaining, body) = NTLMNegotiateMessageBody::parse(bytes)?;
+                let (remaining, body) = NTLMNegotiateMessageBody::parse(bytes)
+                    .map_err(|e| {
+                        SMBError::parse_error(e.to_owned())
+                    })?;
                 Ok((remaining, NTLMMessage::Negotiate(body)))
             },
             0x02 => {
-                let (remaining, body) = NTLMChallengeMessageBody::parse(bytes)?;
+                let (remaining, body) = NTLMChallengeMessageBody::parse(bytes)
+                    .map_err(|e| {
+                        SMBError::parse_error(e.to_owned())
+                    })?;
                 Ok((remaining, NTLMMessage::Challenge(body)))
             },
             0x03 => {
-                let (remaining, body) = NTLMAuthenticateMessageBody::parse(bytes)?;
+                let (remaining, body) = NTLMAuthenticateMessageBody::parse(bytes)
+                    .map_err(|e| {
+                        SMBError::parse_error(e.to_owned())
+                    })?;
                 Ok((remaining, NTLMMessage::Authenticate(body)))
             },
-            _ => Err(Error(nom::error::Error::new(bytes, ErrorKind::Fail)))
+            _ => Err(SMBError::parse_error("Invalid message type"))
         }
     }
-    pub fn as_bytes(&self) -> Vec<u8> {
-        self.as_byte_vec()
-    }
-}
 
-impl AsByteVec for NTLMMessage {
-    fn as_byte_vec(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<u8> {
         match self {
             NTLMMessage::Negotiate(msg) => msg.as_bytes(),
             NTLMMessage::Challenge(msg) => msg.as_bytes(),
             NTLMMessage::Authenticate(msg) => msg.as_bytes(),
             NTLMMessage::Dummy => Vec::new(),
         }
+    }
+
+    fn empty() -> Self {
+        Self::Dummy
     }
 }
 
