@@ -1,5 +1,3 @@
-#![feature(tuple_trait)]
-#![feature(return_position_impl_trait_in_trait)]
 extern crate core;
 
 use std::io::{Read, Write};

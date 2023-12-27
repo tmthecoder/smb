@@ -16,7 +16,7 @@ mod stream_sync;
 #[cfg(feature = "async")]
 mod stream_async;
 
-pub trait SMBReadStream: Send + Sync {
+pub trait SMBReadStream: SMBStream {
     #[cfg(feature = "async")]
     fn read_message<'a>(&'a mut self, existing: &'a mut Vec<u8>) -> impl Future<Output=SMBParseResult<&[u8], SMBMessage<SMBSyncHeader, SMBBody>>> + Send;
 
@@ -43,12 +43,19 @@ pub trait SMBReadStream: Send + Sync {
     }
 }
 
-pub trait SMBWriteStream {
+pub trait SMBWriteStream: SMBStream {
     #[cfg(feature = "async")]
     fn write_message<T: Message + Sync>(&mut self, message: &T) -> impl Future<Output=SMBResult<usize>> + Send;
 
     #[cfg(not(feature = "async"))]
     fn write_message<T: Message>(&mut self, message: &T) -> SMBResult<usize>;
+}
+
+pub trait SMBStream: Send + Sync {
+    #[cfg(feature = "async")]
+    fn close_stream(&mut self) -> impl Future<Output=SMBResult<()>> + Send;
+    #[cfg(not(feature = "async"))]
+    fn close_stream(&mut self) -> SMBResult<()>;
 }
 
 pub struct SMBMessageIterator<'a, R: SMBReadStream> {

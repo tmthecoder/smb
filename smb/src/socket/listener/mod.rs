@@ -27,8 +27,10 @@ pub trait SMBSocket<T: Send + Sync>: Send + Sync {
     }
 
     #[cfg(feature = "async")]
-    async fn new_socket(addr: T) -> SMBResult<Self> where Self: Sized {
-        Err(SMBError::precondition_failed("Invalid socket address type"))
+    fn new_socket(addr: T) -> impl Future<Output=SMBResult<Self>> + Send where Self: Sized {
+        async {
+            Err(SMBError::precondition_failed("Invalid socket address type"))
+        }
     }
 }
 

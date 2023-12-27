@@ -1,5 +1,3 @@
-use std::marker::Tuple;
-
 mod client;
 mod channel;
 mod connection;

@@ -1,8 +1,11 @@
 use std::future::Future;
+use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 
+use tokio::io;
+use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, ToSocketAddrs};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio_stream::Stream;
@@ -12,7 +15,7 @@ use smb_core::error::SMBError;
 use smb_core::SMBResult;
 
 use crate::socket::listener::{SMBConnectionIterator, SMBListener, SMBSocket};
-use crate::socket::message_stream::SMBSocketConnection;
+use crate::socket::message_stream::{SMBSocketConnection, SMBStream};
 
 impl<T> SMBSocket<T> for TcpListener where T: ToSocketAddrs + Send + Sync {
     type ReadStream = OwnedReadHalf;
@@ -33,9 +36,21 @@ impl<T> SMBSocket<T> for TcpListener where T: ToSocketAddrs + Send + Sync {
     }
 }
 
+impl SMBStream for OwnedReadHalf {
+    async fn close_stream(&mut self) -> SMBResult<()> {
+        Err(SMBError::io_error(io::Error::new(ErrorKind::Unsupported, "Invalid operation")))
+    }
+}
+
+impl SMBStream for OwnedWriteHalf {
+    async fn close_stream(&mut self) -> SMBResult<()> {
+        self.shutdown().await.map_err(SMBError::io_error)
+    }
+}
+
 type SMBConnectionResult<R, W> = SMBResult<SMBSocketConnection<R, W>>;
 
-type SMBConnectionStreamResult<'a, Addrs, Socket: SMBSocket<Addrs>> = (SMBConnectionResult<Socket::ReadStream, Socket::WriteStream>, SMBConnectionIterator<'a, Addrs, Socket>);
+type SMBConnectionStreamResult<'a, Addrs, Socket> = (SMBConnectionResult<<Socket as SMBSocket<Addrs>>::ReadStream, <Socket as SMBSocket<Addrs>>::WriteStream>, SMBConnectionIterator<'a, Addrs, Socket>);
 
 pub struct SMBConnectionStream<'a, Addrs: Send + Sync, Socket: SMBSocket<Addrs>> {
     inner: ReusableBoxFuture<'a, SMBConnectionStreamResult<'a, Addrs, Socket>>,

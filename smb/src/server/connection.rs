@@ -179,7 +179,7 @@ impl<R: SMBReadStream, W: SMBWriteStream> SMBConnection<R, W> {
         }
 
         // Close streams on message parse finish (logoff)
-        // let _ = read.shutdown(Shutdown::Both);
+        let _ = write.close_stream().await;
         Ok(())
     }
 }

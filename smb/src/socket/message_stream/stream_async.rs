@@ -12,7 +12,7 @@ use smb_core::error::SMBError;
 use crate::protocol::body::SMBBody;
 use crate::protocol::header::SMBSyncHeader;
 use crate::protocol::message::{Message, SMBMessage};
-use crate::socket::message_stream::{SMBMessageIterator, SMBMessageStream, SMBReadStream, SMBSocketConnection, SMBWriteStream};
+use crate::socket::message_stream::{SMBMessageIterator, SMBMessageStream, SMBReadStream, SMBSocketConnection, SMBStream, SMBWriteStream};
 
 async fn make_future<'a, T: SMBReadStream>(mut iterator: SMBMessageIterator<'a, T>) -> (SMBResult<SMBMessage<SMBSyncHeader, SMBBody>>, SMBMessageIterator<'a, T>) {
     let res = loop {
@@ -46,7 +46,7 @@ impl<'a, T: SMBReadStream> SMBMessageStream<'a, T> {
     }
 }
 
-impl<Writer> SMBWriteStream for Writer where Writer: AsyncWriteExt + Unpin + Send + Sync {
+impl<Writer> SMBWriteStream for Writer where Writer: AsyncWriteExt + Unpin + Send + Sync + SMBStream {
     async fn write_message<T: Message + Sync>(&mut self, message: &T) -> SMBResult<usize> {
         let bytes = message.as_bytes();
         self.write_all(&bytes).await.map_err(SMBError::io_error)?;
@@ -54,7 +54,7 @@ impl<Writer> SMBWriteStream for Writer where Writer: AsyncWriteExt + Unpin + Sen
     }
 }
 
-impl<Reader> SMBReadStream for Reader where Reader: AsyncReadExt + Unpin + Send + Sync {
+impl<Reader> SMBReadStream for Reader where Reader: AsyncReadExt + Unpin + Send + Sync + SMBStream {
     async fn read_message<'a>(&'a mut self, existing: &'a mut Vec<u8>) -> SMBParseResult<&'a [u8], SMBMessage<SMBSyncHeader, SMBBody>> {
         let mut buffer = [0u8; 512];
         if let Ok(read) = self.read(&mut buffer).await {
