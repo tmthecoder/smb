@@ -1,3 +1,5 @@
+use std::any::Any;
+use std::collections::HashSet;
 use std::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
@@ -42,8 +44,10 @@ impl SMBNegotiateRequest {
             return Err(SMBError::response_error("Invalid request received"));
         }
         let mut update = SMBConnectionUpdate::default();
+        let mut received_ctxs = HashSet::new();
         for context in self.negotiate_contexts.iter() {
             update = context.validate_and_set_state(update)?;
+            received_ctxs.insert(context.type_id());
         }
         let mut dialects = Vec::new();
         for dialect in self.dialects.iter() {
@@ -124,30 +128,5 @@ impl SMBNegotiateResponse {
             buffer,
             negotiate_contexts,
         }
-    }
-
-    pub fn from_request(request: SMBNegotiateRequest, token: Vec<u8>) -> Option<Self> {
-        let mut dialects = request.dialects.clone();
-        dialects.sort();
-        let mut negotiate_contexts = Vec::new();
-        let dialect = *dialects.last()?;
-        if dialect == SMBDialect::V3_1_1 {
-            for neg_ctx in request.negotiate_contexts {
-                negotiate_contexts.push(neg_ctx.response_from_existing()?);
-            }
-        }
-        Some(Self {
-            security_mode: request.security_mode | NegotiateSecurityMode::NEGOTIATE_SIGNING_REQUIRED,
-            dialect: *dialects.last()?,
-            guid: Uuid::new_v4(),
-            capabilities: request.capabilities,
-            max_transact_size: 65535,
-            max_read_size: 65535,
-            max_write_size: 65535,
-            system_time: FileTime::now(),
-            server_start_time: FileTime::from_unix(0),
-            buffer: token,
-            negotiate_contexts,
-        })
     }
 }

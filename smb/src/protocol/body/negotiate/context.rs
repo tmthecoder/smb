@@ -178,62 +178,6 @@ impl NegotiateContext {
             NegotiateContext::SigningCapabilities(x) => x.validate_and_set_state(connection),
         }
     }
-
-    pub fn response_from_existing(&self) -> Option<Self> {
-        match self {
-            NegotiateContext::PreAuthIntegrityCapabilities(body) => {
-                let hash_algorithms = vector_with_only_last!(body.hash_algorithms.clone());
-                let mut salt = vec![0_u8; 32];
-                rand::rngs::ThreadRng::default().fill_bytes(&mut salt);
-                Some(NegotiateContext::PreAuthIntegrityCapabilities(
-                    PreAuthIntegrityCapabilities {
-                        hash_algorithms,
-                        salt,
-                        reserved: PhantomData
-                    },
-                ))
-            }
-            NegotiateContext::EncryptionCapabilities(body) => {
-                let ciphers = vector_with_only_last!(body.ciphers.clone());
-                Some(NegotiateContext::EncryptionCapabilities(
-                    EncryptionCapabilities { reserved: PhantomData, ciphers },
-                ))
-            }
-            NegotiateContext::CompressionCapabilities(body) => {
-                let compression_algorithms =
-                    vector_with_only_last!(body.compression_algorithms.clone());
-                Some(NegotiateContext::CompressionCapabilities(
-                    CompressionCapabilities {
-                        compression_algorithms,
-                        flags: body.flags,
-                    },
-                ))
-            }
-            NegotiateContext::NetnameNegotiateContextID(_) => Some(
-                NegotiateContext::NetnameNegotiateContextID(NetnameNegotiateContextID {
-                    reserved: PhantomData,
-                    netname: "fakeserver".into(),
-                }),
-            ),
-            NegotiateContext::TransportCapabilities(_) => Some(
-                NegotiateContext::TransportCapabilities(TransportCapabilities {
-                    flags: TransportCapabilitiesFlags::empty(),
-                }),
-            ),
-            NegotiateContext::RDMATransformCapabilities(_) => Some(
-                NegotiateContext::RDMATransformCapabilities(RDMATransformCapabilities {
-                    reserved: PhantomData,
-                    transform_ids: vec![RDMATransformID::None],
-                }),
-            ),
-            NegotiateContext::SigningCapabilities(body) => {
-                let signing_algorithms = vector_with_only_last!(body.signing_algorithms.clone());
-                Some(NegotiateContext::SigningCapabilities(
-                    SigningCapabilities { reserved: PhantomData, signing_algorithms },
-                ))
-            }
-        }
-    }
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
@@ -256,7 +200,7 @@ pub enum HashAlgorithm {
 
 impl PreAuthIntegrityCapabilities {
     fn byte_code(&self) -> u16 {
-        0x01
+        PRE_AUTH_INTEGRITY_CAPABILITIES_TAG
     }
 
     fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
@@ -300,7 +244,7 @@ pub enum EncryptionCipher {
 
 impl EncryptionCapabilities {
     fn byte_code(&self) -> u16 {
-        0x02
+        ENCRYPTION_CAPABILITIES_TAG
     }
 
     fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
@@ -352,7 +296,7 @@ pub enum CompressionAlgorithm {
 
 impl CompressionCapabilities {
     fn byte_code(&self) -> u16 {
-        0x03
+        COMPRESSION_CAPABILITIES_TAG
     }
 
     fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
@@ -385,7 +329,7 @@ pub struct NetnameNegotiateContextID {
 
 impl NetnameNegotiateContextID {
     fn byte_code(&self) -> u16 {
-        0x05
+        NETNAME_NEGOTIATE_CONTEXT_ID_TAG
     }
 }
 
@@ -408,7 +352,7 @@ impl_smb_to_bytes_for_bitflag! {TransportCapabilitiesFlags}
 
 impl TransportCapabilities {
     fn byte_code(&self) -> u16 {
-        0x06
+        TRANSPORT_CAPABILITIES_TAG
     }
 
     fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
@@ -448,7 +392,7 @@ pub enum RDMATransformID {
 
 impl RDMATransformCapabilities {
     fn byte_code(&self) -> u16 {
-        0x07
+        RDMA_TRANSFORM_CAPABILITIES_TAG
     }
     fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
         let transform_ids = if connection.rdma_transform_ids().is_empty() {
@@ -490,7 +434,7 @@ pub enum SigningAlgorithm {
 
 impl SigningCapabilities {
     fn byte_code(&self) -> u16 {
-        0x08
+        SIGNING_CAPABILITIES_TAG
     }
 
     fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
