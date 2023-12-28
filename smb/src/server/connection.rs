@@ -330,9 +330,10 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatefulHandler for SMBC
     fn handle_negotiate<A: AuthProvider>(&mut self, message: SMBMessageType) -> SMBResult<SMBMessageType> {
         let SMBMessage { header, body } = message;
         if let SMBBody::NegotiateRequest(request) = body {
-            self.apply_update(request.validate_and_set_state(self)?);
+            let (update, contexts) = request.validate_and_set_state(self)?;
+            self.apply_update(update);
             let resp_header = header.create_response_header(0x0, 0);
-            let resp_body = SMBNegotiateResponse::from_connection_state::<A, R, W, S>(self);
+            let resp_body = SMBNegotiateResponse::from_connection_state::<A, R, W, S>(self, contexts);
             println!("Body: {:?}", resp_body);
             Ok(SMBMessage::new(resp_header, SMBBody::NegotiateResponse(resp_body)))
         } else {

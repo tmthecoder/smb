@@ -39,7 +39,7 @@ pub struct SMBNegotiateRequest {
 }
 
 impl SMBNegotiateRequest {
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: &SMBConnection<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: &SMBConnection<R, W, S>) -> SMBResult<(SMBConnectionUpdate<R, W, S>, HashSet<u16>)> {
         if connection.negotiate_dialect() != SMBDialect::default() {
             return Err(SMBError::response_error("Invalid request received"));
         }
@@ -47,7 +47,7 @@ impl SMBNegotiateRequest {
         let mut received_ctxs = HashSet::new();
         for context in self.negotiate_contexts.iter() {
             update = context.validate_and_set_state(update)?;
-            received_ctxs.insert(context.type_id());
+            received_ctxs.insert(context.byte_code());
         }
         let mut dialects = Vec::new();
         for dialect in self.dialects.iter() {
@@ -63,7 +63,7 @@ impl SMBNegotiateRequest {
             .client_capabilities(self.capabilities)
             .client_guid(self.client_uuid)
             .should_sign(self.security_mode.contains(NegotiateSecurityMode::NEGOTIATE_SIGNING_REQUIRED));
-        Ok(update)
+        Ok((update, received_ctxs))
     }
 }
 
@@ -111,9 +111,9 @@ impl SMBNegotiateResponse {
         }
     }
 
-    pub fn from_connection_state<A: AuthProvider, R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
+    pub fn from_connection_state<A: AuthProvider, R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>, negotiate_contexts: HashSet<u16>) -> Self {
         let buffer = SPNEGOToken::Init(SPNEGOTokenInitBody::<A>::new()).as_bytes(true);
-        let negotiate_contexts = NegotiateContext::from_connection_state(connection);
+        let negotiate_contexts = NegotiateContext::from_connection_state(connection, negotiate_contexts);
         Self {
             security_mode: connection.server_security_mode(),
             dialect: connection.dialect(),

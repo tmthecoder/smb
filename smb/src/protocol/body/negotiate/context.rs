@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::marker::PhantomData;
 
 use bitflags::bitflags;
@@ -155,16 +156,38 @@ impl SMBToBytes for NegotiateContext {
 }
 
 impl NegotiateContext {
-    pub fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Vec<Self> {
-        // TODO make this dependant on the contexts we received
-        vec![
-            Self::PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilities::from_connection_state(connection)),
-            Self::EncryptionCapabilities(EncryptionCapabilities::from_connection_state(connection)),
-            Self::CompressionCapabilities(CompressionCapabilities::from_connection_state(connection)),
-            // Self::RDMATransformCapabilities(RDMATransformCapabilities::from_connection_state(connection)),
-            Self::SigningCapabilities(SigningCapabilities::from_connection_state(connection)),
-            // Self::TransportCapabilities(TransportCapabilities::from_connection_state(connection))
-        ]
+    pub fn byte_code(&self) -> u16 {
+        match self {
+            NegotiateContext::PreAuthIntegrityCapabilities(x) => x.byte_code(),
+            NegotiateContext::EncryptionCapabilities(x) => x.byte_code(),
+            NegotiateContext::CompressionCapabilities(x) => x.byte_code(),
+            NegotiateContext::NetnameNegotiateContextID(x) => x.byte_code(),
+            NegotiateContext::TransportCapabilities(x) => x.byte_code(),
+            NegotiateContext::RDMATransformCapabilities(x) => x.byte_code(),
+            NegotiateContext::SigningCapabilities(x) => x.byte_code(),
+        }
+    }
+    pub fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>, request_contexts: HashSet<u16>) -> Vec<Self> {
+        let mut response_contexts = Vec::new();
+        if request_contexts.contains(&PRE_AUTH_INTEGRITY_CAPABILITIES_TAG) {
+            response_contexts.push(Self::PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilities::from_connection_state(connection)));
+        }
+        if request_contexts.contains(&ENCRYPTION_CAPABILITIES_TAG) {
+            response_contexts.push(Self::EncryptionCapabilities(EncryptionCapabilities::from_connection_state(connection)));
+        }
+        if request_contexts.contains(&COMPRESSION_CAPABILITIES_TAG) {
+            response_contexts.push(Self::CompressionCapabilities(CompressionCapabilities::from_connection_state(connection)));
+        }
+        if request_contexts.contains(&RDMA_TRANSFORM_CAPABILITIES_TAG) {
+            response_contexts.push(Self::RDMATransformCapabilities(RDMATransformCapabilities::from_connection_state(connection)));
+        }
+        if request_contexts.contains(&SIGNING_CAPABILITIES_TAG) {
+            response_contexts.push(Self::SigningCapabilities(SigningCapabilities::from_connection_state(connection)));
+        }
+        if request_contexts.contains(&TRANSPORT_CAPABILITIES_TAG) {
+            response_contexts.push(Self::TransportCapabilities(TransportCapabilities::from_connection_state(connection)));
+        }
+        response_contexts
     }
 
     pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
