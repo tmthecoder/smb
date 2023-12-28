@@ -1,7 +1,7 @@
-use crate::server::SMBConnection;
+use crate::server::{Server, SMBConnection};
 use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
 
-pub struct SMBChannel<R: SMBReadStream, W: SMBWriteStream> {
+pub struct SMBChannel<R: SMBReadStream, W: SMBWriteStream, S: Server> {
     signing_key: [u8; 16],
-    connection: SMBConnection<R, W>
+    connection: SMBConnection<R, W, S>
 }

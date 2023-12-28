@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use derive_builder::Builder;
 use tokio::sync::{Mutex, RwLock};
@@ -19,10 +19,10 @@ use crate::protocol::body::session_setup::SMBSessionSetupResponse;
 use crate::protocol::body::tree_connect::SMBTreeConnectResponse;
 use crate::protocol::header::{Header, SMBCommandCode, SMBFlags, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
+use crate::server::{Server, SMBServerDiagnosticsUpdate};
+use crate::server::preauth_session::SMBPreauthSession;
 use crate::server::request::Request;
-use crate::server::server::SMBServerDiagnosticsUpdate;
 use crate::server::session::Session;
-use crate::server::SMBPreauthSession;
 use crate::socket::message_stream::{SMBReadStream, SMBSocketConnection, SMBWriteStream};
 use crate::util::auth::{AuthContext, AuthMessage, AuthProvider};
 use crate::util::auth::nt_status::NTStatus;
@@ -37,7 +37,7 @@ pub trait Connection: Debug {}
 #[derive(Debug, Builder)]
 #[builder(name = "SMBConnectionUpdate", pattern = "owned")]
 #[builder(build_fn(skip))]
-pub struct SMBConnection<R: SMBReadStream, W: SMBWriteStream> {
+pub struct SMBConnection<R: SMBReadStream, W: SMBWriteStream, S: Server> {
     command_sequence_window: Vec<u32>,
     request_list: HashMap<u64, Box<dyn Request>>,
     client_capabilities: Capabilities,
@@ -70,10 +70,11 @@ pub struct SMBConnection<R: SMBReadStream, W: SMBWriteStream> {
     signing_algorithm_id: SigningAlgorithm,
     accept_transport_security: bool,
     underlying_stream: Arc<Mutex<SMBSocketConnection<R, W>>>,
+    server: Weak<RwLock<S>>
 }
 
 // Getters
-impl<R: SMBReadStream, W: SMBWriteStream> SMBConnection<R, W> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBConnection<R, W, S> {
     pub fn client_capabilities(&self) -> Capabilities {
         self.client_capabilities
     }
@@ -150,8 +151,8 @@ impl<R: SMBReadStream, W: SMBWriteStream> SMBConnection<R, W> {
     }
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream> SMBConnection<R, W> {
-    pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, connection: Arc<RwLock<SMBConnection<R, W>>>, auth_provider: Arc<A>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBConnection<R, W, S> {
+    pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, connection: Arc<RwLock<SMBConnection<R, W, S>>>, auth_provider: Arc<A>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
         let mut ctx = A::Context::init();
         let (read, write) = stream.streams();
         println!("Start message handler");
@@ -224,7 +225,7 @@ impl<R: SMBReadStream, W: SMBWriteStream> SMBConnection<R, W> {
         Ok(())
     }
 
-    pub fn apply_update(&mut self, mut update: SMBConnectionUpdate<R, W>) {
+    pub fn apply_update(&mut self, mut update: SMBConnectionUpdate<R, W, S>) {
         if let Some(command_sequence_window) = update.command_sequence_window.take() {
             self.command_sequence_window.extend(command_sequence_window);
         }
@@ -318,24 +319,33 @@ impl<R: SMBReadStream, W: SMBWriteStream> SMBConnection<R, W> {
     }
 }
 
-type LockedSMBConnection<R, W> = Arc<RwLock<SMBConnection<R, W>>>;
+type LockedSMBConnection<R, W, S> = Arc<RwLock<SMBConnection<R, W, S>>>;
 type SMBMessageType = SMBMessage<SMBSyncHeader, SMBBody>;
 
-impl<R: SMBReadStream, W: SMBWriteStream> SMBStatelessHandler for LockedSMBConnection<R, W> {}
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatelessHandler for LockedSMBConnection<R, W, S> {}
 
-impl<R: SMBReadStream, W: SMBWriteStream> SMBStatelessHandler for SMBConnection<R, W> {}
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatelessHandler for SMBConnection<R, W, S> {}
 
-impl<R: SMBReadStream, W: SMBWriteStream> SMBStatefulHandler for SMBConnection<R, W> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatefulHandler for SMBConnection<R, W, S> {
     fn handle_negotiate<A: AuthProvider>(&mut self, message: SMBMessageType) -> SMBResult<SMBMessageType> {
         let SMBMessage { header, body } = message;
         if let SMBBody::NegotiateRequest(request) = body {
             self.apply_update(request.validate_and_set_state(self)?);
             let resp_header = header.create_response_header(0x0, 0);
-            let resp_body = SMBNegotiateResponse::from_connection_state::<A, R, W>(self);
+            let resp_body = SMBNegotiateResponse::from_connection_state::<A, R, W, S>(self);
             println!("Body: {:?}", resp_body);
             Ok(SMBMessage::new(resp_header, SMBBody::NegotiateResponse(resp_body)))
         } else {
-            Err(SMBError::parse_error("Invalid SMB request body (expected NegotiateResponse)"))
+            Err(SMBError::parse_error("Invalid SMB request body (expected NegotiateRequest)"))
+        }
+    }
+
+    fn handle_session_setup(&mut self, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+        let SMBMessage { header, body } = message;
+        if let SMBBody::SessionSetupRequest(request) = body {
+            Err(SMBError::parse_error("Invalid SMB Request Body (expected SessionSetupRequest"))
+        } else {
+            Err(SMBError::parse_error("Invalid SMB Request Body (expected SessionSetupRequest"))
         }
     }
 }
@@ -358,13 +368,14 @@ trait SMBStatelessHandler {
 
 trait SMBStatefulHandler: SMBStatelessHandler {
     fn handle_negotiate<A: AuthProvider>(&mut self, message: SMBMessageType) -> SMBResult<SMBMessageType>;
+    fn handle_session_setup(&mut self, message: SMBMessageType) -> SMBResult<SMBMessageType>;
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream> TryFrom<SMBSocketConnection<R, W>> for SMBConnection<R, W> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server> TryFrom<(SMBSocketConnection<R, W>, Weak<RwLock<S>>)> for SMBConnection<R, W, S> {
     type Error = SMBError;
 
-    fn try_from(value: SMBSocketConnection<R, W>) -> Result<Self, Self::Error> {
-        let client_name = value.name().to_string();
+    fn try_from(value: (SMBSocketConnection<R, W>, Weak<RwLock<S>>)) -> Result<Self, Self::Error> {
+        let client_name = value.0.name().to_string();
         Ok(Self {
             command_sequence_window: vec![],
             request_list: Default::default(),
@@ -396,7 +407,8 @@ impl<R: SMBReadStream, W: SMBWriteStream> TryFrom<SMBSocketConnection<R, W>> for
             rdma_transform_ids: vec![],
             signing_algorithm_id: SigningAlgorithm::HmacSha256,
             accept_transport_security: false,
-            underlying_stream: Arc::new(Mutex::new(value)),
+            underlying_stream: Arc::new(Mutex::new(value.0)),
+            server: value.1
         })
     }
 }

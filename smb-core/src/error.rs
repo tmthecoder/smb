@@ -10,6 +10,7 @@ pub enum SMBError {
     IOError(SMBIOError),
     ResponseError(SMBResponseError),
     PayloadTooSmall(SMBPayloadTooSmallError),
+    ServerError(SMBServerError),
 }
 
 impl SMBError {
@@ -35,6 +36,10 @@ impl SMBError {
 
     pub fn payload_too_small<T: Into<usize>, U: Into<usize>>(expected: T, actual: U) -> Self {
         Self::PayloadTooSmall((expected, actual).into())
+    }
+
+    pub fn server_error<T: Into<SMBServerError>>(error: T) -> Self {
+        Self::ServerError(error.into())
     }
 }
 
@@ -154,6 +159,25 @@ impl Display for SMBPayloadTooSmallError {
     }
 }
 
+#[derive(Debug)]
+pub struct SMBServerError {
+    error: Box<dyn Error + Send + Sync>,
+}
+
+impl<T: Into<Box<dyn Error + Send + Sync>>> From<T> for SMBServerError {
+    fn from(value: T) -> Self {
+        Self {
+            error: value.into()
+        }
+    }
+}
+
+impl Display for SMBServerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Parse failed with error: {}", self.error)
+    }
+}
+
 impl Display for SMBError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -162,7 +186,8 @@ impl Display for SMBError {
             Self::PreconditionFailed(x) => write!(f, "{}", x),
             Self::IOError(x) => write!(f, "{}", x),
             Self::ResponseError(x) => write!(f, "{}", x),
-            Self::PayloadTooSmall(x) => write!(f, "{}", x)
+            Self::PayloadTooSmall(x) => write!(f, "{}", x),
+            Self::ServerError(x) => write!(f, "{}", x)
         }
     }
 }

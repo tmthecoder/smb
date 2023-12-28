@@ -4,8 +4,10 @@ use std::net::TcpListener;
 #[cfg(feature = "async")]
 use tokio::net::TcpListener;
 
+use smb_core::SMBResult;
 use smb_reader::protocol::body::tree_connect::{SMBAccessMask, SMBDirectoryAccessMask};
-use smb_reader::server::{SMBServerBuilder, SMBShare};
+use smb_reader::server::{SMBServerBuilder, StartSMBServer};
+use smb_reader::server::share::SMBShare;
 use smb_reader::util::auth::ntlm::NTLMAuthProvider;
 use smb_reader::util::auth::User;
 
@@ -14,7 +16,7 @@ const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
 
 #[cfg(feature = "async")]
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> SMBResult<()> {
     let share = SMBShare::disk("someshare".into(), file_allowed, get_file_perms);
     let builder = SMBServerBuilder::<_, TcpListener, NTLMAuthProvider>::default()
         .anonymous_access(true)
@@ -24,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
             User::new("tejasmehta", "password")
         ], false))
         .listener_address("127.0.0.1:50122").await?;
-    let mut server = builder.build()?;
+    let server = builder.build()?;
     println!("here");
     server.start().await
 }

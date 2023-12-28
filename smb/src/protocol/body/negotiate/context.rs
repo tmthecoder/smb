@@ -10,7 +10,8 @@ use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::byte_helper::u16_to_bytes;
-use crate::server::{SMBConnection, SMBConnectionUpdate};
+use crate::server::connection::{SMBConnection, SMBConnectionUpdate};
+use crate::server::Server;
 use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
@@ -154,7 +155,7 @@ impl SMBToBytes for NegotiateContext {
 }
 
 impl NegotiateContext {
-    pub fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Vec<Self> {
+    pub fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Vec<Self> {
         // TODO make this dependant on the contexts we received
         vec![
             Self::PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilities::from_connection_state(connection)),
@@ -166,7 +167,7 @@ impl NegotiateContext {
         ]
     }
 
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
         match self {
             NegotiateContext::PreAuthIntegrityCapabilities(x) => x.validate_and_set_state(connection),
             NegotiateContext::EncryptionCapabilities(x) => x.validate_and_set_state(connection),
@@ -258,7 +259,7 @@ impl PreAuthIntegrityCapabilities {
         0x01
     }
 
-    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
         let mut salt = vec![0_u8; 32];
         rand::rngs::ThreadRng::default().fill_bytes(&mut salt);
         Self {
@@ -268,7 +269,7 @@ impl PreAuthIntegrityCapabilities {
         }
     }
 
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
         if let Some(algorithm) = self.hash_algorithms.first() {
             Ok(connection.preauth_integrity_hash_id(*algorithm))
         } else {
@@ -302,13 +303,13 @@ impl EncryptionCapabilities {
         0x02
     }
 
-    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
         Self {
             reserved: Default::default(),
             ciphers: vec![connection.cipher_id()],
         }
     }
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
         let mut ciphers = self.ciphers.clone();
         ciphers.sort();
         ciphers.reverse();
@@ -354,7 +355,7 @@ impl CompressionCapabilities {
         0x03
     }
 
-    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
         let flags = if connection.supports_chained_compression() {
             CompressionCapabilitiesFlags::Chained
         } else {
@@ -365,7 +366,7 @@ impl CompressionCapabilities {
             compression_algorithms: connection.compression_ids().clone(),
         }
     }
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
         // TODO Check server support
         if self.compression_algorithms.is_empty() {
             return Err(SMBError::response_error("Invalid payload for CompressionCapabilities"));
@@ -410,7 +411,7 @@ impl TransportCapabilities {
         0x06
     }
 
-    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
         let flags = if connection.supports_chained_compression() {
             TransportCapabilitiesFlags::ACCEPT_TRANSPORT_LEVEL_SECURITY
         } else {
@@ -420,7 +421,7 @@ impl TransportCapabilities {
             flags,
         }
     }
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
         if self.flags.contains(TransportCapabilitiesFlags::ACCEPT_TRANSPORT_LEVEL_SECURITY) {
             Ok(connection.accept_transport_security(true))
         } else {
@@ -449,7 +450,7 @@ impl RDMATransformCapabilities {
     fn byte_code(&self) -> u16 {
         0x07
     }
-    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
         let transform_ids = if connection.rdma_transform_ids().is_empty() {
             vec![RDMATransformID::None]
         } else {
@@ -460,7 +461,7 @@ impl RDMATransformCapabilities {
             transform_ids,
         }
     }
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
         // TODO check server globals
         if self.transform_ids.is_empty() {
             return Err(SMBError::response_error("Invalid RDMATransformCapabilities body"));
@@ -492,13 +493,13 @@ impl SigningCapabilities {
         0x08
     }
 
-    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
         Self {
             reserved: PhantomData,
             signing_algorithms: vec![connection.signing_algorithm_id()],
         }
     }
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
         if self.signing_algorithms.is_empty() {
             return Err(SMBError::response_error("Invalid SigningCapabilities payload"));
         }

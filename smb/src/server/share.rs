@@ -5,11 +5,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::body::tree_connect::{SMBAccessMask, SMBShareFlags, SMBShareType};
 
-pub trait SharedResource: Debug + Send {
+pub trait SharedResource: Debug + Send + Sync {
     fn name(&self) -> &str;
 }
 
-impl<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask + Send> SharedResource for SMBShare<ConnectAllowed, FilePerms> {
+impl<ConnectAllowed: Fn(u64) -> bool + Send + Sync, FilePerms: Fn(u64) -> SMBAccessMask + Send + Sync> SharedResource for SMBShare<ConnectAllowed, FilePerms> {
     fn name(&self) -> &str {
         &self.name
     }

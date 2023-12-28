@@ -10,7 +10,8 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 use crate::protocol::body::{Capabilities, FileTime, SMBDialect};
 use crate::protocol::body::negotiate::context::NegotiateContext;
 use crate::protocol::body::negotiate::security_mode::NegotiateSecurityMode;
-use crate::server::{SMBConnection, SMBConnectionUpdate};
+use crate::server::connection::{SMBConnection, SMBConnectionUpdate};
+use crate::server::Server;
 use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
 use crate::util::auth::AuthProvider;
 use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenInitBody};
@@ -36,7 +37,7 @@ pub struct SMBNegotiateRequest {
 }
 
 impl SMBNegotiateRequest {
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: &SMBConnection<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: &SMBConnection<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
         if connection.negotiate_dialect() != SMBDialect::default() {
             return Err(SMBError::response_error("Invalid request received"));
         }
@@ -106,7 +107,7 @@ impl SMBNegotiateResponse {
         }
     }
 
-    pub fn from_connection_state<A: AuthProvider, R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+    pub fn from_connection_state<A: AuthProvider, R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
         let buffer = SPNEGOToken::Init(SPNEGOTokenInitBody::<A>::new()).as_bytes(true);
         let negotiate_contexts = NegotiateContext::from_connection_state(connection);
         Self {
