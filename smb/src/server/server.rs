@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::sync::{Arc, mpsc, RwLock};
-use std::thread;
+use std::sync::{Arc, Weak};
 
 use derive_builder::Builder;
+use tokio::sync::{mpsc, RwLock};
 use tokio_stream::StreamExt;
 use uuid::Uuid;
 
@@ -29,8 +29,8 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthP
     open_table: HashMap<u64, Box<dyn Open>>,
     #[builder(field(type = "HashMap<u64, Box<dyn Session>>"))]
     session_table: HashMap<u64, Box<dyn Session>>,
-    #[builder(field(type = "HashMap<String, SMBConnection<Listener::ReadStream, Listener::WriteStream>>"))]
-    connection_list: HashMap<String, SMBConnection<Listener::ReadStream, Listener::WriteStream>>,
+    #[builder(field(type = "HashMap<String, Weak<RwLock<SMBConnection<Listener::ReadStream, Listener::WriteStream>>>>"))]
+    connection_list: HashMap<String, Weak<RwLock<SMBConnection<Listener::ReadStream, Listener::WriteStream>>>>,
     #[builder(default = "Uuid::new_v4()")]
     guid: Uuid,
     #[builder(default = "FileTime::default()")]
@@ -120,25 +120,25 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider + 'stati
     }
 
     pub async fn start(&mut self) -> anyhow::Result<()> {
-        let (rx, tx) = mpsc::channel();
+        let (rx, mut tx) = mpsc::channel(10);
         let diagnostics = self.statistics.clone();
-        thread::spawn(move || {
-            while let Ok(update) = tx.recv() {
-                diagnostics.write().unwrap().update(update);
+        tokio::spawn(async move {
+            while let Some(update) = tx.recv().await {
+                diagnostics.write().await.update(update);
             }
         });
         while let Some(connection) = self.local_listener.connections().next().await {
             println!("got connection");
             let smb_connection = SMBConnection::try_from(connection)?;
-            let name = smb_connection.name().to_string();
+            let name = smb_connection.client_name().to_string();
             let socket = smb_connection.underlying_socket();
-            self.connection_list.insert(name, smb_connection);
+            let wrapped_connection = Arc::new(RwLock::new(smb_connection));
+            self.connection_list.insert(name, Arc::downgrade(&wrapped_connection));
             let update_channel = rx.clone();
             let auth_provider = self.auth_provider.clone();
             tokio::spawn(async move {
                 let mut stream = socket.lock().await;
-                let auth = auth_provider.clone();
-                let _ = SMBConnection::start_message_handler(&mut stream, auth, update_channel).await;
+                let _ = SMBConnection::start_message_handler(&mut stream, wrapped_connection, auth_provider, update_channel).await;
             });
         }
 

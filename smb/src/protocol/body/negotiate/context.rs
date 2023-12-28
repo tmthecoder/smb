@@ -1,17 +1,16 @@
 use std::marker::PhantomData;
 
 use bitflags::bitflags;
-use nom::multi::count;
 use num_enum::TryFromPrimitive;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
+use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::byte_helper::u16_to_bytes;
-use crate::server::SMBConnection;
+use crate::server::{SMBConnection, SMBConnectionUpdate};
 use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
@@ -22,19 +21,6 @@ const NETNAME_NEGOTIATE_CONTEXT_ID_TAG: u16 = 0x05;
 const TRANSPORT_CAPABILITIES_TAG: u16 = 0x06;
 const RDMA_TRANSFORM_CAPABILITIES_TAG: u16 = 0x07;
 const SIGNING_CAPABILITIES_TAG: u16 = 0x08;
-
-macro_rules! ctx_to_bytes {
-    ($body: expr) => {{
-        let bytes = $body.as_bytes();
-        [
-            &u16_to_bytes($body.byte_code())[0..],
-            &u16_to_bytes(bytes.len() as u16),
-            &[0; 4],
-            &*bytes,
-        ]
-        .concat()
-    }};
-}
 
 macro_rules! ctx_smb_to_bytes {
     ($body: expr) => {{
@@ -47,19 +33,6 @@ macro_rules! ctx_smb_to_bytes {
             &bytes[2..],
         ]
         .concat()
-    }};
-}
-
-macro_rules! ctx_parse_enumify {
-    ($enumType: expr, $bodyType: expr, $data: expr, $len: expr) => {{
-        let (_, body) = $bodyType($data)?;
-        let padding = if $len % 8 == 0 || (6 + $len) as usize >= $data.len() {
-            0
-        } else {
-            8 - $len % 8
-        };
-        let (remaining, _) = take(6 + $len + padding)($data)?;
-        Ok((remaining, $enumType(body)))
     }};
 }
 
@@ -84,14 +57,6 @@ macro_rules! vector_with_only_last {
     ($vector: expr) => {{
         $vector.sort();
         vec![*$vector.last()?]
-    }};
-}
-
-macro_rules! enum_iter_to_bytes {
-    ($iter: expr) => {{
-        $iter
-            .flat_map(|item| u16_to_bytes(*item as u16))
-            .collect::<Vec<u8>>()
     }};
 }
 
@@ -190,9 +155,27 @@ impl SMBToBytes for NegotiateContext {
 
 impl NegotiateContext {
     pub fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Vec<Self> {
-        let mut contexts = Vec::new();
-        // contexts.push
-        contexts
+        // TODO make this dependant on the contexts we received
+        vec![
+            Self::PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilities::from_connection_state(connection)),
+            Self::EncryptionCapabilities(EncryptionCapabilities::from_connection_state(connection)),
+            Self::CompressionCapabilities(CompressionCapabilities::from_connection_state(connection)),
+            // Self::RDMATransformCapabilities(RDMATransformCapabilities::from_connection_state(connection)),
+            Self::SigningCapabilities(SigningCapabilities::from_connection_state(connection)),
+            // Self::TransportCapabilities(TransportCapabilities::from_connection_state(connection))
+        ]
+    }
+
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+        match self {
+            NegotiateContext::PreAuthIntegrityCapabilities(x) => x.validate_and_set_state(connection),
+            NegotiateContext::EncryptionCapabilities(x) => x.validate_and_set_state(connection),
+            NegotiateContext::CompressionCapabilities(x) => x.validate_and_set_state(connection),
+            NegotiateContext::NetnameNegotiateContextID(x) => Ok(connection),
+            NegotiateContext::TransportCapabilities(x) => x.validate_and_set_state(connection),
+            NegotiateContext::RDMATransformCapabilities(x) => x.validate_and_set_state(connection),
+            NegotiateContext::SigningCapabilities(x) => x.validate_and_set_state(connection),
+        }
     }
 
     pub fn response_from_existing(&self) -> Option<Self> {
@@ -274,6 +257,24 @@ impl PreAuthIntegrityCapabilities {
     fn byte_code(&self) -> u16 {
         0x01
     }
+
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+        let mut salt = vec![0_u8; 32];
+        rand::rngs::ThreadRng::default().fill_bytes(&mut salt);
+        Self {
+            reserved: Default::default(),
+            hash_algorithms: vec![connection.preauth_integrity_hash_id()],
+            salt,
+        }
+    }
+
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+        if let Some(algorithm) = self.hash_algorithms.first() {
+            Ok(connection.preauth_integrity_hash_id(*algorithm))
+        } else {
+            Err(SMBError::response_error("No hash algorithm available for preauth"))
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
@@ -289,6 +290,7 @@ pub struct EncryptionCapabilities {
 Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Clone, Ord, PartialOrd, Copy, SMBFromBytes, SMBByteSize, SMBToBytes
 )]
 pub enum EncryptionCipher {
+    None = 0x0,
     AES128GCM = 0x01,
     AES128CCM,
     AES256GCM,
@@ -298,6 +300,23 @@ pub enum EncryptionCipher {
 impl EncryptionCapabilities {
     fn byte_code(&self) -> u16 {
         0x02
+    }
+
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+        Self {
+            reserved: Default::default(),
+            ciphers: vec![connection.cipher_id()],
+        }
+    }
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+        let mut ciphers = self.ciphers.clone();
+        ciphers.sort();
+        ciphers.reverse();
+        if let Some(cipher) = ciphers.first() {
+            Ok(connection.cipher_id(*cipher))
+        } else {
+            Ok(connection)
+        }
     }
 }
 
@@ -333,6 +352,25 @@ pub enum CompressionAlgorithm {
 impl CompressionCapabilities {
     fn byte_code(&self) -> u16 {
         0x03
+    }
+
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+        let flags = if connection.supports_chained_compression() {
+            CompressionCapabilitiesFlags::Chained
+        } else {
+            CompressionCapabilitiesFlags::None
+        };
+        Self {
+            flags,
+            compression_algorithms: connection.compression_ids().clone(),
+        }
+    }
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+        // TODO Check server support
+        if self.compression_algorithms.is_empty() {
+            return Err(SMBError::response_error("Invalid payload for CompressionCapabilities"));
+        }
+        Ok(connection.compression_ids(self.compression_algorithms.clone()))
     }
 }
 
@@ -371,6 +409,24 @@ impl TransportCapabilities {
     fn byte_code(&self) -> u16 {
         0x06
     }
+
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+        let flags = if connection.supports_chained_compression() {
+            TransportCapabilitiesFlags::ACCEPT_TRANSPORT_LEVEL_SECURITY
+        } else {
+            TransportCapabilitiesFlags::empty()
+        };
+        Self {
+            flags,
+        }
+    }
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+        if self.flags.contains(TransportCapabilitiesFlags::ACCEPT_TRANSPORT_LEVEL_SECURITY) {
+            Ok(connection.accept_transport_security(true))
+        } else {
+            Ok(connection)
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
@@ -392,6 +448,24 @@ pub enum RDMATransformID {
 impl RDMATransformCapabilities {
     fn byte_code(&self) -> u16 {
         0x07
+    }
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+        let transform_ids = if connection.rdma_transform_ids().is_empty() {
+            vec![RDMATransformID::None]
+        } else {
+            connection.rdma_transform_ids().clone()
+        };
+        Self {
+            reserved: Default::default(),
+            transform_ids,
+        }
+    }
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+        // TODO check server globals
+        if self.transform_ids.is_empty() {
+            return Err(SMBError::response_error("Invalid RDMATransformCapabilities body"));
+        }
+        Ok(connection.rdma_transform_ids(self.transform_ids.clone()))
     }
 }
 
@@ -416,6 +490,21 @@ pub enum SigningAlgorithm {
 impl SigningCapabilities {
     fn byte_code(&self) -> u16 {
         0x08
+    }
+
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream>(connection: &SMBConnection<R, W>) -> Self {
+        Self {
+            reserved: PhantomData,
+            signing_algorithms: vec![connection.signing_algorithm_id()],
+        }
+    }
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream>(&self, connection: SMBConnectionUpdate<R, W>) -> SMBResult<SMBConnectionUpdate<R, W>> {
+        if self.signing_algorithms.is_empty() {
+            return Err(SMBError::response_error("Invalid SigningCapabilities payload"));
+        }
+        let mut algorithms = self.signing_algorithms.clone();
+        algorithms.sort();
+        Ok(connection.signing_algorithm_id(*algorithms.first().unwrap()))
     }
 }
 

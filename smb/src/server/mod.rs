@@ -13,6 +13,8 @@ mod tree_connect;
 pub type SMBChannel<R, W> = channel::SMBChannel<R, W>;
 pub type SMBClient = client::SMBClient;
 pub type SMBConnection<R, W> = connection::SMBConnection<R, W>;
+
+pub type SMBConnectionUpdate<R, W> = connection::SMBConnectionUpdate<R, W>;
 pub type SMBLease = lease::SMBLease;
 pub type SMBLeaseTable = lease::SMBLeaseTable;
 pub type SMBOpen<T, R, W> = open::SMBOpen<T, R, W>;
