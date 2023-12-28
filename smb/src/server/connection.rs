@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::future::Future;
 use std::sync::{Arc, Weak};
 
 use derive_builder::Builder;
@@ -156,11 +157,14 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBConnection<R, W, S> {
         let mut ctx = A::Context::init();
         let (read, write) = stream.streams();
         println!("Start message handler");
+        let server = {
+            connection.read().await.server.clone()
+        };
         while let Some(message) = read.messages().next().await {
             println!("Got message: {:?}", message);
             let message = match message.header.command_code() {
                 SMBCommandCode::LegacyNegotiate => connection.handle_legacy_negotiate(),
-                SMBCommandCode::Negotiate => connection.write().await.handle_negotiate::<A>(message),
+                SMBCommandCode::Negotiate => connection.handle_negotiate::<A>(&server, message).await,
                 SMBCommandCode::SessionSetup => {
                     if let SMBBody::SessionSetupRequest(request) = message.body {
                         let spnego_init_buffer: SPNEGOToken<NTLMAuthProvider> =
@@ -322,12 +326,16 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBConnection<R, W, S> {
 type LockedSMBConnection<R, W, S> = Arc<RwLock<SMBConnection<R, W, S>>>;
 type SMBMessageType = SMBMessage<SMBSyncHeader, SMBBody>;
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatelessHandler for LockedSMBConnection<R, W, S> {}
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBLockedHandler<S> for LockedSMBConnection<R, W, S> {
+    async fn handle_negotiate<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+        let server = server.upgrade().ok_or(SMBError::response_error("No server available"))?;
+        let unlocked = server.read().await;
+        self.write().await.handle_negotiate::<A>(&unlocked, message)
+    }
+}
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatelessHandler for SMBConnection<R, W, S> {}
-
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatefulHandler for SMBConnection<R, W, S> {
-    fn handle_negotiate<A: AuthProvider>(&mut self, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatefulHandler<S> for SMBConnection<R, W, S> {
+    fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, message: SMBMessageType) -> SMBResult<SMBMessageType> {
         let SMBMessage { header, body } = message;
         if let SMBBody::NegotiateRequest(request) = body {
             let (update, contexts) = request.validate_and_set_state(self)?;
@@ -341,7 +349,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatefulHandler for SMBC
         }
     }
 
-    fn handle_session_setup(&mut self, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+    fn handle_session_setup(&mut self, server: S, message: SMBMessageType) -> SMBResult<SMBMessageType> {
         let SMBMessage { header, body } = message;
         if let SMBBody::SessionSetupRequest(request) = body {
             Err(SMBError::parse_error("Invalid SMB Request Body (expected SessionSetupRequest"))
@@ -351,7 +359,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatefulHandler for SMBC
     }
 }
 
-trait SMBStatelessHandler {
+trait SMBLockedHandler<S: Server> {
     fn handle_legacy_negotiate(&self) -> SMBResult<SMBMessageType> {
         let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::legacy_response());
         let resp_header = SMBSyncHeader::new(
@@ -365,11 +373,13 @@ trait SMBStatelessHandler {
         );
         Ok(SMBMessage::new(resp_header, resp_body))
     }
+
+    fn handle_negotiate<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>>;
 }
 
-trait SMBStatefulHandler: SMBStatelessHandler {
-    fn handle_negotiate<A: AuthProvider>(&mut self, message: SMBMessageType) -> SMBResult<SMBMessageType>;
-    fn handle_session_setup(&mut self, message: SMBMessageType) -> SMBResult<SMBMessageType>;
+trait SMBStatefulHandler<S: Server> {
+    fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, message: SMBMessageType) -> SMBResult<SMBMessageType>;
+    fn handle_session_setup(&mut self, server: S, message: SMBMessageType) -> SMBResult<SMBMessageType>;
 }
 
 impl<R: SMBReadStream, W: SMBWriteStream, S: Server> TryFrom<(SMBSocketConnection<R, W>, Weak<RwLock<S>>)> for SMBConnection<R, W, S> {
