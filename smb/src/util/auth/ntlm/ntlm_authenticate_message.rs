@@ -1,7 +1,7 @@
 use des::cipher::KeyInit;
-use nom::IResult;
 use nom::bytes::complete::take;
 use nom::combinator::{map, map_res};
+use nom::IResult;
 use nom::number::complete::le_u32;
 use nom::sequence::tuple;
 use rc4::{Key, Rc4, StreamCipher};
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::util::auth::ntlm::ntlm_auth_provider::NTLMAuthContext;
 use crate::util::auth::ntlm::ntlm_message::{NTLMNegotiateFlags, parse_ntlm_buffer_fields};
-use crate::util::auth::User;
+use crate::util::auth::user::User;
 use crate::util::crypto::ntlm_v1_extended::authenticate_v1_extended;
 use crate::util::crypto::ntlm_v2::authenticate_v2;
 

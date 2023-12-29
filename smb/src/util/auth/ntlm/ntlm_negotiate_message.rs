@@ -6,8 +6,8 @@ use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 
 use crate::util::auth::nt_status::NTStatus;
+use crate::util::auth::ntlm::ntlm_challenge_message::NTLMChallengeMessageBody;
 use crate::util::auth::ntlm::ntlm_message::NTLMNegotiateFlags;
-use crate::util::auth::ntlm::NTLMChallengeMessageBody;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 pub struct NTLMNegotiateMessageBody {

@@ -8,7 +8,9 @@ use smb_core::error::SMBError;
 use smb_core::SMBParseResult;
 
 use crate::util::auth::AuthMessage;
-use crate::util::auth::ntlm::{NTLMAuthenticateMessageBody, NTLMChallengeMessageBody, NTLMNegotiateMessageBody};
+use crate::util::auth::ntlm::ntlm_authenticate_message::NTLMAuthenticateMessageBody;
+use crate::util::auth::ntlm::ntlm_challenge_message::NTLMChallengeMessageBody;
+use crate::util::auth::ntlm::ntlm_negotiate_message::NTLMNegotiateMessageBody;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, Clone)]
 pub enum NTLMMessage {

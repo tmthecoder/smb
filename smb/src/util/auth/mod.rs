@@ -1,8 +1,7 @@
-use nom::ParseTo;
-
+pub use auth_context::*;
 use smb_core::SMBParseResult;
+pub use user::*;
 
-use crate::util::as_bytes::AsByteVec;
 use crate::util::auth::nt_status::NTStatus;
 
 pub mod ntlm;
@@ -10,9 +9,6 @@ pub mod spnego;
 mod auth_context;
 mod user;
 pub mod nt_status;
-
-pub type User = user::User;
-pub type GenericAuthContext = auth_context::GenericAuthContext;
 
 pub trait AuthProvider: Send + Sync {
     type Message: AuthMessage + Send + Sync + 'static;
@@ -34,3 +30,4 @@ pub trait AuthMessage {
 pub trait AuthContext {
     fn init() -> Self;
 }
+

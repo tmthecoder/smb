@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::util::auth::{AuthContext, AuthProvider, User};
+use crate::util::auth::{AuthContext, AuthProvider};
 use crate::util::auth::nt_status::NTStatus;
-use crate::util::auth::ntlm::NTLMMessage;
+use crate::util::auth::ntlm::ntlm_message::NTLMMessage;
+use crate::util::auth::user::User;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct NTLMAuthProvider {
