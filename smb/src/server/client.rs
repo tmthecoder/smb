@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::protocol::body::SMBDialect;
+use crate::protocol::body::dialect::SMBDialect;
 
 #[derive(Debug)]
 pub struct SMBClient {

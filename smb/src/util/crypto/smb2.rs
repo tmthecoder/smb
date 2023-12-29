@@ -6,7 +6,7 @@ use sha2::Sha256;
 use smb_core::error::SMBError;
 use smb_core::SMBResult;
 
-use crate::protocol::body::SMBDialect;
+use crate::protocol::body::dialect::SMBDialect;
 use crate::util::crypto::sp800_108;
 
 pub fn calculate_signature(signing_key: &[u8], dialect: SMBDialect, buffer: &[u8], offset: usize, padded_len: usize) -> SMBResult<Vec<u8>> {

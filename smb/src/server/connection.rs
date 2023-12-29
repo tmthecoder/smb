@@ -12,11 +12,14 @@ use uuid::Uuid;
 use smb_core::error::SMBError;
 use smb_core::SMBResult;
 
-use crate::protocol::body::{Capabilities, FileTime, SMBBody, SMBDialect};
+use crate::protocol::body::capabilities::Capabilities;
+use crate::protocol::body::dialect::SMBDialect;
+use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::negotiate::context::{CompressionAlgorithm, EncryptionCipher, HashAlgorithm, RDMATransformID, SigningAlgorithm};
 use crate::protocol::body::negotiate::security_mode::NegotiateSecurityMode;
 use crate::protocol::body::negotiate::SMBNegotiateResponse;
 use crate::protocol::body::session_setup::SMBSessionSetupResponse;
+use crate::protocol::body::SMBBody;
 use crate::protocol::body::tree_connect::SMBTreeConnectResponse;
 use crate::protocol::header::{Header, SMBCommandCode, SMBFlags, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};

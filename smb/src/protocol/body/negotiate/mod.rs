@@ -9,7 +9,9 @@ use smb_core::error::SMBError;
 use smb_core::SMBResult;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
-use crate::protocol::body::{Capabilities, FileTime, SMBDialect};
+use crate::protocol::body::capabilities::Capabilities;
+use crate::protocol::body::dialect::SMBDialect;
+use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::negotiate::context::NegotiateContext;
 use crate::protocol::body::negotiate::security_mode::NegotiateSecurityMode;
 use crate::server::connection::{SMBConnection, SMBConnectionUpdate};

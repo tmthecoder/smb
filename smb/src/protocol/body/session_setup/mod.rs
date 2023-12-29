@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::byte_helper::u16_to_bytes;
-use crate::protocol::body::Capabilities;
+use crate::protocol::body::capabilities::Capabilities;
 use crate::protocol::body::session_setup::flags::{SMBSessionFlags, SMBSessionSetupFlags};
 use crate::protocol::body::session_setup::security_mode::SessionSetupSecurityMode;
 

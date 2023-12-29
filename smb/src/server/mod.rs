@@ -10,7 +10,8 @@ use uuid::Uuid;
 use smb_core::error::SMBError;
 use smb_core::SMBResult;
 
-use crate::protocol::body::{FileTime, SMBDialect};
+use crate::protocol::body::dialect::SMBDialect;
+use crate::protocol::body::filetime::FileTime;
 use crate::server::client::SMBClient;
 use crate::server::connection::SMBConnection;
 use crate::server::lease::SMBLeaseTable;
@@ -215,7 +216,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server 
     }
 
     fn rdma_transform_supported(&self) -> bool {
-        self.chained_compression_supported
+        self.rdma_transform_supported
     }
 
     fn disable_encryption_over_secure_transport(&self) -> bool {

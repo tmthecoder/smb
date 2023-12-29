@@ -1,3 +1,1 @@
-mod options;
-
-pub type SMBCreateOptions = options::SMBCreateOptions;
+pub mod options;

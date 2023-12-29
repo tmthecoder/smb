@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::protocol::body::FileTime;
+use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::server::Server;
 use crate::server::session::SMBSession;
