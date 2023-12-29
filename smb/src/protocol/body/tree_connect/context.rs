@@ -7,8 +7,6 @@ use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
-use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
-
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub enum SMBTreeConnectContext {
     RemotedIdentity(RemotedIdentity),
@@ -120,7 +118,7 @@ pub struct PrivilegeArrayData {
 
 bitflags! {
     #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
-    struct SidAttr: u32 {
+    pub struct SidAttr: u32 {
         const GROUP_ENABLED = 0x4;
         const GROUP_ENABLED_BY_DEFAULT = 0x2;
         const GROUP_IDENTITY = 0x20;
@@ -135,12 +133,8 @@ bitflags! {
 
 bitflags! {
     #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
-    struct LuidAttr: u32 {
+    pub struct LuidAttr: u32 {
         const E = 0x1E;
         const D = 0x1F;
     }
 }
-
-impl_smb_byte_size_for_bitflag! {LuidAttr SidAttr}
-impl_smb_from_bytes_for_bitflag! {LuidAttr SidAttr}
-impl_smb_to_bytes_for_bitflag! {LuidAttr SidAttr}

@@ -1,10 +1,7 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use smb_core::SMBFromBytes;
 use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBToBytes};
-
-use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize, SMBToBytes)]
 pub enum SMBAccessMask {
@@ -67,7 +64,3 @@ bitflags! {
         const GENERIC_READ           = 0x80000000;
     }
 }
-
-impl_smb_byte_size_for_bitflag! { SMBFilePipePrinterAccessMask SMBDirectoryAccessMask }
-impl_smb_to_bytes_for_bitflag! { SMBFilePipePrinterAccessMask SMBDirectoryAccessMask }
-impl_smb_from_bytes_for_bitflag! { SMBFilePipePrinterAccessMask SMBDirectoryAccessMask }

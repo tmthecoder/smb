@@ -2,10 +2,9 @@ use std::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
 
-use smb_core::SMBFromBytes;
 use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBFromBytes, SMBToBytes};
 
-use crate::protocol::body::tree_connect::SMBTreeConnectContext;
+use crate::protocol::body::tree_connect::context::SMBTreeConnectContext;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize, SMBToBytes)]
 pub enum SMBTreeConnectBuffer {

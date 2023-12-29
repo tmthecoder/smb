@@ -3,7 +3,9 @@ use std::fmt::{Debug, Formatter};
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::body::tree_connect::{SMBAccessMask, SMBShareFlags, SMBShareType};
+use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
+use crate::protocol::body::tree_connect::flags::SMBShareFlags;
+use crate::protocol::body::tree_connect::SMBShareType;
 
 pub trait SharedResource: Debug + Send + Sync {
     fn name(&self) -> &str;

@@ -4,7 +4,7 @@ use std::fs::File;
 use uuid::Uuid;
 
 use crate::protocol::body::create::SMBCreateOptions;
-use crate::protocol::body::tree_connect::SMBAccessMask;
+use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::server::connection::SMBConnection;
 use crate::server::lease::SMBLease;
 use crate::server::Server;

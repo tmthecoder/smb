@@ -5,7 +5,7 @@ use std::net::TcpListener;
 use tokio::net::TcpListener;
 
 use smb_core::SMBResult;
-use smb_reader::protocol::body::tree_connect::{SMBAccessMask, SMBDirectoryAccessMask};
+use smb_reader::protocol::body::tree_connect::access_mask::{SMBAccessMask, SMBDirectoryAccessMask};
 use smb_reader::server::{SMBServerBuilder, StartSMBServer};
 use smb_reader::server::share::SMBShare;
 use smb_reader::util::auth::ntlm::NTLMAuthProvider;
