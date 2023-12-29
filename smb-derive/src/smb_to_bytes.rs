@@ -21,7 +21,7 @@ fn to_bytes_parser_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq
 
     Ok(quote! {
         impl ::smb_core::SMBToBytes for #name {
-            #[allow(unused_variables, unused_assignments, clippy::needless_borrow, clippy::identity_op, clippy::self_assignment)]
+            #[allow(unused_variables, unused_assignments, clippy::needless_borrow, clippy::identity_op, clippy::self_assignment, clippy::unnecessary_cast, clippy::double_parens)]
             fn smb_to_bytes(&self) -> Vec<u8> {
                 match self {
                     #(#to_bytes)*

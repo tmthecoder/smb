@@ -346,7 +346,6 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatefulHandler<S> for S
             self.apply_update(update);
             let resp_header = header.create_response_header(0x0, 0);
             let resp_body = SMBNegotiateResponse::from_connection_state::<A, R, W, S>(self, server, contexts);
-            println!("Body: {:?}", resp_body);
             Ok(SMBMessage::new(resp_header, SMBBody::NegotiateResponse(resp_body)))
         } else {
             Err(SMBError::parse_error("Invalid SMB request body (expected NegotiateRequest)"))

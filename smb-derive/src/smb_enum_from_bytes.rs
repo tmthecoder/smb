@@ -20,7 +20,7 @@ fn enum_from_bytes_parser_impl<T: Spanned + PartialEq + Eq, U: Spanned + Partial
     let parser = mappings.iter().map(|mapping| smb_enum_from_bytes(mapping));
     Ok(quote! {
         impl ::smb_core::SMBEnumFromBytes for #name {
-            #[allow(unused_variables, unused_assignments)]
+            #[allow(unused_variables, unused_assignments, clippy::unnecessary_cast)]
             fn smb_enum_from_bytes(input: &[u8], discriminator: u64) -> ::smb_core::SMBParseResult<&[u8], Self, ::smb_core::error::SMBError> {
                 println!("disc: {:?}, input: {:02x?}", discriminator, input);
                 match discriminator {
