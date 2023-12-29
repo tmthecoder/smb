@@ -31,7 +31,30 @@ pub mod session;
 pub mod share;
 pub mod tree_connect;
 
-pub trait Server: Send + Sync {}
+pub trait Server: Send + Sync {
+    fn shares(&self) -> &HashMap<String, Box<dyn SharedResource>>;
+    fn opens(&self) -> &HashMap<u64, Box<dyn Open>>;
+    fn sessions(&self) -> &HashMap<u64, Box<dyn Session>>;
+    fn guid(&self) -> Uuid;
+    fn dfs_capable(&self) -> bool;
+    fn copy_max_chunks(&self) -> u64;
+    fn copy_max_chunk_size(&self) -> u64;
+    fn copy_max_data_size(&self) -> u64;
+    fn hash_level(&self) -> &HashLevel;
+    fn lease_table_list(&self) -> &HashMap<Uuid, SMBLeaseTable>;
+    fn max_resiliency_timeout(&self) -> u64;
+    fn client_table(&self) -> &HashMap<Uuid, SMBClient>;
+    fn encrypt_data(&self) -> bool;
+    fn unencrypted_access(&self) -> bool;
+    fn multi_channel_capable(&self) -> bool;
+    fn anonymous_access(&self) -> bool;
+    fn require_message_signing(&self) -> bool;
+    fn encryption_supported(&self) -> bool;
+    fn compression_supported(&self) -> bool;
+    fn chained_compression_supported(&self) -> bool;
+    fn rdma_transform_supported(&self) -> bool;
+    fn disable_encryption_over_secure_transport(&self) -> bool;
+}
 
 pub trait StartSMBServer {
     fn start(&self) -> impl Future<Output=SMBResult<()>> + Send;
@@ -93,12 +116,112 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthP
     tree_connect_extension: bool,
     #[builder(default = "true")]
     named_pipe_access_over_quic: bool,
+    #[builder(default = "true")]
+    require_message_signing: bool,
+    #[builder(default = "false")]
+    encryption_supported: bool,
+    #[builder(default = "false")]
+    compression_supported: bool,
+    #[builder(default = "false")]
+    rdma_transform_supported: bool,
+    #[builder(default = "false")]
+    chained_compression_supported: bool,
+    #[builder(default = "true")]
+    disable_encryption_over_secure_transport: bool,
     local_listener: Arc<Mutex<SMBListener<Addrs, Listener>>>,
     #[builder(setter(custom))]
     auth_provider: Arc<Auth>,
 }
 
-impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server for SMBServer<Addrs, Listener, Auth> {}
+impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server for SMBServer<Addrs, Listener, Auth> {
+    fn shares(&self) -> &HashMap<String, Box<dyn SharedResource>> {
+        &self.share_list
+    }
+
+    fn opens(&self) -> &HashMap<u64, Box<dyn Open>> {
+        &self.open_table
+    }
+
+    fn sessions(&self) -> &HashMap<u64, Box<dyn Session>> {
+        &self.session_table
+    }
+
+    fn guid(&self) -> Uuid {
+        self.guid
+    }
+
+    fn dfs_capable(&self) -> bool {
+        self.dfs_capable
+    }
+
+    fn copy_max_chunks(&self) -> u64 {
+        self.copy_max_chunks
+    }
+
+    fn copy_max_chunk_size(&self) -> u64 {
+        self.copy_max_chunk_size
+    }
+
+    fn copy_max_data_size(&self) -> u64 {
+        self.copy_max_data_size
+    }
+
+    fn hash_level(&self) -> &HashLevel {
+        &self.hash_level
+    }
+
+    fn lease_table_list(&self) -> &HashMap<Uuid, SMBLeaseTable> {
+        &self.lease_table_list
+    }
+
+    fn max_resiliency_timeout(&self) -> u64 {
+        self.max_resiliency_timeout
+    }
+
+    fn client_table(&self) -> &HashMap<Uuid, SMBClient> {
+        &self.client_table
+    }
+
+    fn encrypt_data(&self) -> bool {
+        self.encrypt_data
+    }
+
+    fn unencrypted_access(&self) -> bool {
+        self.unencrypted_access
+    }
+
+    fn multi_channel_capable(&self) -> bool {
+        self.multi_channel_capable
+    }
+
+    fn anonymous_access(&self) -> bool {
+        self.anonymous_access
+    }
+
+    fn require_message_signing(&self) -> bool {
+        self.require_message_signing
+    }
+
+    fn encryption_supported(&self) -> bool {
+        self.encryption_supported
+    }
+
+    fn compression_supported(&self) -> bool {
+        self.compression_supported
+    }
+
+    fn chained_compression_supported(&self) -> bool {
+        self.chained_compression_supported
+    }
+
+    fn rdma_transform_supported(&self) -> bool {
+        self.chained_compression_supported
+    }
+
+    fn disable_encryption_over_secure_transport(&self) -> bool {
+        self.disable_encryption_over_secure_transport
+    }
+}
 
 impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> SMBServerBuilder<Addrs, Listener, Auth> {
     #[cfg(not(feature = "async"))]

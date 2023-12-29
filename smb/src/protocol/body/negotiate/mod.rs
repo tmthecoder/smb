@@ -39,15 +39,18 @@ pub struct SMBNegotiateRequest {
 }
 
 impl SMBNegotiateRequest {
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: &SMBConnection<R, W, S>) -> SMBResult<(SMBConnectionUpdate<R, W, S>, HashSet<u16>)> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: &SMBConnection<R, W, S>, server: &S) -> SMBResult<(SMBConnectionUpdate<R, W, S>, HashSet<u16>)> {
         if connection.negotiate_dialect() != SMBDialect::default() {
             return Err(SMBError::response_error("Invalid request received"));
         }
         let mut update = SMBConnectionUpdate::default();
         let mut received_ctxs = HashSet::new();
         for context in self.negotiate_contexts.iter() {
-            update = context.validate_and_set_state(update)?;
-            received_ctxs.insert(context.byte_code());
+            let (change, actual) = context.validate_and_set_state(update, server)?;
+            update = change;
+            if actual {
+                received_ctxs.insert(context.byte_code());
+            }
         }
         let mut dialects = Vec::new();
         for dialect in self.dialects.iter() {

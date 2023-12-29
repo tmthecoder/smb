@@ -190,14 +190,14 @@ impl NegotiateContext {
         response_contexts
     }
 
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>, server: &S) -> SMBResult<(SMBConnectionUpdate<R, W, S>, bool)> {
         match self {
             NegotiateContext::PreAuthIntegrityCapabilities(x) => x.validate_and_set_state(connection),
             NegotiateContext::EncryptionCapabilities(x) => x.validate_and_set_state(connection),
-            NegotiateContext::CompressionCapabilities(x) => x.validate_and_set_state(connection),
-            NegotiateContext::NetnameNegotiateContextID(x) => Ok(connection),
+            NegotiateContext::CompressionCapabilities(x) => x.validate_and_set_state(connection, server),
+            NegotiateContext::NetnameNegotiateContextID(x) => Ok((connection, false)),
             NegotiateContext::TransportCapabilities(x) => x.validate_and_set_state(connection),
-            NegotiateContext::RDMATransformCapabilities(x) => x.validate_and_set_state(connection),
+            NegotiateContext::RDMATransformCapabilities(x) => x.validate_and_set_state(connection, server),
             NegotiateContext::SigningCapabilities(x) => x.validate_and_set_state(connection),
         }
     }
@@ -236,9 +236,9 @@ impl PreAuthIntegrityCapabilities {
         }
     }
 
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<(SMBConnectionUpdate<R, W, S>, bool)> {
         if let Some(algorithm) = self.hash_algorithms.first() {
-            Ok(connection.preauth_integrity_hash_id(*algorithm))
+            Ok((connection.preauth_integrity_hash_id(*algorithm), true))
         } else {
             Err(SMBError::response_error("No hash algorithm available for preauth"))
         }
@@ -276,14 +276,14 @@ impl EncryptionCapabilities {
             ciphers: vec![connection.cipher_id()],
         }
     }
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<(SMBConnectionUpdate<R, W, S>, bool)> {
         let mut ciphers = self.ciphers.clone();
         ciphers.sort();
         ciphers.reverse();
         if let Some(cipher) = ciphers.first() {
-            Ok(connection.cipher_id(*cipher))
+            Ok((connection.cipher_id(*cipher), true))
         } else {
-            Ok(connection)
+            Ok((connection, true))
         }
     }
 }
@@ -333,12 +333,14 @@ impl CompressionCapabilities {
             compression_algorithms: connection.compression_ids().clone(),
         }
     }
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
-        // TODO Check server support
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>, server: &S) -> SMBResult<(SMBConnectionUpdate<R, W, S>, bool)> {
+        if !server.compression_supported() {
+            return Ok((connection, false))
+        }
         if self.compression_algorithms.is_empty() {
             return Err(SMBError::response_error("Invalid payload for CompressionCapabilities"));
         }
-        Ok(connection.compression_ids(self.compression_algorithms.clone()))
+        Ok((connection.compression_ids(self.compression_algorithms.clone()), true))
     }
 }
 
@@ -388,11 +390,11 @@ impl TransportCapabilities {
             flags,
         }
     }
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<(SMBConnectionUpdate<R, W, S>, bool)> {
         if self.flags.contains(TransportCapabilitiesFlags::ACCEPT_TRANSPORT_LEVEL_SECURITY) {
-            Ok(connection.accept_transport_security(true))
+            Ok((connection.accept_transport_security(true), true))
         } else {
-            Ok(connection)
+            Ok((connection, true))
         }
     }
 }
@@ -428,12 +430,14 @@ impl RDMATransformCapabilities {
             transform_ids,
         }
     }
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
-        // TODO check server globals
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>, server: &S) -> SMBResult<(SMBConnectionUpdate<R, W, S>, bool)> {
+        if !server.rdma_transform_supported() {
+            return Ok((connection, false))
+        }
         if self.transform_ids.is_empty() {
             return Err(SMBError::response_error("Invalid RDMATransformCapabilities body"));
         }
-        Ok(connection.rdma_transform_ids(self.transform_ids.clone()))
+        Ok((connection.rdma_transform_ids(self.transform_ids.clone()), true))
     }
 }
 
@@ -466,13 +470,13 @@ impl SigningCapabilities {
             signing_algorithms: vec![connection.signing_algorithm_id()],
         }
     }
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<(SMBConnectionUpdate<R, W, S>, bool)> {
         if self.signing_algorithms.is_empty() {
             return Err(SMBError::response_error("Invalid SigningCapabilities payload"));
         }
         let mut algorithms = self.signing_algorithms.clone();
         algorithms.sort();
-        Ok(connection.signing_algorithm_id(*algorithms.first().unwrap()))
+        Ok((connection.signing_algorithm_id(*algorithms.first().unwrap()), true))
     }
 }
 
