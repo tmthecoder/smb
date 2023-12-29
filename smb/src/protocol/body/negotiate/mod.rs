@@ -59,13 +59,37 @@ impl SMBNegotiateRequest {
             }
         }
         dialects.sort();
+
+        let mut security_mode = NegotiateSecurityMode::NEGOTIATE_SIGNING_ENABLED;
+        if server.require_message_signing() {
+            security_mode |= NegotiateSecurityMode::NEGOTIATE_SIGNING_REQUIRED;
+        }
+
+        let mut capabilities = Capabilities::empty();
+        if connection.supports_multi_credit() {
+            capabilities |= Capabilities::LARGE_MTU;
+        }
+        if connection.dialect() as u16 > 0x300 {
+            if server.multi_channel_capable() {
+                capabilities |= Capabilities::MULTI_CHANNEL;
+            }
+            if self.capabilities.contains(Capabilities::PERSISTENT_HANDLES) {
+                capabilities |= Capabilities::PERSISTENT_HANDLES;
+            }
+            if connection.dialect() != SMBDialect::V3_1_1 && server.encryption_supported() && capabilities.contains(Capabilities::ENCRYPTION) {
+                capabilities |= Capabilities::ENCRYPTION;
+            }
+        }
+
         update = update
             .dialect(*dialects.last()
                 .ok_or(SMBError::response_error("No Dialects Present"))?)
             .client_dialects(dialects)
             .client_capabilities(self.capabilities)
             .client_guid(self.client_uuid)
-            .should_sign(self.security_mode.contains(NegotiateSecurityMode::NEGOTIATE_SIGNING_REQUIRED));
+            .should_sign(self.security_mode.contains(NegotiateSecurityMode::NEGOTIATE_SIGNING_REQUIRED))
+            .server_capabilites(capabilities)
+            .server_security_mode(security_mode);
         Ok((update, received_ctxs))
     }
 }
@@ -114,14 +138,14 @@ impl SMBNegotiateResponse {
         }
     }
 
-    pub fn from_connection_state<A: AuthProvider, R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>, negotiate_contexts: HashSet<u16>) -> Self {
+    pub fn from_connection_state<A: AuthProvider, R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>, server: &S, negotiate_contexts: HashSet<u16>) -> Self {
         let buffer = SPNEGOToken::Init(SPNEGOTokenInitBody::<A>::new()).as_bytes(true);
         let negotiate_contexts = NegotiateContext::from_connection_state(connection, negotiate_contexts);
         Self {
             security_mode: connection.server_security_mode(),
             dialect: connection.dialect(),
             // TODO make this server guid
-            guid: Uuid::new_v4(),
+            guid: server.guid(),
             capabilities: connection.server_capabilities(),
             max_transact_size: connection.max_transact_size(),
             max_read_size: connection.max_read_size(),

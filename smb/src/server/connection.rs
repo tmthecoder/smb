@@ -104,6 +104,10 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBConnection<R, W, S> {
     pub fn max_read_size(&self) -> u32 {
         self.max_read_size
     }
+
+    pub fn supports_multi_credit(&self) -> bool {
+        self.supports_multi_credit
+    }
     pub fn transport_name(&self) -> &str {
         &self.transport_name
     }
@@ -341,7 +345,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatefulHandler<S> for S
             let (update, contexts) = request.validate_and_set_state(self, server)?;
             self.apply_update(update);
             let resp_header = header.create_response_header(0x0, 0);
-            let resp_body = SMBNegotiateResponse::from_connection_state::<A, R, W, S>(self, contexts);
+            let resp_body = SMBNegotiateResponse::from_connection_state::<A, R, W, S>(self, server, contexts);
             println!("Body: {:?}", resp_body);
             Ok(SMBMessage::new(resp_header, SMBBody::NegotiateResponse(resp_body)))
         } else {
