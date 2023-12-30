@@ -46,6 +46,9 @@ impl SMBNegotiateRequest {
         if connection.negotiate_dialect() != SMBDialect::default() {
             return Err(SMBError::response_error(NTStatus::AccessDenied));
         }
+        if self.dialects.is_empty() {
+            return Err(SMBError::response_error(NTStatus::InvalidParameter));
+        }
         let mut update = SMBConnectionUpdate::default();
         let mut received_ctxs = HashSet::new();
         for context in self.negotiate_contexts.iter() {

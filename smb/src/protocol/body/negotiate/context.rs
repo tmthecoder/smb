@@ -241,7 +241,7 @@ impl PreAuthIntegrityCapabilities {
         if let Some(algorithm) = self.hash_algorithms.first() {
             Ok((connection.preauth_integrity_hash_id(*algorithm), true))
         } else {
-            Err(SMBError::response_error(NTStatus::AccessDenied))
+            Err(SMBError::response_error(NTStatus::InvalidParameter))
         }
     }
 }
@@ -339,7 +339,7 @@ impl CompressionCapabilities {
             return Ok((connection, false))
         }
         if self.compression_algorithms.is_empty() {
-            return Err(SMBError::response_error(NTStatus::AccessDenied));
+            return Err(SMBError::response_error(NTStatus::InvalidParameter));
         }
         Ok((connection.compression_ids(self.compression_algorithms.clone()), true))
     }
@@ -436,7 +436,7 @@ impl RDMATransformCapabilities {
             return Ok((connection, false))
         }
         if self.transform_ids.is_empty() {
-            return Err(SMBError::response_error(NTStatus::AccessDenied));
+            return Err(SMBError::response_error(NTStatus::InvalidParameter));
         }
         Ok((connection.rdma_transform_ids(self.transform_ids.clone()), true))
     }
@@ -473,7 +473,7 @@ impl SigningCapabilities {
     }
     pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<(SMBConnectionUpdate<R, W, S>, bool)> {
         if self.signing_algorithms.is_empty() {
-            return Err(SMBError::response_error(NTStatus::AccessDenied));
+            return Err(SMBError::response_error(NTStatus::InvalidParameter));
         }
         let mut algorithms = self.signing_algorithms.clone();
         algorithms.sort();
