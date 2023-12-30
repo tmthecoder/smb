@@ -2,6 +2,8 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io;
 
+use crate::nt_status::NTStatus;
+
 #[derive(Debug)]
 pub enum SMBError {
     ParseError(SMBParseError),
@@ -121,20 +123,20 @@ impl Display for SMBIOError {
 
 #[derive(Debug)]
 pub struct SMBResponseError {
-    message: String,
+    status: NTStatus,
 }
 
-impl<T: Into<String>> From<T> for SMBResponseError {
+impl<T: Into<NTStatus>> From<T> for SMBResponseError {
     fn from(value: T) -> Self {
         Self {
-            message: value.into()
+            status: value.into()
         }
     }
 }
 
 impl Display for SMBResponseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SMB response generation failed with: {}", self.message)
+        write!(f, "SMB response generation failed with: {:?}", self.status)
     }
 }
 

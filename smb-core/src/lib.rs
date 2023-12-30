@@ -6,6 +6,8 @@ use error::SMBError;
 
 pub mod error;
 
+pub mod nt_status;
+
 pub type SMBParseResult<I, O, E = SMBError> = Result<(I, O), E>;
 pub type SMBResult<O, E = SMBError> = Result<O, E>;
 

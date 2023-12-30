@@ -6,8 +6,9 @@ use nom::number::complete::le_u8;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 
+use smb_core::nt_status::NTStatus;
+
 use crate::util::auth::{AuthMessage, AuthProvider};
-use crate::util::auth::nt_status::NTStatus;
 use crate::util::auth::spnego::der_utils::{DER_ENCODING_BYTE_ARRAY_TAG, DER_ENCODING_ENUM_TAG, DER_ENCODING_OID_TAG, DER_ENCODING_SEQUENCE_TAG, encode_der_bytes, get_array_field_len, get_field_size, get_length, MECH_LIST_MIC_TAG, NEG_STATE_TAG, NEG_TOKEN_RESP_TAG, parse_der_byte_array, parse_der_oid, parse_field_with_len, parse_length, RESPONSE_TOKEN_TAG, SUPPORTED_MECH_TAG};
 
 #[repr(u8)]

@@ -1,16 +1,16 @@
-use nom::bytes::complete::take;
-use nom::combinator::map;
-use nom::IResult;
-use nom::number::complete::{le_u16, le_u32, le_u64, le_u8};
-use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
 
+use smb_core::error::SMBError;
+use smb_core::nt_status::NTStatus;
+use smb_core::SMBResult;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
-use crate::byte_helper::u16_to_bytes;
 use crate::protocol::body::capabilities::Capabilities;
 use crate::protocol::body::session_setup::flags::{SMBSessionFlags, SMBSessionSetupFlags};
 use crate::protocol::body::session_setup::security_mode::SessionSetupSecurityMode;
+use crate::server::connection::{SMBConnection, SMBConnectionUpdate};
+use crate::server::Server;
+use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
 
 pub mod security_mode;
 pub mod flags;
@@ -31,46 +31,14 @@ pub struct SMBSessionSetupRequest {
 }
 
 impl SMBSessionSetupRequest {
-    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (
-            _,
-            (
-                _,
-                flags,
-                security_mode,
-                capabilities,
-                _,
-                security_buffer_offset,
-                security_buffer_len,
-                previous_session_id,
-            ),
-        ) = tuple((
-            take(2_usize),
-            map(le_u8, SMBSessionSetupFlags::from_bits_truncate),
-            map(le_u8, SessionSetupSecurityMode::from_bits_truncate),
-            map(le_u32, Capabilities::from_bits_truncate),
-            take(4_usize),
-            map(le_u16, |x| x - 64),
-            le_u16,
-            le_u64,
-        ))(bytes)?;
-        let (remaining, buffer) = take(security_buffer_offset)(bytes)
-            .and_then(|(remaining, _)| take(security_buffer_len)(remaining))
-            .map(|res| (res.0, res.1.to_vec()))?;
-        Ok((
-            remaining,
-            Self {
-                flags,
-                security_mode,
-                capabilities,
-                previous_session_id,
-                buffer,
-            },
-        ))
-    }
-
     pub fn get_buffer_copy(&self) -> Vec<u8> {
         self.buffer.clone()
+    }
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: &SMBConnection<R, W, S>, server: &S) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
+        if server.encrypt_data() && !server.unencrypted_access() {
+            return Err(SMBError::response_error(NTStatus::AccessDenied));
+        }
+        Err(SMBError::response_error(NTStatus::AccessDenied))
     }
 }
 
@@ -96,19 +64,5 @@ impl SMBSessionSetupResponse {
             session_flags: SMBSessionFlags::empty(),
             buffer: token,
         })
-    }
-}
-
-impl SMBSessionSetupResponse {
-    pub fn as_bytes(&self) -> Vec<u8> {
-        let security_offset = 72_u16;
-        [
-            &[9, 0][0..],
-            &u16_to_bytes(self.session_flags.bits()),
-            &u16_to_bytes(security_offset),
-            &u16_to_bytes(self.buffer.len() as u16),
-            &*self.buffer,
-        ]
-            .concat()
     }
 }

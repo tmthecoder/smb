@@ -1,15 +1,12 @@
 pub use auth_context::*;
+use smb_core::nt_status::NTStatus;
 use smb_core::SMBParseResult;
 pub use user::*;
-
-use crate::util::auth::nt_status::NTStatus;
 
 pub mod ntlm;
 pub mod spnego;
 mod auth_context;
 mod user;
-pub mod nt_status;
-
 pub trait AuthProvider: Send + Sync {
     type Message: AuthMessage + Send + Sync + 'static;
     type Context: AuthContext + Send + Sync + 'static;

@@ -10,6 +10,7 @@ use tokio_stream::StreamExt;
 use uuid::Uuid;
 
 use smb_core::error::SMBError;
+use smb_core::nt_status::NTStatus;
 use smb_core::SMBResult;
 
 use crate::protocol::body::capabilities::Capabilities;
@@ -29,7 +30,6 @@ use crate::server::request::Request;
 use crate::server::session::Session;
 use crate::socket::message_stream::{SMBReadStream, SMBSocketConnection, SMBWriteStream};
 use crate::util::auth::{AuthContext, AuthMessage, AuthProvider};
-use crate::util::auth::nt_status::NTStatus;
 use crate::util::auth::ntlm::NTLMAuthProvider;
 use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenResponseBody};
 
@@ -202,7 +202,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBConnection<R, W, S> {
                         let resp_header = message.header.create_response_header(0, 1010);
                         Ok(SMBMessage::new(resp_header, resp_body))
                     } else {
-                        Err(SMBError::response_error("Invalid Session Setup Payload"))
+                        Err(SMBError::response_error(NTStatus::AccessDenied))
                     }
                 },
                 SMBCommandCode::TreeConnect => {
@@ -215,14 +215,14 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBConnection<R, W, S> {
                         let resp_header = message.header.create_response_header(0, 1010);
                         Ok(SMBMessage::new(resp_header, resp_body))
                     } else {
-                        Err(SMBError::response_error("Invalid tree connect payload"))
+                        Err(SMBError::response_error(NTStatus::AccessDenied))
                     }
                 }
                 SMBCommandCode::LogOff => {
                     println!("got logoff");
                     break;
                 }
-                _ => Err(SMBError::response_error("Invalid request payload"))
+                _ => Err(SMBError::response_error(NTStatus::AccessDenied))
             };
             if let Ok(message) = message {
                 let sent = write.write_message(&message).await?;
@@ -335,7 +335,7 @@ type SMBMessageType = SMBMessage<SMBSyncHeader, SMBBody>;
 
 impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBLockedHandler<S> for LockedSMBConnection<R, W, S> {
     async fn handle_negotiate<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
-        let server = server.upgrade().ok_or(SMBError::response_error("No server available"))?;
+        let server = server.upgrade().ok_or(SMBError::server_error("No server available"))?;
         let unlocked = server.read().await;
         self.write().await.handle_negotiate::<A>(&unlocked, message)
     }

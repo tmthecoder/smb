@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
+use smb_core::nt_status::NTStatus;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::byte_helper::u16_to_bytes;
@@ -240,7 +241,7 @@ impl PreAuthIntegrityCapabilities {
         if let Some(algorithm) = self.hash_algorithms.first() {
             Ok((connection.preauth_integrity_hash_id(*algorithm), true))
         } else {
-            Err(SMBError::response_error("No hash algorithm available for preauth"))
+            Err(SMBError::response_error(NTStatus::AccessDenied))
         }
     }
 }
@@ -338,7 +339,7 @@ impl CompressionCapabilities {
             return Ok((connection, false))
         }
         if self.compression_algorithms.is_empty() {
-            return Err(SMBError::response_error("Invalid payload for CompressionCapabilities"));
+            return Err(SMBError::response_error(NTStatus::AccessDenied));
         }
         Ok((connection.compression_ids(self.compression_algorithms.clone()), true))
     }
@@ -435,7 +436,7 @@ impl RDMATransformCapabilities {
             return Ok((connection, false))
         }
         if self.transform_ids.is_empty() {
-            return Err(SMBError::response_error("Invalid RDMATransformCapabilities body"));
+            return Err(SMBError::response_error(NTStatus::AccessDenied));
         }
         Ok((connection.rdma_transform_ids(self.transform_ids.clone()), true))
     }
@@ -472,7 +473,7 @@ impl SigningCapabilities {
     }
     pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<(SMBConnectionUpdate<R, W, S>, bool)> {
         if self.signing_algorithms.is_empty() {
-            return Err(SMBError::response_error("Invalid SigningCapabilities payload"));
+            return Err(SMBError::response_error(NTStatus::AccessDenied));
         }
         let mut algorithms = self.signing_algorithms.clone();
         algorithms.sort();

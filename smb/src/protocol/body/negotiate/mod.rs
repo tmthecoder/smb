@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use smb_core::error::SMBError;
+use smb_core::nt_status::NTStatus;
 use smb_core::SMBResult;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
@@ -43,7 +44,7 @@ pub struct SMBNegotiateRequest {
 impl SMBNegotiateRequest {
     pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: &SMBConnection<R, W, S>, server: &S) -> SMBResult<(SMBConnectionUpdate<R, W, S>, HashSet<u16>)> {
         if connection.negotiate_dialect() != SMBDialect::default() {
-            return Err(SMBError::response_error("Invalid request received"));
+            return Err(SMBError::response_error(NTStatus::AccessDenied));
         }
         let mut update = SMBConnectionUpdate::default();
         let mut received_ctxs = HashSet::new();
@@ -85,7 +86,7 @@ impl SMBNegotiateRequest {
 
         update = update
             .dialect(*dialects.last()
-                .ok_or(SMBError::response_error("No Dialects Present"))?)
+                .ok_or(SMBError::response_error(NTStatus::AccessDenied))?)
             .client_dialects(dialects)
             .client_capabilities(self.capabilities)
             .client_guid(self.client_uuid)
