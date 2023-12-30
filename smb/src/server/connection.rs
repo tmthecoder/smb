@@ -22,7 +22,9 @@ use crate::protocol::body::negotiate::SMBNegotiateResponse;
 use crate::protocol::body::session_setup::SMBSessionSetupResponse;
 use crate::protocol::body::SMBBody;
 use crate::protocol::body::tree_connect::SMBTreeConnectResponse;
-use crate::protocol::header::{Header, SMBCommandCode, SMBFlags, SMBSyncHeader};
+use crate::protocol::header::{Header, SMBSyncHeader};
+use crate::protocol::header::command_code::SMBCommandCode;
+use crate::protocol::header::flags::SMBFlags;
 use crate::protocol::message::{Message, SMBMessage};
 use crate::server::{Server, SMBServerDiagnosticsUpdate};
 use crate::server::preauth_session::SMBPreauthSession;
@@ -355,9 +357,10 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatefulHandler<S> for S
         }
     }
 
-    fn handle_session_setup(&mut self, server: S, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+    fn handle_session_setup(&mut self, server: &S, message: SMBMessageType) -> SMBResult<SMBMessageType> {
         let SMBMessage { header, body } = message;
         if let SMBBody::SessionSetupRequest(request) = body {
+            request.validate_and_set_state(self, server, &header)?;
             Err(SMBError::parse_error("Invalid SMB Request Body (expected SessionSetupRequest"))
         } else {
             Err(SMBError::parse_error("Invalid SMB Request Body (expected SessionSetupRequest"))
@@ -385,7 +388,7 @@ trait SMBLockedHandler<S: Server> {
 
 trait SMBStatefulHandler<S: Server> {
     fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, message: SMBMessageType) -> SMBResult<SMBMessageType>;
-    fn handle_session_setup(&mut self, server: S, message: SMBMessageType) -> SMBResult<SMBMessageType>;
+    fn handle_session_setup(&mut self, server: &S, message: SMBMessageType) -> SMBResult<SMBMessageType>;
 }
 
 impl<R: SMBReadStream, W: SMBWriteStream, S: Server> TryFrom<(SMBSocketConnection<R, W>, Weak<RwLock<S>>)> for SMBConnection<R, W, S> {

@@ -14,10 +14,9 @@ use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse
 use crate::protocol::body::session_setup::{SMBSessionSetupRequest, SMBSessionSetupResponse};
 use crate::protocol::body::tree_connect::{SMBTreeConnectRequest, SMBTreeConnectResponse};
 use crate::protocol::body::tree_disconnect::{SMBTreeDisconnectRequest, SMBTreeDisconnectResponse};
+use crate::protocol::header::command_code::{LegacySMBCommandCode, SMBCommandCode};
 use crate::protocol::header::Header;
-use crate::protocol::header::LegacySMBCommandCode;
 use crate::protocol::header::LegacySMBHeader;
-use crate::protocol::header::SMBCommandCode;
 use crate::protocol::header::SMBSyncHeader;
 
 pub mod capabilities;

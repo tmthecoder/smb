@@ -8,6 +8,7 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 use crate::protocol::body::capabilities::Capabilities;
 use crate::protocol::body::session_setup::flags::{SMBSessionFlags, SMBSessionSetupFlags};
 use crate::protocol::body::session_setup::security_mode::SessionSetupSecurityMode;
+use crate::protocol::header::SMBSyncHeader;
 use crate::server::connection::{SMBConnection, SMBConnectionUpdate};
 use crate::server::Server;
 use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
@@ -34,10 +35,15 @@ impl SMBSessionSetupRequest {
     pub fn get_buffer_copy(&self) -> Vec<u8> {
         self.buffer.clone()
     }
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: &SMBConnection<R, W, S>, server: &S) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
-        if server.encrypt_data() && !server.unencrypted_access() {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: &SMBConnection<R, W, S>, server: &S, header: &SMBSyncHeader) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
+        if server.encrypt_data() && (!server.unencrypted_access()
+            && (connection.dialect() as u16 <= 0x300
+            || !connection.client_capabilities().contains(Capabilities::ENCRYPTION))) {
             return Err(SMBError::response_error(NTStatus::AccessDenied));
         }
+
+        // if header.sess
+
         Err(SMBError::response_error(NTStatus::AccessDenied))
     }
 }
