@@ -21,6 +21,7 @@ async fn main() -> SMBResult<()> {
     let builder = SMBServerBuilder::<_, TcpListener, NTLMAuthProvider>::default()
         .anonymous_access(true)
         .unencrypted_access(true)
+        .encrypt_data(false)
         .add_share("test", share)
         .auth_provider(NTLMAuthProvider::new(vec![
             User::new("tejasmehta", "password")

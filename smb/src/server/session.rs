@@ -11,14 +11,17 @@ use crate::server::Server;
 use crate::server::tree_connect::TreeConnect;
 use crate::util::auth::{AuthContext, AuthProvider};
 
-pub trait Session<C: Connection>: Send + Sync {
+pub trait Session<C: Connection, A: AuthProvider>: Send + Sync {
     fn init(id: u64, encrypt_data: bool, preauth_integrity_hash_value: Vec<u8>, conn: Arc<RwLock<C>>) -> Self;
 
     fn id(&self) -> u64;
     fn connection(&self) -> Arc<RwLock<C>>;
+    fn set_connection(&mut self, connection: Arc<RwLock<C>>);
     fn state(&self) -> SessionState;
     fn anonymous(&self) -> bool;
     fn guest(&self) -> bool;
+    fn security_context_mut(&mut self) -> &mut A::Context;
+    fn encrypt_data(&self) -> bool;
 }
 
 #[derive(Builder)]
@@ -65,7 +68,7 @@ pub enum SessionState {
     Expired
 }
 
-impl<C: Connection, S: Server> Session<C> for SMBSession<C, S> {
+impl<C: Connection, S: Server> Session<C, S::AuthType> for SMBSession<C, S> {
     fn init(id: u64, encrypt_data: bool, preauth_integrity_hash_value: Vec<u8>, conn: Arc<RwLock<C>>) -> Self {
         Self {
             session_id: id,
@@ -101,6 +104,10 @@ impl<C: Connection, S: Server> Session<C> for SMBSession<C, S> {
         self.connection.clone()
     }
 
+    fn set_connection(&mut self, connection: Arc<RwLock<C>>) {
+        self.connection = connection;
+    }
+
     fn state(&self) -> SessionState {
         self.state
     }
@@ -111,5 +118,13 @@ impl<C: Connection, S: Server> Session<C> for SMBSession<C, S> {
 
     fn guest(&self) -> bool {
         self.is_guest
+    }
+
+    fn security_context_mut(&mut self) -> &mut <S::AuthType as AuthProvider>::Context {
+        &mut self.security_context
+    }
+
+    fn encrypt_data(&self) -> bool {
+        self.encrypt_data
     }
 }

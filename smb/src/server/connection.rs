@@ -32,7 +32,6 @@ use crate::server::request::Request;
 use crate::server::session::Session;
 use crate::socket::message_stream::{SMBReadStream, SMBSocketConnection, SMBWriteStream};
 use crate::util::auth::{AuthContext, AuthMessage, AuthProvider};
-use crate::util::auth::ntlm::NTLMAuthProvider;
 use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenResponseBody};
 
 // use tokio::sync::Mutex;
@@ -91,7 +90,7 @@ pub struct SMBConnection<R: SMBReadStream, W: SMBWriteStream, S: Server> {
     max_read_size: u32,
     supports_multi_credit: bool,
     transport_name: String,
-    session_table: HashMap<u64, S::SessionType>,
+    session_table: HashMap<u64, Arc<RwLock<S::SessionType>>>,
     creation_time: FileTime,
     preauth_session_table: HashMap<u64, SMBPreauthSession>, // TODO
     client_guid: Uuid,
@@ -204,7 +203,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
     pub fn underlying_socket(&self) -> Arc<Mutex<SMBSocketConnection<R, W>>> {
         self.underlying_stream.clone()
     }
-    pub fn sessions(&self) -> &HashMap<u64, S::SessionType> {
+    pub fn sessions(&self) -> &HashMap<u64, Arc<RwLock<S::SessionType>>> {
         &self.session_table
     }
     pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, connection: Arc<RwLock<SMBConnection<R, W, S>>>, auth_provider: Arc<A>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
@@ -219,39 +218,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
             let message = match message.header.command_code() {
                 SMBCommandCode::LegacyNegotiate => connection.handle_legacy_negotiate(),
                 SMBCommandCode::Negotiate => connection.handle_negotiate::<A>(&server, message).await,
-                SMBCommandCode::SessionSetup => {
-                    if let SMBBody::SessionSetupRequest(request) = message.body {
-                        let spnego_init_buffer: SPNEGOToken<NTLMAuthProvider> =
-                            SPNEGOToken::parse(&request.get_buffer_copy()).unwrap().1;
-                        println!("SPNEGOBUFFER: {:?}", spnego_init_buffer);
-                        let (status, output) = match spnego_init_buffer {
-                            SPNEGOToken::Init(init_msg) => {
-                                let mech_token = init_msg.mech_token.ok_or(SMBError::parse_error("Parse failure"))?;
-                                let ntlm_msg =
-                                    A::Message::parse(&mech_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
-                                auth_provider.accept_security_context(&ntlm_msg, &mut ctx)
-                            }
-                            SPNEGOToken::Response(resp_msg) => {
-                                let response_token = resp_msg.response_token.ok_or(SMBError::parse_error("Parse failure"))?;
-                                let ntlm_msg =
-                                    A::Message::parse(&response_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
-                                auth_provider.accept_security_context(&ntlm_msg, &mut ctx)
-                            }
-                            _ => { (NTStatus::StatusSuccess, A::Message::empty()) }
-                        };
-                        // println!("status: {:?}, output: {:?}", status, output);
-                        let spnego_response_body = SPNEGOTokenResponseBody::<A>::new(status.clone(), output);
-                        let resp = SMBSessionSetupResponse::from_request(
-                            request,
-                            spnego_response_body.as_bytes(),
-                        ).unwrap();
-                        let resp_body = SMBBody::SessionSetupResponse(resp);
-                        let resp_header = message.header.create_response_header(0, 1010);
-                        Ok(SMBMessage::new(resp_header, resp_body))
-                    } else {
-                        Err(SMBError::response_error(NTStatus::AccessDenied))
-                    }
-                },
+                SMBCommandCode::SessionSetup => connection.handle_session_setup(&server, message).await,
                 SMBCommandCode::TreeConnect => {
                     if let SMBBody::TreeConnectRequest(request) = message.body {
                         println!("Tree connect request: {:?}", request);
@@ -387,14 +354,33 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection
         self.write().await.handle_negotiate::<A>(&unlocked, message)
     }
 
-    async fn handle_session_setup<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+    async fn handle_session_setup(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
         let server = server.upgrade().ok_or(SMBError::server_error("No server available"))?;
+        println!("Got session setup");
         let unlocked = server.read().await;
         let cloned_arc = self.clone();
-        let create_session = |id: u64, encrypt_data: bool, preauth: Vec<u8>| {
-            S::SessionType::init(id, encrypt_data, preauth, cloned_arc)
+        let get_locked = || {
+            cloned_arc
         };
-        self.write().await.handle_session_setup(&unlocked, message, create_session).await
+        let (session, buffer) = self.write().await.handle_session_setup(&unlocked, &message, get_locked).await?;
+        let auth_provider = unlocked.auth_provider().clone();
+        drop(unlocked);
+        let (_, token) = SPNEGOToken::<S::AuthType>::parse(&buffer)?;
+        let mut session_write = session.write().await;
+        let ctx = session_write.security_context_mut();
+        let (status, msg) = token.get_message(auth_provider.as_ref(), ctx)?;
+        drop(session_write);
+        let response = SPNEGOTokenResponseBody::<S::AuthType>::new(status.clone(), msg);
+        let (id, session_setup) = {
+            let session_read = session.read().await;
+            let resp = SMBSessionSetupResponse::from_session_state::<S>(&session_read, response.as_bytes());
+            (session_read.id(), resp)
+        };
+        {
+            server.write().await.sessions_mut().insert(id, session.clone());
+        }
+        let header = message.header.create_response_header(0, id);
+        Ok(SMBMessage::new(header, SMBBody::SessionSetupResponse(session_setup)))
     }
 }
 
@@ -412,13 +398,30 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBSta
         }
     }
 
-    async fn handle_session_setup<F: FnOnce(u64, bool, Vec<u8>) -> S::SessionType>(&mut self, server: &S, message: SMBMessageType, create_session_closure: F) -> SMBResult<SMBMessageType> {
+    async fn handle_session_setup<F: FnOnce() -> Arc<RwLock<Self>>>(&mut self, server: &S, message: &SMBMessageType, get_locked: F) -> SMBResult<(Arc<RwLock<S::SessionType>>, Vec<u8>)> {
         let SMBMessage { header, body } = message;
         if let SMBBody::SessionSetupRequest(request) = body {
-            let (update, session_id, buffer) = request.validate_and_set_state(self, server, &header).await?;
+            println!("in inner");
+            let (update, session, buffer) = request.validate_and_set_state(self, server, &header).await?;
             self.apply_update(update);
-            let session = create_session_closure(1, server.encrypt_data(), self.preauth_integrity_hash_value.clone());
-            todo!()
+            let locked_conn = get_locked();
+            println!("got locked");
+            let s = match session {
+                None => {
+                    let session = S::SessionType::init(1, server.encrypt_data(), self.preauth_integrity_hash_value.clone(), locked_conn);
+                    let id = session.id();
+                    let wrapped_session = Arc::new(RwLock::new(session));
+                    self.session_table.insert(id, wrapped_session.clone());
+                    wrapped_session
+                },
+                Some(x) => {
+                    // Drop the old connection by setting the session's connection reference to this one
+                    // since we already validated that the session can be claimed by this connection
+                    x.write().await.set_connection(locked_conn);
+                    x
+                }
+            };
+            Ok((s, buffer))
         } else {
             Err(SMBError::parse_error("Invalid SMB Request Body (expected SessionSetupRequest"))
         }
@@ -442,13 +445,13 @@ trait SMBLockedHandler<S: Server> {
 
     fn handle_negotiate<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>>;
 
-    fn handle_session_setup<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>>;
+    fn handle_session_setup(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>>;
 
 }
 
 trait SMBStatefulHandler<S: Server> {
     fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, message: SMBMessageType) -> SMBResult<SMBMessageType>;
-    fn handle_session_setup<F: FnOnce(u64, bool, Vec<u8>) -> S::SessionType>(&mut self, server: &S, message: SMBMessageType, create_session_closure: F) -> impl Future<Output=SMBResult<SMBMessageType>>;
+    fn handle_session_setup<F: FnOnce() -> Arc<RwLock<Self>>>(&mut self, server: &S, message: &SMBMessageType, create_session_closure: F) -> impl Future<Output=SMBResult<(Arc<RwLock<S::SessionType>>, Vec<u8>)>>;
 }
 
 impl<R: SMBReadStream, W: SMBWriteStream, S: Server> TryFrom<(SMBSocketConnection<R, W>, Weak<RwLock<S>>)> for SMBConnection<R, W, S> {

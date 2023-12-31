@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
 use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
@@ -18,6 +20,7 @@ use crate::server::preauth_session::SMBPreauthSession;
 use crate::server::Server;
 use crate::server::session::{Session, SessionState};
 use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
+use crate::util::auth::AuthProvider;
 
 pub mod security_mode;
 pub mod flags;
@@ -41,7 +44,7 @@ impl SMBSessionSetupRequest {
     pub fn get_buffer_copy(&self) -> Vec<u8> {
         self.buffer.clone()
     }
-    pub async fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>>(&self, connection: &SMBConnection<R, W, S>, server: &S, header: &SMBSyncHeader) -> SMBResult<(SMBConnectionUpdate<R, W, S>, Option<u64>, Vec<u8>)> {
+    pub async fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>>(&self, connection: &SMBConnection<R, W, S>, server: &S, header: &SMBSyncHeader) -> SMBResult<(SMBConnectionUpdate<R, W, S>, Option<Arc<RwLock<S::SessionType>>>, Vec<u8>)> {
         let mut update = SMBConnectionUpdate::default();
         if server.encrypt_data() && (!server.unencrypted_access()
             && (connection.dialect().is_smb3()
@@ -56,10 +59,11 @@ impl SMBSessionSetupRequest {
         } else if connection.dialect().is_smb3() && server.multi_channel_capable() && self.flags.contains(SMBSessionSetupFlags::BINDING) {
             match server.sessions().get(&header.session_id) {
                 None => Err(SMBError::response_error(NTStatus::UserSessionDeleted)),
-                Some(session) => {
+                Some(locked_session) => {
                     // TODO Session checking
+                    let session = locked_session.read().await;
                     let locked_conn = session.connection();
-                    let session_conn = locked_conn.try_read().unwrap();
+                    let session_conn = locked_conn.read().await;
                     if session_conn.dialect() != connection.dialect() ||
                         header.flags.contains(SMBFlags::SIGNED) {
                         return Err(SMBError::response_error(NTStatus::InvalidParameter));
@@ -82,16 +86,15 @@ impl SMBSessionSetupRequest {
                         let preauth_session = SMBPreauthSession::new(session.id(), connection.preauth_integtiry_hash_value().clone());
                         update = update.preauth_session_table(HashMap::from([(session.id(), preauth_session)]));
                     }
-                    Ok(Some(header.session_id))
+                    Ok(Some(locked_session.clone()))
                 }
             }
         } else if !connection.dialect().is_smb3() && !server.multi_channel_capable() && self.flags.contains(SMBSessionSetupFlags::BINDING) {
             Err(SMBError::response_error(NTStatus::RequestNotAccepted))
         } else {
-            match connection.sessions().contains_key(&header.session_id) {
-                true => Ok(Some(header.session_id)),
-                false => Err(SMBError::response_error(NTStatus::UserSessionDeleted)),
-            }
+            connection.sessions().get(&header.session_id).
+                map(|s| Some(s.clone())).
+                ok_or(SMBError::response_error(NTStatus::UserSessionDeleted))
         }?;
 
         Ok((update, session, buffer))
@@ -109,6 +112,23 @@ pub struct SMBSessionSetupResponse {
 
 impl SMBSessionSetupResponse {
     pub fn new(session_flags: SMBSessionFlags, buffer: Vec<u8>) -> Self {
+        Self {
+            session_flags,
+            buffer,
+        }
+    }
+
+    pub fn from_session_state<S: Server>(session: &S::SessionType, buffer: Vec<u8>) -> Self {
+        let mut session_flags = SMBSessionFlags::empty();
+        if session.guest() {
+            session_flags |= SMBSessionFlags::IS_GUEST;
+        }
+        if session.anonymous() {
+            session_flags |= SMBSessionFlags::IS_NULL;
+        }
+        if session.encrypt_data() {
+            session_flags |= SMBSessionFlags::ENCRYPT_DATA;
+        }
         Self {
             session_flags,
             buffer,

@@ -5,19 +5,45 @@ use nom::IResult;
 use nom::number::complete::le_u8;
 use serde::{Deserialize, Serialize};
 
-use crate::util::auth::AuthProvider;
+use smb_core::{SMBParseResult, SMBResult};
+use smb_core::error::SMBError;
+use smb_core::nt_status::NTStatus;
+
+use crate::util::auth::{AuthMessage, AuthProvider};
 use crate::util::auth::spnego::{SPNEGOTokenInit2Body, SPNEGOTokenInitBody, SPNEGOTokenResponseBody};
-use crate::util::auth::spnego::der_utils::{APPLICATION_TAG, DER_ENCODING_OID_TAG, DER_ENCODING_SEQUENCE_TAG, get_field_size, get_length, NEG_TOKEN_INIT_TAG, NEG_TOKEN_RESP_TAG, parse_field_with_len, SPNEGO_ID};
+use crate::util::auth::spnego::der_utils::{APPLICATION_TAG, DER_ENCODING_OID_TAG, get_field_size, get_length, NEG_TOKEN_INIT_TAG, NEG_TOKEN_RESP_TAG, parse_field_with_len, SPNEGO_ID};
 
 #[derive(Debug, Deserialize, Serialize)]
-pub enum SPNEGOToken<T: AuthProvider> {
-    Init(SPNEGOTokenInitBody<T>),
-    Init2(SPNEGOTokenInit2Body<T>),
-    Response(SPNEGOTokenResponseBody<T>),
+pub enum SPNEGOToken<A: AuthProvider> {
+    Init(SPNEGOTokenInitBody<A>),
+    Init2(SPNEGOTokenInit2Body<A>),
+    Response(SPNEGOTokenResponseBody<A>),
 }
 
-impl<T: AuthProvider> SPNEGOToken<T> {
-    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+impl<A: AuthProvider> SPNEGOToken<A> {
+    pub fn get_message(&self, auth_provider: &A, ctx: &mut A::Context) -> SMBResult<(NTStatus, A::Message)> {
+        let result = match self {
+            SPNEGOToken::Init(init_msg) => {
+                let mech_token = init_msg.mech_token.as_ref().ok_or(SMBError::parse_error("Parse failure"))?;
+                let ntlm_msg =
+                    A::Message::parse(&mech_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
+                auth_provider.accept_security_context(&ntlm_msg, ctx)
+            }
+            SPNEGOToken::Response(resp_msg) => {
+                let response_token = resp_msg.response_token.as_ref().ok_or(SMBError::parse_error("Parse failure"))?;
+                let ntlm_msg =
+                    A::Message::parse(&response_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
+                auth_provider.accept_security_context(&ntlm_msg, ctx)
+            }
+            _ => { (NTStatus::StatusSuccess, A::Message::empty()) }
+        };
+
+        Ok(result)
+    }
+    pub fn parse(bytes: &[u8]) -> SMBParseResult<&[u8], Self> {
+        Self::parse_inner(bytes).map_err(|e| SMBError::parse_error(e.to_owned()))
+    }
+    fn parse_inner(bytes: &[u8]) -> IResult<&[u8], Self> {
         println!("bytes: {:?},", bytes);
         let (remaining, tag) = le_u8(bytes)?;
         match tag {

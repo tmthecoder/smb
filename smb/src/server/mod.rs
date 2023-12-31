@@ -35,11 +35,12 @@ pub mod tree_connect;
 
 pub trait Server: Send + Sync {
     type ConnectionType: Connection;
-    type SessionType: Session<Self::ConnectionType>;
+    type SessionType: Session<Self::ConnectionType, Self::AuthType>;
     type AuthType: AuthProvider;
     fn shares(&self) -> &HashMap<String, Box<dyn SharedResource>>;
     fn opens(&self) -> &HashMap<u64, Box<dyn Open>>;
-    fn sessions(&self) -> &HashMap<u64, Self::SessionType>;
+    fn sessions(&self) -> &HashMap<u64, Arc<RwLock<Self::SessionType>>>;
+    fn sessions_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<Self::SessionType>>>;
     fn guid(&self) -> Uuid;
     fn dfs_capable(&self) -> bool;
     fn copy_max_chunks(&self) -> u64;
@@ -59,6 +60,8 @@ pub trait Server: Send + Sync {
     fn chained_compression_supported(&self) -> bool;
     fn rdma_transform_supported(&self) -> bool;
     fn disable_encryption_over_secure_transport(&self) -> bool;
+
+    fn auth_provider(&self) -> &Arc<Self::AuthType>;
 }
 
 pub trait StartSMBServer {
@@ -81,8 +84,8 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthP
     share_list: HashMap<String, Box<dyn SharedResource>>,
     #[builder(field(type = "HashMap<u64, Box<dyn Open>>"))]
     open_table: HashMap<u64, Box<dyn Open>>,
-    #[builder(field(type = "HashMap<u64, SMBSessionType<Addrs, Listener, Auth>>"))]
-    session_table: HashMap<u64, SMBSessionType<Addrs, Listener, Auth>>,
+    #[builder(field(type = "HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth>>>>"))]
+    session_table: HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth>>>>,
     #[builder(field(type = "HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth>>"))]
     connection_list: HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth>>,
     #[builder(default = "Uuid::new_v4()")]
@@ -153,8 +156,12 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server 
         &self.open_table
     }
 
-    fn sessions(&self) -> &HashMap<u64, Self::SessionType> {
+    fn sessions(&self) -> &HashMap<u64, Arc<RwLock<Self::SessionType>>> {
         &self.session_table
+    }
+
+    fn sessions_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<Self::SessionType>>> {
+        &mut self.session_table
     }
 
     fn guid(&self) -> Uuid {
@@ -231,6 +238,10 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server 
 
     fn disable_encryption_over_secure_transport(&self) -> bool {
         self.disable_encryption_over_secure_transport
+    }
+
+    fn auth_provider(&self) -> &Arc<Self::AuthType> {
+        &self.auth_provider
     }
 }
 
