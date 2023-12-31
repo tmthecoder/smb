@@ -14,3 +14,9 @@ pub enum SMBDialect {
     #[default]
     V2_X_X = 0x2FF
 }
+
+impl SMBDialect {
+    pub fn is_smb3(&self) -> bool {
+        *self as u16 >= 0x300
+    }
+}

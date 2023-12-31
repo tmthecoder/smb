@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct GenericAuthContext {
     domain_name: String,
     user_name: String,

@@ -38,7 +38,41 @@ use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenResponseBody};
 // use tokio::sync::Mutex;
 // use tokio_stream::StreamExt;
 
-pub trait Connection: Debug {}
+pub trait Connection: Send + Sync {
+    fn client_capabilities(&self) -> Capabilities;
+
+    fn negotiate_dialect(&self) -> SMBDialect;
+    fn dialect(&self) -> SMBDialect;
+
+    fn should_sign(&self) -> bool;
+    fn client_name(&self) -> &str;
+    fn max_transact_size(&self) -> u32;
+    fn max_write_size(&self) -> u32;
+    fn max_read_size(&self) -> u32;
+
+    fn supports_multi_credit(&self) -> bool;
+    fn transport_name(&self) -> &str;
+
+    fn client_guid(&self) -> Uuid;
+
+    fn server_capabilities(&self) -> Capabilities;
+
+    fn client_security_mode(&self) -> NegotiateSecurityMode;
+    fn server_security_mode(&self) -> NegotiateSecurityMode;
+
+    fn preauth_integrity_hash_id(&self) -> HashAlgorithm;
+
+    fn preauth_integtiry_hash_value(&self) -> &Vec<u8>;
+
+    fn cipher_id(&self) -> EncryptionCipher;
+    fn compression_ids(&self) -> &Vec<CompressionAlgorithm>;
+    fn supports_chained_compression(&self) -> bool;
+
+    fn rdma_transform_ids(&self) -> &Vec<RDMATransformID>;
+    fn signing_algorithm_id(&self) -> SigningAlgorithm;
+    fn accept_transport_security(&self) -> bool;
+    fn preauth_sessions(&self) -> &HashMap<u64, SMBPreauthSession>;
+}
 
 #[derive(Debug, Builder)]
 #[builder(name = "SMBConnectionUpdate", pattern = "owned")]
@@ -57,7 +91,7 @@ pub struct SMBConnection<R: SMBReadStream, W: SMBWriteStream, S: Server> {
     max_read_size: u32,
     supports_multi_credit: bool,
     transport_name: String,
-    session_table: HashMap<u64, Box<dyn Session>>,
+    session_table: HashMap<u64, S::SessionType>,
     creation_time: FileTime,
     preauth_session_table: HashMap<u64, SMBPreauthSession>, // TODO
     client_guid: Uuid,
@@ -80,88 +114,99 @@ pub struct SMBConnection<R: SMBReadStream, W: SMBWriteStream, S: Server> {
 }
 
 // Getters
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBConnection<R, W, S> {
-    pub fn client_capabilities(&self) -> Capabilities {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server> Connection for SMBConnection<R, W, S> {
+    fn client_capabilities(&self) -> Capabilities {
         self.client_capabilities
     }
 
-    pub fn negotiate_dialect(&self) -> SMBDialect {
+    fn negotiate_dialect(&self) -> SMBDialect {
         self.negotiate_dialect
     }
-    pub fn dialect(&self) -> SMBDialect {
+    fn dialect(&self) -> SMBDialect {
         self.dialect
     }
 
-    pub fn should_sign(&self) -> bool {
+    fn should_sign(&self) -> bool {
         self.should_sign
     }
 
-    pub fn client_name(&self) -> &str {
+    fn client_name(&self) -> &str {
         &self.client_name
     }
-    pub fn max_transact_size(&self) -> u32 {
+    fn max_transact_size(&self) -> u32 {
         self.max_transact_size
     }
-    pub fn max_write_size(&self) -> u32 {
+    fn max_write_size(&self) -> u32 {
         self.max_write_size
     }
 
-    pub fn max_read_size(&self) -> u32 {
+    fn max_read_size(&self) -> u32 {
         self.max_read_size
     }
 
-    pub fn supports_multi_credit(&self) -> bool {
+    fn supports_multi_credit(&self) -> bool {
         self.supports_multi_credit
     }
-    pub fn transport_name(&self) -> &str {
+    fn transport_name(&self) -> &str {
         &self.transport_name
     }
 
-    pub fn client_guid(&self) -> Uuid {
+    fn client_guid(&self) -> Uuid {
         self.client_guid
     }
 
-    pub fn server_capabilities(&self) -> Capabilities {
+    fn server_capabilities(&self) -> Capabilities {
         self.server_capabilites
     }
 
-    pub fn client_security_mode(&self) -> NegotiateSecurityMode {
+    fn client_security_mode(&self) -> NegotiateSecurityMode {
         self.client_security_mode
     }
-    pub fn server_security_mode(&self) -> NegotiateSecurityMode {
+    fn server_security_mode(&self) -> NegotiateSecurityMode {
         self.server_security_mode
     }
 
-    pub fn preauth_integrity_hash_id(&self) -> HashAlgorithm {
+    fn preauth_integrity_hash_id(&self) -> HashAlgorithm {
         self.preauth_integrity_hash_id
     }
 
-    pub fn cipher_id(&self) -> EncryptionCipher {
+    fn preauth_integtiry_hash_value(&self) -> &Vec<u8> {
+        &self.preauth_integrity_hash_value
+    }
+
+    fn cipher_id(&self) -> EncryptionCipher {
         self.cipher_id
     }
-    pub fn compression_ids(&self) -> &Vec<CompressionAlgorithm> {
+    fn compression_ids(&self) -> &Vec<CompressionAlgorithm> {
         &self.compression_ids
     }
-    pub fn supports_chained_compression(&self) -> bool {
+    fn supports_chained_compression(&self) -> bool {
         self.supports_chained_compression
     }
 
-    pub fn rdma_transform_ids(&self) -> &Vec<RDMATransformID> {
+    fn rdma_transform_ids(&self) -> &Vec<RDMATransformID> {
         &self.rdma_transform_ids
     }
-    pub fn signing_algorithm_id(&self) -> SigningAlgorithm {
+    fn signing_algorithm_id(&self) -> SigningAlgorithm {
         self.signing_algorithm_id
     }
 
-    pub fn accept_transport_security(&self) -> bool {
+    fn accept_transport_security(&self) -> bool {
         self.accept_transport_security
     }
-    pub fn underlying_socket(&self) -> Arc<Mutex<SMBSocketConnection<R, W>>> {
-        self.underlying_stream.clone()
+
+    fn preauth_sessions(&self) -> &HashMap<u64, SMBPreauthSession> {
+        &self.preauth_session_table
     }
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBConnection<R, W, S> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBConnection<R, W, S> {
+    pub fn underlying_socket(&self) -> Arc<Mutex<SMBSocketConnection<R, W>>> {
+        self.underlying_stream.clone()
+    }
+    pub fn sessions(&self) -> &HashMap<u64, S::SessionType> {
+        &self.session_table
+    }
     pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, connection: Arc<RwLock<SMBConnection<R, W, S>>>, auth_provider: Arc<A>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
         let mut ctx = A::Context::init();
         let (read, write) = stream.streams();
@@ -335,15 +380,25 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBConnection<R, W, S> {
 type LockedSMBConnection<R, W, S> = Arc<RwLock<SMBConnection<R, W, S>>>;
 type SMBMessageType = SMBMessage<SMBSyncHeader, SMBBody>;
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBLockedHandler<S> for LockedSMBConnection<R, W, S> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>> SMBLockedHandler<S> for LockedSMBConnection<R, W, S> {
     async fn handle_negotiate<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
         let server = server.upgrade().ok_or(SMBError::server_error("No server available"))?;
         let unlocked = server.read().await;
         self.write().await.handle_negotiate::<A>(&unlocked, message)
     }
+
+    async fn handle_session_setup<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+        let server = server.upgrade().ok_or(SMBError::server_error("No server available"))?;
+        let unlocked = server.read().await;
+        let cloned_arc = self.clone();
+        let create_session = |id: u64, encrypt_data: bool, preauth: Vec<u8>| {
+            S::SessionType::init(id, encrypt_data, preauth, cloned_arc)
+        };
+        self.write().await.handle_session_setup(&unlocked, message, create_session).await
+    }
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatefulHandler<S> for SMBConnection<R, W, S> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBStatefulHandler<S> for SMBConnection<R, W, S> {
     fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, message: SMBMessageType) -> SMBResult<SMBMessageType> {
         let SMBMessage { header, body } = message;
         if let SMBBody::NegotiateRequest(request) = body {
@@ -357,11 +412,13 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> SMBStatefulHandler<S> for S
         }
     }
 
-    fn handle_session_setup(&mut self, server: &S, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+    async fn handle_session_setup<F: FnOnce(u64, bool, Vec<u8>) -> S::SessionType>(&mut self, server: &S, message: SMBMessageType, create_session_closure: F) -> SMBResult<SMBMessageType> {
         let SMBMessage { header, body } = message;
         if let SMBBody::SessionSetupRequest(request) = body {
-            request.validate_and_set_state(self, server, &header)?;
-            Err(SMBError::parse_error("Invalid SMB Request Body (expected SessionSetupRequest"))
+            let (update, session_id, buffer) = request.validate_and_set_state(self, server, &header).await?;
+            self.apply_update(update);
+            let session = create_session_closure(1, server.encrypt_data(), self.preauth_integrity_hash_value.clone());
+            todo!()
         } else {
             Err(SMBError::parse_error("Invalid SMB Request Body (expected SessionSetupRequest"))
         }
@@ -384,11 +441,14 @@ trait SMBLockedHandler<S: Server> {
     }
 
     fn handle_negotiate<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>>;
+
+    fn handle_session_setup<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>>;
+
 }
 
 trait SMBStatefulHandler<S: Server> {
     fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, message: SMBMessageType) -> SMBResult<SMBMessageType>;
-    fn handle_session_setup(&mut self, server: &S, message: SMBMessageType) -> SMBResult<SMBMessageType>;
+    fn handle_session_setup<F: FnOnce(u64, bool, Vec<u8>) -> S::SessionType>(&mut self, server: &S, message: SMBMessageType, create_session_closure: F) -> impl Future<Output=SMBResult<SMBMessageType>>;
 }
 
 impl<R: SMBReadStream, W: SMBWriteStream, S: Server> TryFrom<(SMBSocketConnection<R, W>, Weak<RwLock<S>>)> for SMBConnection<R, W, S> {

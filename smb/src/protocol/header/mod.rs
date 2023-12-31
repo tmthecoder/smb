@@ -46,23 +46,23 @@ pub trait Header: SMBFromBytes + SMBToBytes {
 #[smb_byte_tag(value = 64, order = 2)]
 pub struct SMBSyncHeader {
     #[smb_direct(start(fixed = 8))]
-    channel_sequence: u32,
+    pub channel_sequence: u32,
     #[smb_direct(start(fixed = 12))]
-    command: SMBCommandCode,
+    pub command: SMBCommandCode,
     #[smb_direct(start(fixed = 16))]
-    flags: SMBFlags,
+    pub flags: SMBFlags,
     #[smb_direct(start(fixed = 20))]
-    next_command: u32,
+    pub next_command: u32,
     #[smb_direct(start(fixed = 24))]
-    message_id: u64,
+    pub message_id: u64,
     #[smb_skip(start = 32, length = 4, value = "[0, 0, 0xFE, 0xFF]")]
-    reserved: PhantomData<[u8; 4]>,
+    pub reserved: PhantomData<[u8; 4]>,
     #[smb_direct(start(fixed = 36))]
-    tree_id: u32,
+    pub tree_id: u32,
     #[smb_direct(start(fixed = 40))]
-    session_id: u64,
+    pub session_id: u64,
     #[smb_direct(start(fixed = 48))]
-    signature: [u8; 16],
+    pub signature: [u8; 16],
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize, SMBToBytes)]

@@ -15,7 +15,7 @@ use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::negotiate::context::NegotiateContext;
 use crate::protocol::body::negotiate::security_mode::NegotiateSecurityMode;
-use crate::server::connection::{SMBConnection, SMBConnectionUpdate};
+use crate::server::connection::{Connection, SMBConnection, SMBConnectionUpdate};
 use crate::server::Server;
 use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
 use crate::util::auth::AuthProvider;

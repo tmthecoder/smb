@@ -6,7 +6,7 @@ use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_by
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
     pub struct SMBSessionSetupFlags: u8 {
-        const SMB2_SESSION_FLAG_BINDING = 0x01;
+        const BINDING = 0x01;
     }
 }
 

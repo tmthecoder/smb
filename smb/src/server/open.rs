@@ -5,23 +5,22 @@ use uuid::Uuid;
 
 use crate::protocol::body::create::options::SMBCreateOptions;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
-use crate::server::connection::SMBConnection;
+use crate::server::connection::Connection;
 use crate::server::lease::SMBLease;
 use crate::server::Server;
 use crate::server::session::SMBSession;
 use crate::server::share::SharedResource;
 use crate::server::tree_connect::SMBTreeConnect;
-use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
 
 pub trait Open: Debug + Send + Sync {}
 
-pub struct SMBOpen<T: SharedResource, R: SMBReadStream, W: SMBWriteStream, S: Server> {
+pub struct SMBOpen<T: SharedResource, C: Connection, S: Server> {
     file_id: u32,
     file_global_id: u32,
     durable_file_id: u32,
-    session: Option<SMBSession<R, W, S>>,
-    tree_connect: Option<SMBTreeConnect<T, R, W, S>>,
-    connection: Option<SMBConnection<R, W, S>>,
+    session: Option<SMBSession<C, S>>,
+    tree_connect: Option<SMBTreeConnect<T, C, S>>,
+    connection: Option<C>,
     local_open: File,
     // TODO make this an interface for different open types
     granted_access: SMBAccessMask,

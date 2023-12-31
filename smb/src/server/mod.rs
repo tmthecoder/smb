@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::future::Future;
 use std::sync::{Arc, Weak};
 
@@ -13,10 +14,10 @@ use smb_core::SMBResult;
 use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::filetime::FileTime;
 use crate::server::client::SMBClient;
-use crate::server::connection::SMBConnection;
+use crate::server::connection::{Connection, SMBConnection};
 use crate::server::lease::SMBLeaseTable;
 use crate::server::open::Open;
-use crate::server::session::Session;
+use crate::server::session::{Session, SMBSession};
 use crate::server::share::SharedResource;
 use crate::socket::listener::{SMBListener, SMBSocket};
 use crate::util::auth::AuthProvider;
@@ -33,9 +34,12 @@ pub mod share;
 pub mod tree_connect;
 
 pub trait Server: Send + Sync {
+    type ConnectionType: Connection;
+    type SessionType: Session<Self::ConnectionType>;
+    type AuthType: AuthProvider;
     fn shares(&self) -> &HashMap<String, Box<dyn SharedResource>>;
     fn opens(&self) -> &HashMap<u64, Box<dyn Open>>;
-    fn sessions(&self) -> &HashMap<u64, Box<dyn Session>>;
+    fn sessions(&self) -> &HashMap<u64, Self::SessionType>;
     fn guid(&self) -> Uuid;
     fn dfs_capable(&self) -> bool;
     fn copy_max_chunks(&self) -> u64;
@@ -61,8 +65,10 @@ pub trait StartSMBServer {
     fn start(&self) -> impl Future<Output=SMBResult<()>> + Send;
 }
 
-type LockedWeakSMBConnection<Addr, L, A> = Weak<RwLock<SMBConnection<<L as SMBSocket<Addr>>::ReadStream, <L as SMBSocket<Addr>>::WriteStream, SMBServer<Addr, L, A>>>>;
+type SMBConnectionType<Addr, L, A> = SMBConnection<<L as SMBSocket<Addr>>::ReadStream, <L as SMBSocket<Addr>>::WriteStream, SMBServer<Addr, L, A>>;
 
+type LockedWeakSMBConnection<Addr, L, A> = Weak<RwLock<SMBConnectionType<Addr, L, A>>>;
+type SMBSessionType<Addr, L, A> = SMBSession<SMBConnectionType<Addr, L, A>, SMBServer<Addr, L, A>>;
 #[derive(Debug, Builder)]
 #[builder(pattern = "owned")]
 #[builder(build_fn(name = "build_inner", private))]
@@ -75,8 +81,8 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthP
     share_list: HashMap<String, Box<dyn SharedResource>>,
     #[builder(field(type = "HashMap<u64, Box<dyn Open>>"))]
     open_table: HashMap<u64, Box<dyn Open>>,
-    #[builder(field(type = "HashMap<u64, Box<dyn Session>>"))]
-    session_table: HashMap<u64, Box<dyn Session>>,
+    #[builder(field(type = "HashMap<u64, SMBSessionType<Addrs, Listener, Auth>>"))]
+    session_table: HashMap<u64, SMBSessionType<Addrs, Listener, Auth>>,
     #[builder(field(type = "HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth>>"))]
     connection_list: HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth>>,
     #[builder(default = "Uuid::new_v4()")]
@@ -135,6 +141,10 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthP
 }
 
 impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server for SMBServer<Addrs, Listener, Auth> {
+    type ConnectionType = SMBConnectionType<Addrs, Listener, Auth>;
+    type SessionType = SMBSessionType<Addrs, Listener, Auth>;
+    type AuthType = Auth;
+
     fn shares(&self) -> &HashMap<String, Box<dyn SharedResource>> {
         &self.share_list
     }
@@ -143,7 +153,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server 
         &self.open_table
     }
 
-    fn sessions(&self) -> &HashMap<u64, Box<dyn Session>> {
+    fn sessions(&self) -> &HashMap<u64, Self::SessionType> {
         &self.session_table
     }
 

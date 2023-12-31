@@ -12,7 +12,7 @@ use smb_core::nt_status::NTStatus;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::byte_helper::u16_to_bytes;
-use crate::server::connection::{SMBConnection, SMBConnectionUpdate};
+use crate::server::connection::{Connection, SMBConnection, SMBConnectionUpdate};
 use crate::server::Server;
 use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
