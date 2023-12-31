@@ -356,7 +356,6 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection
 
     async fn handle_session_setup(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
         let server = server.upgrade().ok_or(SMBError::server_error("No server available"))?;
-        println!("Got session setup");
         let unlocked = server.read().await;
         let cloned_arc = self.clone();
         let get_locked = || {
@@ -401,11 +400,9 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBSta
     async fn handle_session_setup<F: FnOnce() -> Arc<RwLock<Self>>>(&mut self, server: &S, message: &SMBMessageType, get_locked: F) -> SMBResult<(Arc<RwLock<S::SessionType>>, Vec<u8>)> {
         let SMBMessage { header, body } = message;
         if let SMBBody::SessionSetupRequest(request) = body {
-            println!("in inner");
             let (update, session, buffer) = request.validate_and_set_state(self, server, &header).await?;
             self.apply_update(update);
             let locked_conn = get_locked();
-            println!("got locked");
             let s = match session {
                 None => {
                     let session = S::SessionType::init(1, server.encrypt_data(), self.preauth_integrity_hash_value.clone(), locked_conn);
