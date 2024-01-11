@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 
 use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
@@ -41,10 +39,13 @@ pub struct SMBSessionSetupRequest {
 }
 
 impl SMBSessionSetupRequest {
-    pub fn get_buffer_copy(&self) -> Vec<u8> {
-        self.buffer.clone()
+    pub fn buffer(&self) -> &[u8] {
+        &self.buffer
     }
-    pub async fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>>(&self, connection: &SMBConnection<R, W, S>, server: &S, header: &SMBSyncHeader) -> SMBResult<(SMBConnectionUpdate<R, W, S>, Option<Arc<RwLock<S::SessionType>>>, Vec<u8>)> {
+    pub fn flags(&self) -> SMBSessionSetupFlags {
+        self.flags
+    }
+    pub async fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>>(&self, connection: &SMBConnection<R, W, S>, server: &S, session: &S::SessionType, header: &SMBSyncHeader) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
         let mut update = SMBConnectionUpdate::default();
         if server.encrypt_data() && (!server.unencrypted_access()
             && (connection.dialect().is_smb3()
@@ -52,52 +53,33 @@ impl SMBSessionSetupRequest {
             return Err(SMBError::response_error(NTStatus::AccessDenied));
         }
 
-        let buffer = self.buffer.clone();
-
-        let session = if header.session_id == 0 {
-            Ok(None)
-        } else if connection.dialect().is_smb3() && server.multi_channel_capable() && self.flags.contains(SMBSessionSetupFlags::BINDING) {
-            match server.sessions().get(&header.session_id) {
-                None => Err(SMBError::response_error(NTStatus::UserSessionDeleted)),
-                Some(locked_session) => {
-                    // TODO Session checking
-                    let session = locked_session.read().await;
-                    let locked_conn = session.connection();
-                    let session_conn = locked_conn.read().await;
-                    if session_conn.dialect() != connection.dialect() ||
-                        header.flags.contains(SMBFlags::SIGNED) {
-                        return Err(SMBError::response_error(NTStatus::InvalidParameter));
-                    }
-                    if session_conn.client_guid() != connection.client_guid() {
-                        return Err(SMBError::response_error(NTStatus::UserSessionDeleted));
-                    }
-                    if session.state() == SessionState::InProgress {
-                        return Err(SMBError::response_error(NTStatus::RequestNotAccepted));
-                    }
-
-                    if session.state() == SessionState::Expired {
-                        return Err(SMBError::response_error(NTStatus::NetworkSessionExpired))
-                    }
-
-                    if session.anonymous() || session.guest() {
-                        return Err(SMBError::response_error(NTStatus::StatusNotSupported));
-                    }
-                    if connection.dialect() == SMBDialect::V3_1_1 && !connection.preauth_sessions().contains_key(&session.id()) {
-                        let preauth_session = SMBPreauthSession::new(session.id(), connection.preauth_integtiry_hash_value().clone());
-                        update = update.preauth_session_table(HashMap::from([(session.id(), preauth_session)]));
-                    }
-                    Ok(Some(locked_session.clone()))
-                }
+        if connection.dialect().is_smb3() && server.multi_channel_capable() && self.flags.contains(SMBSessionSetupFlags::BINDING) {
+            let locked_conn = session.connection();
+            let session_conn = locked_conn.read().await;
+            if session_conn.dialect() != connection.dialect() ||
+                header.flags.contains(SMBFlags::SIGNED) {
+                return Err(SMBError::response_error(NTStatus::InvalidParameter));
             }
-        } else if !connection.dialect().is_smb3() && !server.multi_channel_capable() && self.flags.contains(SMBSessionSetupFlags::BINDING) {
-            Err(SMBError::response_error(NTStatus::RequestNotAccepted))
-        } else {
-            connection.sessions().get(&header.session_id).
-                map(|s| Some(s.clone())).
-                ok_or(SMBError::response_error(NTStatus::UserSessionDeleted))
-        }?;
+            if session_conn.client_guid() != connection.client_guid() {
+                return Err(SMBError::response_error(NTStatus::UserSessionDeleted));
+            }
+            if session.state() == SessionState::InProgress {
+                return Err(SMBError::response_error(NTStatus::RequestNotAccepted));
+            }
 
-        Ok((update, session, buffer))
+            if session.state() == SessionState::Expired {
+                return Err(SMBError::response_error(NTStatus::NetworkSessionExpired))
+            }
+
+            if session.anonymous() || session.guest() {
+                return Err(SMBError::response_error(NTStatus::StatusNotSupported));
+            }
+            if connection.dialect() == SMBDialect::V3_1_1 && !connection.preauth_sessions().contains_key(&session.id()) {
+                let preauth_session = SMBPreauthSession::new(session.id(), connection.preauth_integtiry_hash_value().clone());
+                update = update.preauth_session_table(HashMap::from([(session.id(), preauth_session)]));
+            }
+        }
+        Ok(update)
     }
 }
 
