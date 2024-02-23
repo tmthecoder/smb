@@ -7,6 +7,7 @@ use derive_builder::Builder;
 use tokio::sync::RwLock;
 
 use smb_core::error::SMBError;
+use smb_core::nt_status::NTStatus;
 use smb_core::SMBResult;
 
 use crate::protocol::body::session_setup::SMBSessionSetupResponse;
@@ -91,6 +92,9 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
             let provider = session_write.provider.clone();
             let ctx = session_write.security_context_mut();
             let (status, msg) = token.get_message(provider.as_ref(), ctx)?;
+            if status == NTStatus::StatusSuccess {
+                session_write.state = SessionState::Valid;
+            }
             drop(session_write);
             let response = SPNEGOTokenResponseBody::<S::AuthType>::new(status.clone(), msg);
             let (id, session_setup) = {
@@ -185,6 +189,7 @@ impl<C: Connection, S: Server<SessionType=Self>> Session<C, S::AuthType> for SMB
     }
 
     async fn handle_message(locked: Arc<RwLock<Self>>, message: &SMBMessageType) -> SMBResult<SMBMessageType> {
+        println!("Recvd msg in session: {:?}", message);
         match message.header.command_code() {
             SMBCommandCode::SessionSetup => locked.handle_session_setup(message).await,
             _ => Err(SMBError::parse_error("Invalid command code"))

@@ -21,7 +21,6 @@ use crate::protocol::body::negotiate::security_mode::NegotiateSecurityMode;
 use crate::protocol::body::negotiate::SMBNegotiateResponse;
 use crate::protocol::body::session_setup::flags::SMBSessionSetupFlags;
 use crate::protocol::body::SMBBody;
-use crate::protocol::body::tree_connect::SMBTreeConnectResponse;
 use crate::protocol::header::{Header, SMBSyncHeader};
 use crate::protocol::header::command_code::SMBCommandCode;
 use crate::protocol::header::flags::SMBFlags;
@@ -218,26 +217,15 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
                 SMBCommandCode::LegacyNegotiate => connection.handle_legacy_negotiate(),
                 SMBCommandCode::Negotiate => connection.handle_negotiate::<A>(&server, message).await,
                 SMBCommandCode::SessionSetup => connection.handle_session_setup(&server, message).await,
-                SMBCommandCode::TreeConnect => {
-                    if let SMBBody::TreeConnectRequest(request) = message.body {
-                        println!("Tree connect request: {:?}", request);
-                        let resp_body = match request.path().contains("IPC$") {
-                            true => SMBBody::TreeConnectResponse(SMBTreeConnectResponse::IPC()),
-                            false => SMBBody::TreeConnectResponse(SMBTreeConnectResponse::default()),
-                        };
-                        let resp_header = message.header.create_response_header(0, 1010);
-                        Ok(SMBMessage::new(resp_header, resp_body))
-                    } else {
-                        Err(SMBError::response_error(NTStatus::AccessDenied))
-                    }
-                }
                 SMBCommandCode::LogOff => {
                     println!("got logoff");
                     break;
                 }
-                _ => Err(SMBError::response_error(NTStatus::AccessDenied))
+                _ => connection.generic_message_handler(message).await
             };
+            println!("After handler: {:?}", message);
             if let Ok(message) = message {
+                println!("Writing message{:?}", message);
                 let sent = write.write_message(&message).await?;
                 let _ = update_channel.send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64)).await;
                 ;
@@ -353,6 +341,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection
         self.write().await.handle_negotiate::<A>(&unlocked, message)
     }
 
+    // TODO refactor this to make sure this follows the steps in the MS-SMB2 PDF
     async fn handle_session_setup(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
         let server = server.upgrade().ok_or(SMBError::server_error("No server available"))?;
         let unlocked = server.read().await;
@@ -371,6 +360,13 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection
         }?;
         drop(unlocked);
         S::SessionType::handle_message(session, &message).await
+    }
+
+    async fn generic_message_handler(&self, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+        let session = self.read().await.session_table.get(&message.header.session_id)
+            .map(Arc::clone)
+            .ok_or(SMBError::response_error(NTStatus::UserSessionDeleted))?;
+        S::SessionType::handle_message(session.clone(), &message).await
     }
 }
 
@@ -435,6 +431,7 @@ trait SMBLockedHandler<S: Server> {
     fn handle_negotiate<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>>;
 
     fn handle_session_setup(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>>;
+    fn generic_message_handler(&self, message: SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>>;
 }
 
 trait SMBStatefulHandler<S: Server> {
