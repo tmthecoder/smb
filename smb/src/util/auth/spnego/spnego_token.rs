@@ -26,13 +26,13 @@ impl<A: AuthProvider> SPNEGOToken<A> {
             SPNEGOToken::Init(init_msg) => {
                 let mech_token = init_msg.mech_token.as_ref().ok_or(SMBError::parse_error("Parse failure"))?;
                 let ntlm_msg =
-                    A::Message::parse(&mech_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
+                    A::Message::parse(mech_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
                 auth_provider.accept_security_context(&ntlm_msg, ctx)
             }
             SPNEGOToken::Response(resp_msg) => {
                 let response_token = resp_msg.response_token.as_ref().ok_or(SMBError::parse_error("Parse failure"))?;
                 let ntlm_msg =
-                    A::Message::parse(&response_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
+                    A::Message::parse(response_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
                 auth_provider.accept_security_context(&ntlm_msg, ctx)
             }
             _ => { (NTStatus::StatusSuccess, A::Message::empty()) }

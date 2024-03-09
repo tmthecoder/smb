@@ -74,9 +74,9 @@ impl NTLMNegotiateMessageBody {
         }
         let mut negotiate_flags = NTLMNegotiateFlags::TARGET_TYPE_SERVER
             | NTLMNegotiateFlags::TARGET_INFO
-            | NTLMNegotiateFlags::TARGET_NAME_SUPPLOED
+            | NTLMNegotiateFlags::TARGET_NAME_SUPPLIED
             | NTLMNegotiateFlags::VERSION
-            | NTLMNegotiateFlags::NTLM_SESSION_SECURITY;
+            | NTLMNegotiateFlags::NEGOTIATE_NTLM_KEY;
 
         add_if_else_present(
             &mut negotiate_flags,
@@ -123,7 +123,7 @@ impl NTLMNegotiateMessageBody {
 
         let target_name = "fakeserver";
 
-        (NTStatus::SecIContinueNeeded, NTLMChallengeMessageBody::new(target_name.into(), negotiate_flags))
+        (NTStatus::MoreProcessingRequired, NTLMChallengeMessageBody::new(target_name.into(), negotiate_flags))
     }
 }
 

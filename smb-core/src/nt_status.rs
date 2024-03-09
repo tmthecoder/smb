@@ -2,6 +2,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NTStatus {
     StatusSuccess = 0x0,
+    MoreProcessingRequired = 0xC0000016,
     SecIContinueNeeded = 0x00090312,
     InvalidParameter = 0xC000000D,
     AccessDenied = 0xC0000022,

@@ -33,7 +33,7 @@ impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
     pub fn new(status: NTStatus, token_content: T::Message) -> Self {
         let state = Some(match status {
             NTStatus::StatusSuccess => NegotiateState::AcceptCompleted,
-            NTStatus::SecIContinueNeeded => NegotiateState::AcceptIncomplete,
+            NTStatus::MoreProcessingRequired => NegotiateState::AcceptIncomplete,
             _ => NegotiateState::Reject
         });
         let (response_token, supported_mech) = if token_content.as_bytes().is_empty() {

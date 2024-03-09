@@ -24,7 +24,8 @@ async fn main() -> SMBResult<()> {
         .encrypt_data(false)
         .add_share("test", share)
         .auth_provider(NTLMAuthProvider::new(vec![
-            User::new("tejasmehta", "password")
+            User::new("tejasmehta", "password"),
+            User::new("tejas2", "password"),
         ], false))
         .listener_address("127.0.0.1:50122").await?;
     let server = builder.build()?;

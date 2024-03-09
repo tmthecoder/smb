@@ -39,6 +39,8 @@ impl NTLMAuthenticateMessageBody {
             parse_ntlm_buffer_fields,
             parse_ntlm_buffer_fields,
             map(le_u32, NTLMNegotiateFlags::from_bits_truncate),
+            take(8_usize),
+            take(16_usize),
         ))(bytes)
         .and_then(
             |(
@@ -53,6 +55,8 @@ impl NTLMAuthenticateMessageBody {
                     work_station_info,
                     encrypted_session_key_info,
                     negotiate_flags,
+                    _,
+                    mic
                 ),
             )| {
                 let (_, lm_challenge_response) =
@@ -87,7 +91,7 @@ impl NTLMAuthenticateMessageBody {
                         lm_challenge_response,
                         nt_challenge_response,
                         encrypted_session_key,
-                        mic: Vec::new(),
+                        mic: mic.into(),
                     },
                 ))
             },
@@ -111,6 +115,7 @@ impl NTLMAuthenticateMessageBody {
         context.work_station = Some(self.work_station.clone());
 
         context.version = Some("6.1.7200".into()); // TODO FIX
+        println!("flags: {:?}, item: {:?}", self.negotiate_flags, &self);
         if self.negotiate_flags.contains(NTLMNegotiateFlags::ANONYMOUS) {
             return if guest_supported {
                 context.guest = Some(true);

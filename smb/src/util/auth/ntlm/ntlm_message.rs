@@ -72,12 +72,12 @@ bitflags! {
     pub struct NTLMNegotiateFlags: u32 {
         const UNICODE_ENCODING = 0x01;
         const OEM_ENCODING = 0x02;
-        const TARGET_NAME_SUPPLOED = 0x04;
+        const TARGET_NAME_SUPPLIED = 0x04;
         const SIGN = 0x10;
         const SEAL = 0x20;
         const DATAGRAM = 0x40;
         const LAN_MANAGER_SESSION_KEY = 0x80;
-        const NTLM_SESSION_SECURITY = 0x200;
+        const NEGOTIATE_NTLM_KEY = 0x200;
         const ANONYMOUS = 0x800;
         const DOMAIN_NAME_SUPPLIED = 0x1000;
         const WORKSTATION_NAME_SUPPLIED = 0x2000;

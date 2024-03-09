@@ -54,6 +54,7 @@ impl AuthProvider for NTLMAuthProvider {
     }
 }
 
+#[derive(Debug)]
 pub struct NTLMAuthContext {
     pub(crate) domain_name: Option<String>,
     pub(crate) user_name: Option<String>,

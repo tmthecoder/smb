@@ -102,7 +102,7 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
                 let resp = SMBSessionSetupResponse::from_session_state::<S>(&session_read, response.as_bytes());
                 (session_read.id(), resp)
             };
-            let header = message.header.create_response_header(0, id);
+            let header = message.header.create_response_header(status as u32, id);
             Ok(SMBMessage::new(header, SMBBody::SessionSetupResponse(session_setup)))
         } else {
             Err(SMBError::parse_error("Invalid SMB request body (expected SessionSetupRequest)"))
@@ -189,7 +189,6 @@ impl<C: Connection, S: Server<SessionType=Self>> Session<C, S::AuthType> for SMB
     }
 
     async fn handle_message(locked: Arc<RwLock<Self>>, message: &SMBMessageType) -> SMBResult<SMBMessageType> {
-        println!("Recvd msg in session: {:?}", message);
         match message.header.command_code() {
             SMBCommandCode::SessionSetup => locked.handle_session_setup(message).await,
             _ => Err(SMBError::parse_error("Invalid command code"))

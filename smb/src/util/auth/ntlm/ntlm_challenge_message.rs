@@ -48,8 +48,8 @@ impl NTLMChallengeMessageBody {
             &[0; 8], // 32 - 40
             &u16_to_bytes(52), &u16_to_bytes(52), // 40-44
             &u32_to_bytes(76), // 44 - 48
-            &[5, 2], // NTLM major minor
-            &u16_to_bytes(3790), // NTLM build
+            &[6, 1], // NTLM major minor
+            &u16_to_bytes(7600), // NTLM build
             &[0, 0, 0, 15], // NTLM current revision
             &name,
             &u16_to_bytes(1),
