@@ -10,6 +10,7 @@ use crate::protocol::body::tree_connect::buffer::SMBTreeConnectBuffer;
 use crate::protocol::body::tree_connect::capabilities::SMBTreeConnectCapabilities;
 use crate::protocol::body::tree_connect::context::{LuidAttr, SidAttr};
 use crate::protocol::body::tree_connect::flags::{SMBShareFlags, SMBTreeConnectFlags};
+use crate::server::share::{ResourceType, SharedResource};
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
 pub mod context;
@@ -28,8 +29,8 @@ pub struct SMBTreeConnectRequest {
 }
 
 impl SMBTreeConnectRequest {
-    pub fn path(&self) -> &str {
-        self.buffer.path()
+    pub fn share(&self) -> &str {
+        self.buffer.share()
     }
 }
 
@@ -68,6 +69,21 @@ impl SMBTreeConnectResponse {
             reserved: PhantomData,
             share_flags: SMBShareFlags::NO_CACHING,
             capabilities: SMBTreeConnectCapabilities::empty(),
+        }
+    }
+    pub fn for_share<S: SharedResource>(share: &S) -> Self {
+        let share_type = match share.resource_type() {
+            ResourceType::DISK => SMBShareType::Disk,
+            ResourceType::IPC => SMBShareType::Pipe,
+            _ => SMBShareType::Print,
+        };
+        let share_flags = share.flags();
+        Self {
+            share_type,
+            reserved: Default::default(),
+            share_flags,
+            capabilities: SMBTreeConnectCapabilities::empty(),
+            maximal_access: SMBAccessMask::Directory(SMBDirectoryAccessMask::GENERIC_ALL),
         }
     }
 }

@@ -89,4 +89,8 @@ impl AuthContext for NTLMAuthContext {
     fn init() -> Self {
         Self::new()
     }
+
+    fn session_key(&self) -> &[u8] {
+        &self.session_key
+    }
 }

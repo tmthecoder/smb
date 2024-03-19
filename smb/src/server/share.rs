@@ -9,11 +9,35 @@ use crate::protocol::body::tree_connect::SMBShareType;
 
 pub trait SharedResource: Debug + Send + Sync {
     fn name(&self) -> &str;
+    fn resource_type(&self) -> ResourceType;
+    fn flags(&self) -> SMBShareFlags;
 }
 
 impl<ConnectAllowed: Fn(u64) -> bool + Send + Sync, FilePerms: Fn(u64) -> SMBAccessMask + Send + Sync> SharedResource for SMBShare<ConnectAllowed, FilePerms> {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn resource_type(&self) -> ResourceType {
+        self.share_type
+    }
+
+    fn flags(&self) -> SMBShareFlags {
+        self.csc_flags
+    }
+}
+
+impl<T: ?Sized + SharedResource> SharedResource for Box<T> {
+    fn name(&self) -> &str {
+        T::name(self)
+    }
+
+    fn resource_type(&self) -> ResourceType {
+        T::resource_type(self)
+    }
+
+    fn flags(&self) -> SMBShareFlags {
+        T::flags(self)
     }
 }
 
@@ -102,7 +126,7 @@ impl<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask
 }
 
 bitflags! {
-    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Default)]
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Default, Copy, Clone)]
     pub struct ResourceType: u32 {
         const DISK = 0x0;
         const PRINT_QUEUE = 0x1;

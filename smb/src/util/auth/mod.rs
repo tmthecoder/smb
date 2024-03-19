@@ -28,5 +28,6 @@ pub trait AuthMessage {
 
 pub trait AuthContext {
     fn init() -> Self;
+    fn session_key(&self) -> &[u8];
 }
 

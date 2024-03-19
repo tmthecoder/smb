@@ -17,10 +17,17 @@ pub enum SMBTreeConnectBuffer {
 }
 
 impl SMBTreeConnectBuffer {
-    pub fn path(&self) -> &str {
-        match self {
+    pub fn share(&self) -> &str {
+        let path_str = match self {
             SMBTreeConnectBuffer::Path(x) => x,
             SMBTreeConnectBuffer::Extension(x) => &x.path_name
+        };
+        let idx = path_str.rfind('\\');
+        println!("Idx: {:?}", idx);
+        if let Some(idx) = idx {
+            &path_str[(idx + 1)..]
+        } else {
+            path_str
         }
     }
 }

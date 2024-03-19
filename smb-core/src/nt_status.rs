@@ -8,6 +8,7 @@ pub enum NTStatus {
     AccessDenied = 0xC0000022,
     StatusLogonFailure = 0xC000006D,
     StatusNotSupported = 0xC00000BB,
+    BadNetworkName = 0xC00000CC,
     RequestNotAccepted = 0xC00000D0,
     UserSessionDeleted = 0xC0000203,
     NetworkSessionExpired = 0xC000035C,

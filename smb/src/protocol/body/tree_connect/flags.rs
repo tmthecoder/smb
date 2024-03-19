@@ -12,7 +12,7 @@ bitflags! {
 }
 
 bitflags! {
-    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Copy, Clone)]
     pub struct SMBShareFlags: u32 {
         const MANUAL_CACHING              = 0x000000;
         const AUTO_CACHING                = 0x000010;

@@ -49,6 +49,8 @@ pub struct SMBSyncHeader {
     pub channel_sequence: u32,
     #[smb_direct(start(fixed = 12))]
     pub command: SMBCommandCode,
+    #[smb_direct(start(fixed = 14))]
+    pub credits: u16,
     #[smb_direct(start(fixed = 16))]
     pub flags: SMBFlags,
     #[smb_direct(start(fixed = 20))]
@@ -134,6 +136,7 @@ impl SMBSyncHeader {
         SMBSyncHeader {
             command,
             channel_sequence: 0,
+            credits: 0,
             flags,
             next_command,
             message_id,
@@ -151,6 +154,7 @@ impl SMBSyncHeader {
                 flags: SMBFlags::empty(),
                 channel_sequence: 0,
                 next_command: 0,
+                credits: 0,
                 message_id: legacy_header.mid as u64,
                 reserved: PhantomData,
                 tree_id: legacy_header.tid as u32,
@@ -167,6 +171,7 @@ impl SMBSyncHeader {
             flags: SMBFlags::SERVER_TO_REDIR,
             channel_sequence,
             next_command: 0,
+            credits: self.credits,
             message_id: self.message_id,
             reserved: PhantomData,
             tree_id: self.tree_id,

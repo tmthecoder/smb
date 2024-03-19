@@ -17,7 +17,7 @@ const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
 #[cfg(feature = "async")]
 #[tokio::main]
 async fn main() -> SMBResult<()> {
-    let share = SMBShare::disk("someshare".into(), file_allowed, get_file_perms);
+    let share = SMBShare::disk("TEST".into(), file_allowed, get_file_perms);
     let builder = SMBServerBuilder::<_, TcpListener, NTLMAuthProvider>::default()
         .anonymous_access(true)
         .unencrypted_access(true)

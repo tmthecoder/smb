@@ -1,17 +1,25 @@
+use std::cmp::min;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::sync::Arc;
 
 use derive_builder::Builder;
+use hkdf::Hkdf;
+use nom::AsBytes;
+use sha2::Sha256;
 use tokio::sync::RwLock;
 
 use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
 use smb_core::SMBResult;
 
+use crate::protocol::body::dialect::SMBDialect;
+use crate::protocol::body::negotiate::context::EncryptionCipher;
+use crate::protocol::body::negotiate::context::EncryptionCipher::AES256CCM;
 use crate::protocol::body::session_setup::SMBSessionSetupResponse;
 use crate::protocol::body::SMBBody;
+use crate::protocol::body::tree_connect::SMBTreeConnectResponse;
 use crate::protocol::header::{Header, SMBSyncHeader};
 use crate::protocol::header::command_code::SMBCommandCode;
 use crate::protocol::message::SMBMessage;
@@ -24,13 +32,16 @@ use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenResponseBody};
 
 type SMBMessageType = SMBMessage<SMBSyncHeader, SMBBody>;
 
+const OUTPUT_SIZE_128: usize = 128;
+const OUTPUT_SIZE_256: usize = 256;
+
 pub trait LockedSessionMessageHandler {
     fn handle_message(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> impl Future<Output=SMBResult<SMBMessageType>>;
 }
 
 trait LockedInternalSessionMessageHandler {
     fn handle_session_setup(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> impl Future<Output=SMBResult<SMBMessageType>>;
-    fn handle_tree_connect(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>);
+    fn handle_tree_connect(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> impl Future<Output=SMBResult<SMBMessageType>>;
 }
 
 pub trait Session<C: Connection, A: AuthProvider>: Send + Sync {
@@ -83,6 +94,46 @@ impl<C: Connection, S: Server> Debug for SMBSession<C, S> {
     }
 }
 
+impl<C: Connection, S: Server> SMBSession<C, S> {
+    fn set_session_key(&mut self) {
+        // Set session_key to first 16 bytes of full key (or right padded if full key is less)
+        for num in 0..(min(16, self.full_session_key.len())) {
+            self.session_key[num] = self.full_session_key[num];
+        }
+    }
+    fn generate_keys(&mut self, dialect: SMBDialect, cipher_id: EncryptionCipher) {
+        let key_length = match cipher_id {
+            EncryptionCipher::AES256GCM | AES256CCM => 32,
+            _ => 16
+        };
+
+        let (signing_key_label, signing_key_context): (&str, &[u8]) = match dialect {
+            SMBDialect::V3_1_1 => ("SMBSigningKey", &self.preauth_integrity_hash_value),
+            _ => ("SMB2AESCMAC", "SmbSign".as_bytes()),
+        };
+        self.signing_key = generate_key(&self.session_key, signing_key_label, signing_key_context, key_length);
+
+        let (application_key_label, application_key_context): (&str, &[u8]) = match dialect {
+            SMBDialect::V3_1_1 => ("SMBAppKey", &self.preauth_integrity_hash_value),
+            _ => ("SMB2APP", "SmbRpc".as_bytes())
+        };
+        self.application_key = generate_key(&self.session_key, application_key_label, application_key_context, key_length);
+    }
+}
+
+fn generate_key(secure_key: &[u8], label: &str, context: &[u8], output_len: usize) -> Vec<u8> {
+    let hkdf = Hkdf::<Sha256>::from_prk(secure_key).expect("Session PRK should be good");
+    let info_arr = [
+        label.as_bytes(),
+        &[0x0; 2][..],
+        context,
+        &[0x0]
+    ].concat();
+    let mut output_arr = vec![0; output_len];
+    hkdf.expand(&info_arr, &mut output_arr).expect("Shouldn't fail");
+    output_arr.to_vec()
+}
+
 impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessionMessageHandler for Arc<RwLock<SMBSession<C, S>>> {
     async fn handle_session_setup(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> SMBResult<SMBMessageType> {
         if let SMBBody::SessionSetupRequest(request) = &message.body {
@@ -93,7 +144,9 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
             let ctx = session_write.security_context_mut();
             let (status, msg) = token.get_message(provider.as_ref(), ctx)?;
             if status == NTStatus::StatusSuccess {
+                let session_key = ctx.session_key().to_vec();
                 session_write.state = SessionState::Valid;
+                session_write.full_session_key = session_key;
             }
             drop(session_write);
             let response = SPNEGOTokenResponseBody::<S::AuthType>::new(status.clone(), msg);
@@ -109,8 +162,29 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
         }
     }
 
-    fn handle_tree_connect(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) {
-        todo!()
+    async fn handle_tree_connect(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> SMBResult<SMBMessageType> {
+        println!("{:?}", message);
+        if let SMBBody::TreeConnectRequest(req) = &message.body {
+            println!("Share: {:?}", req.share());
+            let self_rd = self.read().await;
+            let conn_rd = self_rd.connection.read().await;
+            let server_ref = conn_rd.server_ref().upgrade();
+            if server_ref.is_none() {
+                return Err(SMBError::response_error(NTStatus::BadNetworkName))
+            }
+            let server_ref = server_ref.unwrap();
+            let server_rd = server_ref.read().await;
+            let share = server_rd.shares().get(&req.share().to_lowercase());
+            if share.is_none() {
+                return Err(SMBError::response_error(NTStatus::BadNetworkName))
+            }
+            let response = SMBTreeConnectResponse::for_share(share.unwrap());
+            let header = SMBSyncHeader::create_response_header(&message.header, 0, self_rd.id());
+            ;
+            Ok(SMBMessage::new(header, SMBBody::TreeConnectResponse(response)))
+        } else {
+            Err(SMBError::parse_error("Invalid SMB request body (expected TreeConnectRequest)"))
+        }
     }
 }
 
@@ -191,6 +265,7 @@ impl<C: Connection, S: Server<SessionType=Self>> Session<C, S::AuthType> for SMB
     async fn handle_message(locked: Arc<RwLock<Self>>, message: &SMBMessageType) -> SMBResult<SMBMessageType> {
         match message.header.command_code() {
             SMBCommandCode::SessionSetup => locked.handle_session_setup(message).await,
+            SMBCommandCode::TreeConnect => locked.handle_tree_connect(message).await,
             _ => Err(SMBError::parse_error("Invalid command code"))
         }
     }

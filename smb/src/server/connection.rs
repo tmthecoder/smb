@@ -69,6 +69,8 @@ pub trait Connection: Send + Sync {
     fn signing_algorithm_id(&self) -> SigningAlgorithm;
     fn accept_transport_security(&self) -> bool;
     fn preauth_sessions(&self) -> &HashMap<u64, SMBPreauthSession>;
+
+    fn server_ref(&self) -> Weak<RwLock<impl Server>>;
 }
 
 #[derive(Debug, Builder)]
@@ -194,6 +196,10 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> Connection for SMBConnectio
 
     fn preauth_sessions(&self) -> &HashMap<u64, SMBPreauthSession> {
         &self.preauth_session_table
+    }
+
+    fn server_ref(&self) -> Weak<RwLock<impl Server>> {
+        self.server.clone()
     }
 }
 
