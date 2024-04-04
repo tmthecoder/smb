@@ -92,6 +92,7 @@ pub trait SMBEnumFromBytes {
 
 impl<T: SMBFromBytes> SMBVecFromBytes for Vec<T> {
     fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized {
+        println!("attempting to parse {:?}", count);
         let mut remaining = input;
         let mut done_cnt = 0;
         let mut msg_vec = Vec::<T>::new();

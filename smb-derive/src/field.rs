@@ -48,9 +48,12 @@ impl<'a, T: Spanned> SMBField<'a, T> {
         let name = &self.name;
         let field = self.spanned;
         let ty = &self.ty;
+        let name_str = name.to_string();
         let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_from_bytes(name, field, ty));
         quote! {
+            // println!("parse for {:?}", #name_str);
             #(#all_bytes)*
+            // println!("end parse for {:?}", #name_str);
         }
     }
 

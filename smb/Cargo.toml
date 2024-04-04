@@ -35,6 +35,7 @@ rc4 = "0.1.0"
 sha2 = "0.10.6"
 cmac = "0.7.2"
 aes = "0.8.2"
+aes-gcm = "0.10.3"
 smb-derive = { path = "../smb-derive" }
 smb-core = { path = "../smb-core" }
 bytes = { version = "1.5.0" }

@@ -39,7 +39,7 @@ pub trait SMBReadStream: SMBStream {
                 };
             }
         }
-        Err(SMBError::parse_error("Unknwon error occurred while parsing message"))
+        Err(SMBError::parse_error("Unknown error occurred while parsing message"))
     }
 }
 

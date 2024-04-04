@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
+use digest::Digest;
 use serde::{Deserialize, Serialize};
+use sha2::Sha512;
 
+use smb_core::{SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
-use smb_core::SMBResult;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::protocol::body::capabilities::Capabilities;
@@ -75,7 +77,11 @@ impl SMBSessionSetupRequest {
                 return Err(SMBError::response_error(NTStatus::StatusNotSupported));
             }
             if connection.dialect() == SMBDialect::V3_1_1 && !connection.preauth_sessions().contains_key(&session.id()) {
-                let preauth_session = SMBPreauthSession::new(session.id(), connection.preauth_integtiry_hash_value().clone());
+                let mut sha = Sha512::default();
+                sha.update(connection.preauth_integtiry_hash_value());
+                sha.update(&self.smb_to_bytes());
+                let bytes = sha.finalize().to_vec();
+                let preauth_session = SMBPreauthSession::new(session.id(), bytes);
                 update = update.preauth_session_table(HashMap::from([(session.id(), preauth_session)]));
             }
         }

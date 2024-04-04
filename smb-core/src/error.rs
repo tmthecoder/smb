@@ -66,16 +66,17 @@ impl Display for SMBParseError {
 
 #[derive(Debug)]
 pub struct SMBCryptoError {
-    message: String,
+    message: Box<dyn Error + Send + Sync>,
 }
 
-impl<T: Into<String>> From<T> for SMBCryptoError {
+impl<T: Into<Box<dyn Error + Send + Sync>>> From<T> for SMBCryptoError {
     fn from(value: T) -> Self {
         Self {
             message: value.into()
         }
     }
 }
+
 
 impl Display for SMBCryptoError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

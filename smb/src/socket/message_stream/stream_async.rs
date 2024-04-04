@@ -22,7 +22,7 @@ async fn make_future<'a, T: SMBReadStream>(mut iterator: SMBMessageIterator<'a, 
                 println!("Buffer too small: {:?}", iterator.buffer);
             }
             Err(e) => {
-                println!("Other error: {:?}, buf: {:?}", e, iterator.buffer);
+                println!("Other error: {:?}, buf: {:02x?}", e, iterator.buffer);
                 break Err(e);
             }
         }

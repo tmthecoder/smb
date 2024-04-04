@@ -236,7 +236,6 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq
     let parent = mapping.parent.smb_from_bytes();
     let names = vector.iter().map(SMBField::get_name);
 
-    let names1 = names.clone();
     let expanded_stream = match mapping.mapping_type {
         SMBFieldMappingType::NamedStruct => {
             quote! {
@@ -258,7 +257,8 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq
         SMBFieldMappingType::NumEnum => {
             quote! {
                 #(#recurse)*
-                let value = Self::try_from(#(#names)*).map_err(|_e| ::smb_core::error::SMBError::parse_error("Invalid primitive value"))?;
+                let vals = #(#names)*;
+                let value = Self::try_from(vals).map_err(|_e| ::smb_core::error::SMBError::parse_error("Invalid primitive value"))?;
                 Ok((remaining, value))
             }
         },

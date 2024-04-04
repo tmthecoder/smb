@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::marker::PhantomData;
 
 use nom::error::ErrorKind;
@@ -57,7 +58,7 @@ pub struct SMBSyncHeader {
     pub next_command: u32,
     #[smb_direct(start(fixed = 24))]
     pub message_id: u64,
-    #[smb_skip(start = 32, length = 4, value = "[0, 0, 0xFE, 0xFF]")]
+    #[smb_skip(start = 32, length = 4, value = "[0xFF, 0xFE, 0, 0]")]
     pub reserved: PhantomData<[u8; 4]>,
     #[smb_direct(start(fixed = 36))]
     pub tree_id: u32,
@@ -165,7 +166,7 @@ impl SMBSyncHeader {
         }
     }
 
-    pub fn create_response_header(&self, channel_sequence: u32, session_id: u64) -> Self {
+    pub fn create_response_header(&self, channel_sequence: u32, session_id: u64, tree_id: u32) -> Self {
         Self {
             command: self.command,
             flags: SMBFlags::SERVER_TO_REDIR,
@@ -174,9 +175,15 @@ impl SMBSyncHeader {
             credits: self.credits,
             message_id: self.message_id,
             reserved: PhantomData,
-            tree_id: self.tree_id,
+            tree_id,
             session_id,
             signature: [0; 16],
         }
+    }
+
+    pub fn set_signature(&mut self, signature: &[u8]) {
+        self.flags |= SMBFlags::SIGNED;
+        self.signature[..min(16, signature.len())]
+            .copy_from_slice(&signature[..min(16, signature.len())]);
     }
 }

@@ -50,7 +50,7 @@ impl DirectInner {
         };
         quote_spanned! {spanned.span()=>
             #chunk
-            let #name = #name - #subtract as #ty;
+            let #name = ::std::cmp::max(#name, #subtract as #ty) - #subtract as #ty;
         }
     }
 

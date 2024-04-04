@@ -2,10 +2,12 @@ use std::cmp::min;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
+use std::io::Read;
 use std::sync::Arc;
 
 use derive_builder::Builder;
-use hkdf::Hkdf;
+use digest::Mac;
+use hmac::Hmac;
 use nom::AsBytes;
 use sha2::Sha256;
 use tokio::sync::RwLock;
@@ -17,18 +19,20 @@ use smb_core::SMBResult;
 use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::negotiate::context::EncryptionCipher;
 use crate::protocol::body::negotiate::context::EncryptionCipher::AES256CCM;
+use crate::protocol::body::negotiate::context::SigningAlgorithm::AesCmac;
 use crate::protocol::body::session_setup::SMBSessionSetupResponse;
 use crate::protocol::body::SMBBody;
 use crate::protocol::body::tree_connect::SMBTreeConnectResponse;
 use crate::protocol::header::{Header, SMBSyncHeader};
 use crate::protocol::header::command_code::SMBCommandCode;
-use crate::protocol::message::SMBMessage;
+use crate::protocol::message::{Message, SMBMessage};
 use crate::server::connection::Connection;
 use crate::server::open::Open;
 use crate::server::Server;
 use crate::server::tree_connect::TreeConnect;
 use crate::util::auth::{AuthContext, AuthProvider};
 use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenResponseBody};
+use crate::util::crypto::sp800_108::derive_key;
 
 type SMBMessageType = SMBMessage<SMBSyncHeader, SMBBody>;
 
@@ -102,37 +106,81 @@ impl<C: Connection, S: Server> SMBSession<C, S> {
         }
     }
     fn generate_keys(&mut self, dialect: SMBDialect, cipher_id: EncryptionCipher) {
+        println!("in keygen");
         let key_length = match cipher_id {
             EncryptionCipher::AES256GCM | AES256CCM => 32,
             _ => 16
         };
 
+        let signing_key_len = 16;
+
+        let smb_sign_bytes = [
+            "SmbSign".as_bytes(),
+            &[0],
+        ].concat();
+
         let (signing_key_label, signing_key_context): (&str, &[u8]) = match dialect {
             SMBDialect::V3_1_1 => ("SMBSigningKey", &self.preauth_integrity_hash_value),
-            _ => ("SMB2AESCMAC", "SmbSign".as_bytes()),
+            _ => ("SMB2AESCMAC", &smb_sign_bytes),
         };
-        self.signing_key = generate_key(&self.session_key, signing_key_label, signing_key_context, key_length);
+        self.signing_key = match dialect {
+            SMBDialect::V3_0_0 | SMBDialect::V3_1_1 => generate_key(&self.session_key, signing_key_label, signing_key_context, signing_key_len),
+            _ => self.session_key.clone().to_vec(),
+        };
+
+        println!("skey: {:02x?}, signing key: {:02x?}", self.session_key, self.signing_key);
 
         let (application_key_label, application_key_context): (&str, &[u8]) = match dialect {
             SMBDialect::V3_1_1 => ("SMBAppKey", &self.preauth_integrity_hash_value),
             _ => ("SMB2APP", "SmbRpc".as_bytes())
         };
         self.application_key = generate_key(&self.session_key, application_key_label, application_key_context, key_length);
+        println!("signing: {:?}, application: {:?}", self.signing_key, self.application_key);
     }
 }
 
 fn generate_key(secure_key: &[u8], label: &str, context: &[u8], output_len: usize) -> Vec<u8> {
-    let hkdf = Hkdf::<Sha256>::from_prk(secure_key).expect("Session PRK should be good");
-    let info_arr = [
+    println!("key len: {:?}, label: {:02x?}, ctx: {:02x?}", secure_key.len(), label, context);
+    let mac = <Hmac<Sha256>>::new_from_slice(secure_key)
+        .map_err(|_| SMBError::crypto_error("Invalid Key Length")).unwrap();
+    let label_bytes = [
         label.as_bytes(),
-        &[0x0; 2][..],
-        context,
-        &[0x0]
+        &[0]
     ].concat();
-    let mut output_arr = vec![0; output_len];
-    hkdf.expand(&info_arr, &mut output_arr).expect("Shouldn't fail");
-    output_arr.to_vec()
+    return derive_key(mac, &label_bytes, context, (output_len * 8) as u32);
+    // let hkdf = Hkdf::<Sha256>::new(None, secure_key);
+    // // let hkdf = Hkdf::<Sha256>::from_prk(secure_key).expect("Session PRK should be good");
+    // let info_arr = [
+    //     label.as_bytes(),
+    //     &[0x0; 2][..],
+    //     context,
+    //     &[0x0],
+    //     &(secure_key.len() as u32).to_be_bytes()
+    // ].concat();
+    // let mut output_arr = vec![0; output_len];
+    // hkdf.expand(&info_arr, &mut output_arr).expect("Shouldn't fail");
+    // output_arr.to_vec()
 }
+
+// fn generate_smb3_signing_key(session_key: &[u8]) -> Vec<u8> {
+//     let hk = Hkdf::<Hmac<Sha256>>::new(None, session_key);
+//
+//     let label = b"SMB2AESCMAC";
+//     let context = b"SmbSign";
+//     // The desired length of the signing key depends on the algorithm, e.g., 16 bytes for AES-128.
+//     let mut okm = vec![0u8; 16]; // Output keying material of the desired length
+//
+//     // Construct the info parameter as concatenation of label + 0x00 + context + length of the okm as 4-byte BE
+//     let mut info = Vec::new();
+//     info.extend_from_slice(label);
+//     info.push(0x00); // Separator
+//     info.extend_from_slice(context);
+//     info.extend_from_slice(&(okm.len() as u32).to_be_bytes());
+//
+//     hk.expand(&info, &mut okm).expect("HKDF expand operation failed");
+//
+//     okm
+// }
 
 impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessionMessageHandler for Arc<RwLock<SMBSession<C, S>>> {
     async fn handle_session_setup(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> SMBResult<SMBMessageType> {
@@ -147,6 +195,13 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
                 let session_key = ctx.session_key().to_vec();
                 session_write.state = SessionState::Valid;
                 session_write.full_session_key = session_key;
+                let conn = session_write.connection.read().await;
+                let dialect = conn.dialect();
+                let cipher = conn.cipher_id();
+                drop(conn);
+                session_write.set_session_key();
+                session_write.generate_keys(dialect, cipher);
+                println!("session key: {:02x?}", session_write.session_key);
             }
             drop(session_write);
             let response = SPNEGOTokenResponseBody::<S::AuthType>::new(status.clone(), msg);
@@ -155,7 +210,7 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
                 let resp = SMBSessionSetupResponse::from_session_state::<S>(&session_read, response.as_bytes());
                 (session_read.id(), resp)
             };
-            let header = message.header.create_response_header(status as u32, id);
+            let header = message.header.create_response_header(status.clone() as u32, id, 0);
             Ok(SMBMessage::new(header, SMBBody::SessionSetupResponse(session_setup)))
         } else {
             Err(SMBError::parse_error("Invalid SMB request body (expected SessionSetupRequest)"))
@@ -179,8 +234,7 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
                 return Err(SMBError::response_error(NTStatus::BadNetworkName))
             }
             let response = SMBTreeConnectResponse::for_share(share.unwrap());
-            let header = SMBSyncHeader::create_response_header(&message.header, 0, self_rd.id());
-            ;
+            let header = SMBSyncHeader::create_response_header(&message.header, 0, self_rd.id(), 1);
             Ok(SMBMessage::new(header, SMBBody::TreeConnectResponse(response)))
         } else {
             Err(SMBError::parse_error("Invalid SMB request body (expected TreeConnectRequest)"))
@@ -199,6 +253,7 @@ pub enum SessionState {
 
 impl<C: Connection, S: Server<SessionType=Self>> Session<C, S::AuthType> for SMBSession<C, S> {
     fn init(id: u64, encrypt_data: bool, preauth_integrity_hash_value: Vec<u8>, conn: Arc<RwLock<C>>, provider: Arc<S::AuthType>) -> Self {
+
         Self {
             session_id: id,
             state: SessionState::InProgress,
@@ -263,10 +318,16 @@ impl<C: Connection, S: Server<SessionType=Self>> Session<C, S::AuthType> for SMB
     }
 
     async fn handle_message(locked: Arc<RwLock<Self>>, message: &SMBMessageType) -> SMBResult<SMBMessageType> {
-        match message.header.command_code() {
+        let mut msg_res = match message.header.command_code() {
             SMBCommandCode::SessionSetup => locked.handle_session_setup(message).await,
             SMBCommandCode::TreeConnect => locked.handle_tree_connect(message).await,
             _ => Err(SMBError::parse_error("Invalid command code"))
+        }?;
+        let sess_rd = locked.read().await;
+        if !sess_rd.full_session_key.is_empty() {
+            let signature = msg_res.signature(&[], &sess_rd.signing_key, AesCmac)?;
+            msg_res.header.set_signature(&signature);
         }
+        Ok(msg_res)
     }
 }

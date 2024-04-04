@@ -83,7 +83,7 @@ impl SMBTreeConnectResponse {
             reserved: Default::default(),
             share_flags,
             capabilities: SMBTreeConnectCapabilities::empty(),
-            maximal_access: SMBAccessMask::Directory(SMBDirectoryAccessMask::GENERIC_ALL),
+            maximal_access: SMBAccessMask::FilePipePrinter(SMBFilePipePrinterAccessMask::from_bits_truncate(0x001f01ff)),
         }
     }
 }

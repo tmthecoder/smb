@@ -2,12 +2,14 @@ use std::any::Any;
 use std::collections::HashSet;
 use std::marker::PhantomData;
 
+use digest::Digest;
 use serde::{Deserialize, Serialize};
+use sha2::Sha512;
 use uuid::Uuid;
 
+use smb_core::{SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
-use smb_core::SMBResult;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::protocol::body::capabilities::Capabilities;
@@ -51,13 +53,13 @@ impl SMBNegotiateRequest {
         }
         let mut update = SMBConnectionUpdate::default();
         let mut received_ctxs = HashSet::new();
-        for context in self.negotiate_contexts.iter() {
-            let (change, actual) = context.validate_and_set_state(update, server)?;
-            update = change;
-            if actual {
-                received_ctxs.insert(context.byte_code());
-            }
-        }
+        // for context in self.negotiate_contexts.iter() {
+        //     let (change, actual) = context.validate_and_set_state(update, server)?;
+        //     update = change;
+        //     if actual {
+        //         received_ctxs.insert(context.byte_code());
+        //     }
+        // }
         let mut dialects = Vec::new();
         for dialect in self.dialects.iter() {
             if *dialect != SMBDialect::V2_X_X {
@@ -87,14 +89,27 @@ impl SMBNegotiateRequest {
             }
         }
 
+        // let dialect = *dialects.last().ok_or(SMBError::response_error(NTStatus::AccessDenied))?;
+        let dialect = SMBDialect::V2_1_0;
+        let preauth_value = if dialect == SMBDialect::V3_1_1 {
+            let mut sha = Sha512::default();
+            sha.update(&self.smb_to_bytes());
+            sha.finalize().to_vec()
+        } else {
+            Vec::new()
+        };
+
         update = update
-            .dialect(*dialects.last()
-                .ok_or(SMBError::response_error(NTStatus::AccessDenied))?)
+            .dialect(dialect)
             .client_dialects(dialects)
             .client_capabilities(self.capabilities)
             .client_guid(self.client_uuid)
             .should_sign(self.security_mode.contains(NegotiateSecurityMode::NEGOTIATE_SIGNING_REQUIRED))
             .server_capabilites(capabilities)
+            .max_read_size(8388608)
+            .max_write_size(8388608)
+            .max_transact_size(8388608)
+            .preauth_integrity_hash_value(preauth_value)
             .server_security_mode(security_mode);
         Ok((update, received_ctxs))
     }

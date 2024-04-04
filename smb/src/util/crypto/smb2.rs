@@ -34,7 +34,7 @@ pub fn generate_signing_key(session_key: &[u8], dialect: SMBDialect, preauth_int
     }
 
     if dialect == SMBDialect::V3_1_1 && preauth_integrity_hash_value.is_empty() {
-        return Err(SMBError::PreconditionFailed("No preauth_integrity_hash_value with SMB 3.1.1".into()).into());
+        return Err(SMBError::PreconditionFailed("No preauth_integrity_hash_value with SMB 3.1.1".into()));
     }
 
     let label: &[u8] = if dialect == SMBDialect::V3_1_1 {

@@ -11,27 +11,39 @@ use crate::byte_helper::u16_to_bytes;
 pub fn authenticate_v2(domain: &str, account: &str, password: &str, server_challenge: &[u8], lm_response: &[u8], nt_response: &[u8]) -> SMBResult<(bool, Vec<u8>)> {
     // AV-pairs structure
     let server_name = &nt_response[44..(nt_response.len() - 4)];
-    let (nt_exp, lm_exp) = compute_ntlm_v2_response(server_challenge, &nt_response[16..], server_name, password, account, domain)?;
+    let (nt_exp, lm_exp, nt_proof) = compute_ntlm_v2_response(server_challenge, &nt_response[16..], server_name, password, account, domain)?;
 
     let resp = nt_exp == nt_response || lm_exp == lm_response;
 
+    let resp = if !resp {
+        let lm_client_challenge = &lm_response[16..24];
+        let expected_resp = compute_lmv2_response(server_challenge, lm_client_challenge, password, account, domain)?;
+        expected_resp == lm_response
+    } else { resp };
+
+    let resp = if !resp && nt_response.len() >= 16 {
+        let client_nt_proof = &nt_response[0..16];
+        let client_structure_padded = &nt_response[16..];
+        let expected_nt_proof = compute_ntlmv2_proof(server_challenge, client_structure_padded, password, account, domain)?;
+        client_nt_proof == expected_nt_proof
+    } else { resp };
+
     if resp {
         let response_key_nt = ntowf_v2(password, account, domain)?;
-        let nt_proof_str = &nt_response[0..16];
-        let res = new_hmac_from_slice(&response_key_nt)?
-            .chain_update(nt_proof_str).finalize().into_bytes().as_slice().into();
-        Ok((resp, res))
+        let session_base_key = new_hmac_from_slice(&response_key_nt)?
+            .chain_update(nt_proof).finalize().into_bytes().as_slice().into();
+        Ok((resp, session_base_key))
     } else {
         Ok((resp, Vec::new()))
     }
 }
 
-fn compute_ntlm_v2_response(server_challenge: &[u8], client_challenge: &[u8], server_name: &[u8], password: &str, account: &str, domain: &str) -> SMBResult<(Vec<u8>, Vec<u8>)> {
+fn compute_ntlm_v2_response(server_challenge: &[u8], client_challenge: &[u8], server_name: &[u8], password: &str, account: &str, domain: &str) -> SMBResult<(Vec<u8>, Vec<u8>, Vec<u8>)> {
     let time = &client_challenge[8..16];
     let client_challenge = &client_challenge[16..24];
     let temp = [
-        &[1_u8][0..],
-        &[1_u8],
+        &[client_challenge[0]][0..],
+        &[client_challenge[1]],
         &[0; 6],
         &time,
         // &[0; 8],
@@ -59,7 +71,7 @@ fn compute_ntlm_v2_response(server_challenge: &[u8], client_challenge: &[u8], se
         lm_challenge_response_1.as_slice(),
         client_challenge,
     ].concat();
-    Ok((nt_challenge_response.to_vec(), lm_challenge_response.to_vec()))
+    Ok((nt_challenge_response.to_vec(), lm_challenge_response.to_vec(), nt_proof_str.to_vec()))
 }
 
 fn compute_lmv2_response(server_challenge: &[u8], lm_client_challenge: &[u8], password: &str, account: &str, domain: &str) -> SMBResult<Vec<u8>> {

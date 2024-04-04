@@ -24,6 +24,7 @@ const NETNAME_NEGOTIATE_CONTEXT_ID_TAG: u16 = 0x05;
 const TRANSPORT_CAPABILITIES_TAG: u16 = 0x06;
 const RDMA_TRANSFORM_CAPABILITIES_TAG: u16 = 0x07;
 const SIGNING_CAPABILITIES_TAG: u16 = 0x08;
+const POSIX_EXTENSIONS_TAG: u16 = 0x0100;
 
 macro_rules! ctx_smb_to_bytes {
     ($body: expr) => {{
@@ -72,6 +73,7 @@ pub enum NegotiateContext {
     TransportCapabilities(TransportCapabilities),
     RDMATransformCapabilities(RDMATransformCapabilities),
     SigningCapabilities(SigningCapabilities),
+    PosixExtensions(PosixExtensions)
 }
 
 impl SMBByteSize for NegotiateContext {
@@ -84,6 +86,7 @@ impl SMBByteSize for NegotiateContext {
             NegotiateContext::TransportCapabilities(x) => x.smb_byte_size(),
             NegotiateContext::RDMATransformCapabilities(x) => x.smb_byte_size(),
             NegotiateContext::SigningCapabilities(x) => x.smb_byte_size(),
+            NegotiateContext::PosixExtensions(x) => x.smb_byte_size()
         }) + 2
     }
 }
@@ -94,6 +97,8 @@ impl SMBFromBytes for NegotiateContext {
         let (remaining, ctx_type) = u16::smb_from_bytes(input)?;
         let (_, ctx_len) = u16::smb_from_bytes(remaining)?;
 
+        println!("type {:?}, len {}", ctx_type, ctx_len);
+        
         match ctx_type {
             PRE_AUTH_INTEGRITY_CAPABILITIES_TAG => ctx_smb_from_bytes_enumify!(
                 Self::PreAuthIntegrityCapabilities,
@@ -137,6 +142,12 @@ impl SMBFromBytes for NegotiateContext {
                 remaining,
                 ctx_len
             ),
+            POSIX_EXTENSIONS_TAG => ctx_smb_from_bytes_enumify!(
+                Self::PosixExtensions,
+                PosixExtensions::smb_from_bytes,
+                remaining,
+                ctx_len
+            ),
             _ => Err(SMBError::parse_error("Invalid negotiate context type"))
         }
     }
@@ -152,6 +163,7 @@ impl SMBToBytes for NegotiateContext {
             NegotiateContext::TransportCapabilities(body) => ctx_smb_to_bytes!(body),
             NegotiateContext::RDMATransformCapabilities(body) => ctx_smb_to_bytes!(body),
             NegotiateContext::SigningCapabilities(body) => ctx_smb_to_bytes!(body),
+            NegotiateContext::PosixExtensions(body) => ctx_smb_to_bytes!(body),
         }
     }
 }
@@ -166,6 +178,7 @@ impl NegotiateContext {
             NegotiateContext::TransportCapabilities(x) => x.byte_code(),
             NegotiateContext::RDMATransformCapabilities(x) => x.byte_code(),
             NegotiateContext::SigningCapabilities(x) => x.byte_code(),
+            NegotiateContext::PosixExtensions(x) => x.byte_code(),
         }
     }
     pub fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>, request_contexts: HashSet<u16>) -> Vec<Self> {
@@ -188,6 +201,9 @@ impl NegotiateContext {
         if request_contexts.contains(&TRANSPORT_CAPABILITIES_TAG) {
             response_contexts.push(Self::TransportCapabilities(TransportCapabilities::from_connection_state(connection)));
         }
+        if request_contexts.contains(&POSIX_EXTENSIONS_TAG) {
+            response_contexts.push(Self::PosixExtensions(PosixExtensions::from_connection_state(connection)));
+        }
         response_contexts
     }
 
@@ -200,6 +216,7 @@ impl NegotiateContext {
             NegotiateContext::TransportCapabilities(x) => x.validate_and_set_state(connection),
             NegotiateContext::RDMATransformCapabilities(x) => x.validate_and_set_state(connection, server),
             NegotiateContext::SigningCapabilities(x) => x.validate_and_set_state(connection),
+            NegotiateContext::PosixExtensions(x) => x.validate_and_set_state(connection),
         }
     }
 }
@@ -239,7 +256,9 @@ impl PreAuthIntegrityCapabilities {
 
     pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<(SMBConnectionUpdate<R, W, S>, bool)> {
         if let Some(algorithm) = self.hash_algorithms.first() {
-            Ok((connection.preauth_integrity_hash_id(*algorithm), true))
+            Ok((connection
+                    .preauth_integrity_hash_id(*algorithm)
+                    .preauth_integrity_hash_value(Vec::new()), true))
         } else {
             Err(SMBError::response_error(NTStatus::InvalidParameter))
         }
@@ -481,3 +500,28 @@ impl SigningCapabilities {
     }
 }
 
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBToBytes, SMBByteSize)]
+struct PosixExtensions {
+    #[smb_skip(start = 0, length = 6)]
+    reserved: PhantomData<Vec<u8>>,
+    #[smb_vector(order = 1, count(inner(start = 0, num_type = "u16")))]
+    posix_reserved: Vec<u8>,
+}
+
+impl PosixExtensions {
+    fn byte_code(&self) -> u16 { POSIX_EXTENSIONS_TAG }
+
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: SMBConnectionUpdate<R, W, S>) -> SMBResult<(SMBConnectionUpdate<R, W, S>, bool)> {
+        if self.posix_reserved.is_empty() {
+            return Err(SMBError::response_error(NTStatus::InvalidParameter));
+        }
+        let connection = connection.posix_extension_payload(self.posix_reserved.clone());
+        Ok((connection, true))
+    }
+    fn from_connection_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>) -> Self {
+        Self {
+            reserved: PhantomData,
+            posix_reserved: connection.posix_extension_payload().to_vec(),
+        }
+    }
+}

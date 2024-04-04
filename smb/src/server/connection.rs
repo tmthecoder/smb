@@ -4,14 +4,16 @@ use std::future::Future;
 use std::sync::{Arc, Weak};
 
 use derive_builder::Builder;
+use digest::Digest;
+use sha2::Sha512;
 use tokio::sync::{Mutex, RwLock};
 use tokio::sync::mpsc::Sender;
 use tokio_stream::StreamExt;
 use uuid::Uuid;
 
+use smb_core::{SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
-use smb_core::SMBResult;
 
 use crate::protocol::body::capabilities::Capabilities;
 use crate::protocol::body::dialect::SMBDialect;
@@ -30,7 +32,7 @@ use crate::server::preauth_session::SMBPreauthSession;
 use crate::server::request::Request;
 use crate::server::session::Session;
 use crate::socket::message_stream::{SMBReadStream, SMBSocketConnection, SMBWriteStream};
-use crate::util::auth::{AuthContext, AuthMessage, AuthProvider};
+use crate::util::auth::{AuthMessage, AuthProvider};
 
 // use tokio::sync::Mutex;
 // use tokio_stream::StreamExt;
@@ -56,6 +58,7 @@ pub trait Connection: Send + Sync {
 
     fn client_security_mode(&self) -> NegotiateSecurityMode;
     fn server_security_mode(&self) -> NegotiateSecurityMode;
+    fn posix_extension_payload(&self) -> &[u8];
 
     fn preauth_integrity_hash_id(&self) -> HashAlgorithm;
 
@@ -99,6 +102,7 @@ pub struct SMBConnection<R: SMBReadStream, W: SMBWriteStream, S: Server> {
     server_security_mode: NegotiateSecurityMode,
     constrained_connection: bool,
     preauth_integrity_hash_id: HashAlgorithm,
+    posix_extension_payload: Vec<u8>,
     // TODO
     preauth_integrity_hash_value: Vec<u8>, // TODO
     cipher_id: EncryptionCipher,
@@ -165,6 +169,10 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> Connection for SMBConnectio
         self.server_security_mode
     }
 
+    fn posix_extension_payload(&self) -> &[u8] {
+        &self.posix_extension_payload
+    }
+
     fn preauth_integrity_hash_id(&self) -> HashAlgorithm {
         self.preauth_integrity_hash_id
     }
@@ -211,7 +219,6 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
         &self.session_table
     }
     pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, connection: Arc<RwLock<SMBConnection<R, W, S>>>, auth_provider: Arc<A>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
-        let mut ctx = A::Context::init();
         let (read, write) = stream.streams();
         println!("Start message handler");
         let server = {
@@ -231,11 +238,11 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
             };
             println!("After handler: {:?}", message);
             if let Ok(message) = message {
-                println!("Writing message{:?}", message);
+                println!("Writing message {:?}", message);
                 let sent = write.write_message(&message).await?;
                 let _ = update_channel.send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64)).await;
-                ;
             }
+            // TODO handle error response (SMBError::ResponseError)
         }
 
         // Close streams on message parse finish (logoff)
@@ -334,6 +341,9 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
         if let Some(accept_transport_security) = update.accept_transport_security.take() {
             self.accept_transport_security = accept_transport_security;
         }
+        if let Some(posix_extension_payload) = update.posix_extension_payload.take() {
+            self.posix_extension_payload = posix_extension_payload;
+        }
     }
 }
 
@@ -382,7 +392,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBSta
         if let SMBBody::NegotiateRequest(request) = body {
             let (update, contexts) = request.validate_and_set_state(self, server)?;
             self.apply_update(update);
-            let resp_header = header.create_response_header(0x0, 0);
+            let resp_header = header.create_response_header(0x0, 0, 0);
             let resp_body = SMBNegotiateResponse::from_connection_state::<A, R, W, S>(self, server, contexts);
             Ok(SMBMessage::new(resp_header, SMBBody::NegotiateResponse(resp_body)))
         } else {
@@ -394,7 +404,11 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBSta
         let SMBMessage { header, body } = message;
         if let SMBBody::SessionSetupRequest(request) = body {
             let locked_conn = get_locked();
-            let session = S::SessionType::init(1, server.encrypt_data(), self.preauth_integrity_hash_value.clone(), locked_conn, server.auth_provider().clone());
+            let mut sha = Sha512::default();
+            sha.update(self.preauth_integtiry_hash_value());
+            sha.update(&request.smb_to_bytes());
+            let preauth_val = sha.finalize().to_vec();
+            let session = S::SessionType::init(1, server.encrypt_data(), preauth_val, locked_conn, server.auth_provider().clone());
             let id = session.id();
             let wrapped_session = Arc::new(RwLock::new(session));
             self.session_table.insert(id, wrapped_session.clone());
@@ -474,6 +488,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> TryFrom<(SMBSocketConnectio
             server_security_mode: NegotiateSecurityMode::empty(),
             constrained_connection: false,
             preauth_integrity_hash_id: HashAlgorithm::SHA512,
+            posix_extension_payload: vec![],
             preauth_integrity_hash_value: vec![],
             cipher_id: EncryptionCipher::None,
             client_dialects: vec![],
