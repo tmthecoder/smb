@@ -151,24 +151,25 @@ impl NTLMAuthenticateMessageBody {
                 Vec::new()
             } else {
                 // ntlm v2
-                let (_, proof_str) = authenticate_v2(&self.domain_name, &self.user_name, &matched_user.password, server_challenge, &self.lm_challenge_response, &self.nt_challenge_response).unwrap();
-                proof_str
+                let (_, session_base_key) = authenticate_v2(&self.domain_name, &self.user_name, &matched_user.password, server_challenge, &self.lm_challenge_response, &self.nt_challenge_response).unwrap();
+                session_base_key
             }
         } else {
             Vec::new()
         };
-        if response_key.is_empty() { 1 } else {
-            let session_key = if self.negotiate_flags.contains(NTLMNegotiateFlags::KEY_EXCHANGE) {
+        if !response_key.is_empty() && self.negotiate_flags.contains(NTLMNegotiateFlags::KEY_EXCHANGE) {
+            let session_key = if self.negotiate_flags.contains(NTLMNegotiateFlags::SEAL) || self.negotiate_flags.contains(NTLMNegotiateFlags::SIGN) {
                 let mut rc4 = Rc4::new(Key::<U16>::from_slice(&response_key));
                 let mut output = vec![0; self.encrypted_session_key.len()];
                 rc4.apply_keystream_b2b(&self.encrypted_session_key, &mut output).unwrap();
-                output
+                output 
             } else {
                 response_key
             };
             context.session_key = session_key;
             0
-        }
+        } else { 1 }
+
     }
 }
 
