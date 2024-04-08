@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::protocol::body::create::file_id::SMBFileId;
+use crate::protocol::body::empty::SMBEmpty;
 use crate::protocol::body::lock::info::SMBLockInfo;
 
 mod info;
@@ -18,3 +19,5 @@ pub struct SMBLockRequest {
     #[smb_vector(count(inner(start = 2, num_type = "u16")), order = 0)]
     locks: Vec<SMBLockInfo>,
 }
+
+pub type SMBLockResponse = SMBEmpty;
