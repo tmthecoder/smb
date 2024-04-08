@@ -38,6 +38,7 @@ mod read;
 mod write;
 mod lock;
 mod echo;
+mod cancel;
 
 pub trait Body<S: Header>: SMBEnumFromBytes + SMBToBytes {
     fn parse_with_cc(bytes: &[u8], command_code: S::CommandCode) -> SMBParseResult<&[u8], Self> where Self: Sized;
