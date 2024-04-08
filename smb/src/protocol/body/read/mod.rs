@@ -17,9 +17,9 @@ pub struct SMBReadRequest {
     #[smb_direct(start(fixed = 3))]
     flags: SMBReadRequestFlags,
     #[smb_direct(start(fixed = 4))]
-    length: u32,
+    read_length: u32,
     #[smb_direct(start(fixed = 8))]
-    offset: u64,
+    read_offset: u64,
     #[smb_direct(start(fixed = 16))]
     file_id: SMBFileId,
     #[smb_direct(start(fixed = 32))]

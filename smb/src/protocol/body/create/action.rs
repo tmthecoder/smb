@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 #[repr(u32)]
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, SMBFromBytes, SMBToBytes, SMBByteSize, TryFromPrimitive)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, SMBFromBytes, SMBToBytes, SMBByteSize, TryFromPrimitive, Copy, Clone)]
 pub enum SMBCreateAction {
     FileSuperseded = 0x0,
     FileOpened = 0x1,

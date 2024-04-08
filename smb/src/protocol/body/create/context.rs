@@ -9,6 +9,7 @@ use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
+use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::filetime::FileTime;
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
@@ -286,7 +287,7 @@ pub struct DurableHandleRequest {
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct DurableHandleReconnect {
     #[smb_direct(start(fixed = 0))]
-    file_id: SMBFileID,
+    file_id: SMBFileId,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
@@ -379,7 +380,7 @@ bitflags! {
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
 pub struct DurableHandleReconnectV2 {
     #[smb_direct(start(fixed = 0))]
-    file_id: SMBFileID,
+    file_id: SMBFileId,
     #[smb_direct(start(fixed = 16))]
     create_guid: Uuid,
     #[smb_direct(start(fixed = 32))]

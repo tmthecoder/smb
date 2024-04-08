@@ -10,7 +10,6 @@ use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::filetime::FileTime;
 
 mod flags;
-mod file_attributes;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
 #[smb_byte_tag(24)]

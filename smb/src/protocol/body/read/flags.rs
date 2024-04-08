@@ -15,7 +15,7 @@ bitflags! {
 }
 
 #[repr(u32)]
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, SMBToBytes, SMBFromBytes, SMBByteSize, TryFromPrimitive)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, SMBToBytes, SMBFromBytes, SMBByteSize, TryFromPrimitive, Copy, Clone)]
 pub enum SMBReadResponseFlags {
     None = 0x0,
     RdmaTransform = 0x01,

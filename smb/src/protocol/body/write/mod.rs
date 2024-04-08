@@ -14,9 +14,9 @@ mod flags;
 #[smb_byte_tag(49)]
 pub struct SMBWriteRequest {
     #[smb_direct(start(fixed = 4))]
-    length: u32,
+    write_length: u32,
     #[smb_direct(start(fixed = 8))]
-    offset: u64,
+    write_offset: u64,
     #[smb_direct(start(fixed = 16))]
     file_id: SMBFileId,
     #[smb_direct(start(fixed = 32))]
@@ -39,7 +39,7 @@ pub struct SMBWriteResponse {
     #[smb_direct(start(fixed = 4))]
     bytes_written: u32,
     #[smb_skip(start = 8, length = 4)]
-    remaining: PhantomData<Vec<u8>>,
+    remaining_bytes: PhantomData<Vec<u8>>,
     #[smb_skip(start = 12, length = 2)]
     write_channel_info_offset: PhantomData<Vec<u8>>,
     #[smb_skip(start = 14, length = 2)]
