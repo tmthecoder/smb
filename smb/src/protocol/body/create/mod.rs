@@ -18,6 +18,7 @@ pub mod file_attributes;
 mod share_access;
 mod disposition;
 mod context;
+pub mod file_id;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
 #[smb_byte_tag(57)]

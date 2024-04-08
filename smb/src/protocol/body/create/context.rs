@@ -1,11 +1,14 @@
 use std::marker::PhantomData;
+
 use bitflags::bitflags;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
 use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
+
 use crate::protocol::body::filetime::FileTime;
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
@@ -243,14 +246,6 @@ impl SMBToBytes for CreateContext {
             CreateContext::SVHDXOpenDeviceContext(x) => create_ctx_smb_to_bytes!(x, SVHDX_OPEN_DEVICE_CONTEXT_TAG),
         }
     }
-}
-
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
-pub struct SMBFileID {
-    #[smb_direct(start(fixed = 0))]
-    persistent: u64,
-    #[smb_direct(start(fixed = 8))]
-    volatile: u64,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
