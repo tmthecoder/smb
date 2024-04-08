@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::protocol::body::create::file_id::SMBFileId;
+use crate::protocol::body::empty::SMBEmpty;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
 #[smb_byte_tag(24)]
@@ -16,3 +17,5 @@ pub struct SMBFlushRequest {
     #[smb_direct(start(fixed = 8))]
     file_id: SMBFileId,
 }
+
+pub type SMBFlushResponse = SMBEmpty;
