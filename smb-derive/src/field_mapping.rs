@@ -258,9 +258,9 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq
             quote! {
                 #(#recurse)*
                 let vals = #(#names)*;
-                println!("raw {:02x?}", vals);
+                // println!("raw {:02x?}", vals);
                 let value = Self::try_from(vals).map_err(|_e| ::smb_core::error::SMBError::parse_error("Invalid primitive value"))?;
-                println!("parsed {:?}", value);
+                // println!("parsed {:?}", value);
                 Ok((remaining, value))
             }
         },
