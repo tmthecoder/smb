@@ -3,6 +3,7 @@ use std::fs::File;
 
 use uuid::Uuid;
 
+use crate::protocol::body::create::oplock::SMBOplockLevel;
 use crate::protocol::body::create::options::SMBCreateOptions;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::server::connection::Connection;
@@ -59,14 +60,6 @@ pub struct SMBOpen<T: SharedResource, C: Connection, S: Server> {
 
 // TODO: From MS-FSCC section 2.6
 struct FileAttributes;
-
-pub enum SMBOplockLevel {
-    None,
-    II,
-    Exclusive,
-    Batch,
-    Lease
-}
 
 pub enum SMBOplockState {
     Held,

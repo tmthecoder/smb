@@ -1,6 +1,10 @@
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
+
+use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
 bitflags! {
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
     pub struct SMBCreateOptions: u32 {
         const DIRECTORY_FILE            = 0x000001;
         const WRITE_THROUGH             = 0x000002;
@@ -25,3 +29,7 @@ bitflags! {
         const OPEN_FOR_FREE_SPACE_QUERY = 0x800000;
     }
 }
+
+impl_smb_byte_size_for_bitflag! { SMBCreateOptions }
+impl_smb_to_bytes_for_bitflag! { SMBCreateOptions }
+impl_smb_from_bytes_for_bitflag! { SMBCreateOptions }

@@ -9,6 +9,7 @@ use smb_core::{SMBByteSize, SMBEnumFromBytes, SMBFromBytes, SMBParseResult, SMBT
 use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBToBytes};
 
+use crate::protocol::body::create::SMBCreateRequest;
 use crate::protocol::body::logoff::{SMBLogoffRequest, SMBLogoffResponse};
 use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
 use crate::protocol::body::session_setup::{SMBSessionSetupRequest, SMBSessionSetupResponse};
@@ -31,6 +32,7 @@ pub mod tree_disconnect;
 pub mod empty;
 pub mod create;
 mod error;
+mod close;
 
 pub trait Body<S: Header>: SMBEnumFromBytes + SMBToBytes {
     fn parse_with_cc(bytes: &[u8], command_code: S::CommandCode) -> SMBParseResult<&[u8], Self> where Self: Sized;
@@ -74,6 +76,9 @@ pub enum SMBBody {
     #[smb_discriminator(flag = 0b10000)]
     #[smb_direct(start(fixed = 0))]
     TreeDisconnectResponse(SMBTreeDisconnectResponse),
+    #[smb_discriminator(value = 0x5)]
+    #[smb_direct(start(fixed = 0))]
+    CreateRequest(SMBCreateRequest),
     #[smb_discriminator(value = 0x999)]
     #[smb_enum(start(fixed = 0), discriminator(inner(start = 0, num_type = "u8")))]
     LegacyCommand(LegacySMBBody),

@@ -26,6 +26,13 @@ impl FileTime {
         }
     }
 
+    pub fn zero() -> Self {
+        FileTime {
+            low_date_time: 0,
+            high_date_time: 0,
+        }
+    }
+
     pub fn now() -> Self {
         let time_now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         Self::from_unix(time_now.as_secs())

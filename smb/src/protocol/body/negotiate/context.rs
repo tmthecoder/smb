@@ -57,13 +57,6 @@ macro_rules! ctx_smb_from_bytes_enumify {
     }};
 }
 
-macro_rules! vector_with_only_last {
-    ($vector: expr) => {{
-        $vector.sort();
-        vec![*$vector.last()?]
-    }};
-}
-
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum NegotiateContext {
     PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilities),

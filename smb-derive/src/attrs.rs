@@ -234,6 +234,7 @@ impl Direct {
 pub struct Buffer {
     #[darling(default)]
     pub order: usize,
+    #[darling(default)]
     pub offset: AttributeInfo,
     pub length: AttributeInfo,
 }
@@ -411,7 +412,7 @@ impl SMBString {
         // TODO make this work to convert back to u8 & u16 vecs
         let string_to_bytes = match self.underlying.as_str() {
             "u8" => quote! {
-                let token_vec = #raw_token.as_bytes();
+                let token_vec = #raw_token.as_bytes().to_vec();
             },
             "u16" => quote! {
                 let token_vec = #raw_token.encode_utf16();
