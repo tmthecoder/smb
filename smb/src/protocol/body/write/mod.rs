@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use serde::{Deserialize, Serialize};
 
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
@@ -27,4 +29,19 @@ pub struct SMBWriteRequest {
     channel_information: Vec<u8>,
     #[smb_buffer(offset(inner(start = 2, num_type = "u16", subtract = 64)), length(inner(start = 4, num_type = "u32")))]
     data_to_write: Vec<u8>,
+}
+
+#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[smb_byte_tag(17)]
+pub struct SMBWriteResponse {
+    #[smb_skip(start = 2, length = 2)]
+    reserved: PhantomData<Vec<u8>>,
+    #[smb_direct(start(fixed = 4))]
+    bytes_written: u32,
+    #[smb_skip(start = 8, length = 4)]
+    remaining: PhantomData<Vec<u8>>,
+    #[smb_skip(start = 12, length = 2)]
+    write_channel_info_offset: PhantomData<Vec<u8>>,
+    #[smb_skip(start = 14, length = 2)]
+    write_channel_info_len: PhantomData<Vec<u8>>,
 }
