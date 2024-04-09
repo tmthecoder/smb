@@ -14,7 +14,7 @@ pub enum SMBAccessMask {
 }
 
 bitflags! {
-    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy)]
     pub struct SMBFilePipePrinterAccessMask: u32 {
         const FILE_READ_DATA         = 0x00000001;
         const FILE_WRITE_DATA        = 0x00000002;

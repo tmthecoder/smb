@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::protocol::body::create::action::SMBCreateAction;
-use crate::protocol::body::create::context::CreateContext;
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
 use crate::protocol::body::create::file_attributes::SMBFileAttributes;
 use crate::protocol::body::create::file_id::SMBFileId;
@@ -13,6 +12,7 @@ use crate::protocol::body::create::flags::SMBCreateFlags;
 use crate::protocol::body::create::impersonation_level::SMBImpersonationLevel;
 use crate::protocol::body::create::oplock::SMBOplockLevel;
 use crate::protocol::body::create::options::SMBCreateOptions;
+use crate::protocol::body::create::request_context::CreateRequestContext;
 use crate::protocol::body::create::share_access::SMBShareAccess;
 use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::tree_connect::access_mask::SMBFilePipePrinterAccessMask;
@@ -23,10 +23,14 @@ pub mod impersonation_level;
 pub mod file_attributes;
 mod share_access;
 mod disposition;
-mod context;
+mod request_context;
 pub mod file_id;
 mod flags;
 mod action;
+mod response_context;
+
+#[macro_use]
+pub(crate) mod context_helper;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
 #[smb_byte_tag(57)]
@@ -48,7 +52,7 @@ pub struct SMBCreateRequest {
     #[smb_string(order = 0, start(inner(start = 44, num_type = "u16", subtract = 68)), length(inner(start = 46, num_type = "u16")), underlying = "u16")]
     file_name: String,
     #[smb_vector(order = 1, align = 8, count(inner(start = 52, num_type = "u32")), offset(inner(start = 48, num_type = "u32", subtract = 64)))]
-    contexts: Vec<CreateContext>,
+    contexts: Vec<CreateRequestContext>,
 }
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
@@ -78,5 +82,5 @@ pub struct SMBCreateResponse {
     file_id: SMBFileId,
     #[smb_vector(order = 0, align = 8, offset(inner(start = 64, num_type = "u32", subtract = 64)), count(inner(start = 68, num_type = "u32")), )]
     // TODO split into response ctx
-    contexts: Vec<CreateContext>,
+    contexts: Vec<CreateRequestContext>,
 }

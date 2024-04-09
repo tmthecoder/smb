@@ -701,6 +701,8 @@ dependencies = [
 name = "smb-core"
 version = "0.1.0"
 dependencies = [
+ "num_enum",
+ "serde",
  "uuid",
 ]
 
@@ -709,9 +711,9 @@ name = "smb-derive"
 version = "0.0.1"
 dependencies = [
  "darling 0.20.3",
+ "num_enum",
  "proc-macro2",
  "quote",
- "smb-core",
  "syn 2.0.28",
 ]
 

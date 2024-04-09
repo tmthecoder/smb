@@ -12,6 +12,6 @@ proc-macro = true
 [dependencies]
 syn = { version = "2.0.20", features = ["extra-traits", "parsing"] }
 darling = "0.20.1"
-smb-core = { path = "../smb-core" }
 quote = "1.0.32"
 proc-macro2 = "1.0.66"
+num_enum = "0.5.7"

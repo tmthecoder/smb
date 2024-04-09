@@ -9,89 +9,38 @@ use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
+use crate::protocol::body::create::context_helper::{create_ctx_smb_byte_size, create_ctx_smb_from_bytes, create_ctx_smb_to_bytes, CreateContextWrapper, impl_tag_for_ctx};
 use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::filetime::FileTime;
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
-macro_rules! impl_tag_for_ctx {
-    ($body_struct: ty, $item: expr) => {
-        impl $body_struct {
-            pub fn tag(&self) -> &'static [u8] {
-                $item
-            }
-        }
-    };
-}
-
-macro_rules! create_ctx_smb_byte_size {
-    ($body: expr) => {{
-        let bytes = $body.smb_to_bytes();
-        let tag = $body.tag();
-        let wrapper = CreateContextWrapper {
-            name: tag.to_vec(),
-            data: bytes,
-        };
-        wrapper.smb_byte_size()
-    }};
-}
-
-macro_rules! create_ctx_smb_from_bytes {
-    ($enumType: expr, $bodyType: expr, $data: expr) => {
-        {
-            let (_, body) = $bodyType($data)?;
-            Ok($enumType(body))
-        }
-    };
-}
-
-macro_rules! create_ctx_smb_to_bytes {
-    ($body: expr, $tag: expr) => {
-        {
-            let bytes = $body.smb_to_bytes();
-            let wrapper = CreateContextWrapper{
-                data: bytes,
-                name: $tag.to_vec(),
-            };
-            wrapper.smb_to_bytes()
-        }
-    };
-}
-
-const EA_BUFFER_TAG: &[u8] = "ExtA".as_bytes();
-const SD_BUFFER_TAG: &[u8] = "SecD".as_bytes();
-const DURABLE_HANDLE_REQUEST_TAG: &[u8] = "DHnQ".as_bytes();
-const DURABLE_HANDLE_RECONNECT_TAG: &[u8] = "DHnC".as_bytes();
-const ALLOCATION_SIZE_TAG: &[u8] = "AlSi".as_bytes();
-const QUERY_MAXIMAL_ACCESS_REQUEST_TAG: &[u8] = "MxAc".as_bytes();
-const TIMEWARP_TOKEN_TAG: &[u8] = "TWrp".as_bytes();
-const QUERY_ON_DISK_ID_TAG: &[u8] = "QFid".as_bytes();
+pub const EA_BUFFER_TAG: &[u8] = "ExtA".as_bytes();
+pub const SD_BUFFER_TAG: &[u8] = "SecD".as_bytes();
+pub const DURABLE_HANDLE_REQUEST_TAG: &[u8] = "DHnQ".as_bytes();
+pub const DURABLE_HANDLE_RECONNECT_TAG: &[u8] = "DHnC".as_bytes();
+pub const ALLOCATION_SIZE_TAG: &[u8] = "AlSi".as_bytes();
+pub const QUERY_MAXIMAL_ACCESS_REQUEST_TAG: &[u8] = "MxAc".as_bytes();
+pub const TIMEWARP_TOKEN_TAG: &[u8] = "TWrp".as_bytes();
+pub const QUERY_ON_DISK_ID_TAG: &[u8] = "QFid".as_bytes();
 // Same tag for v1 and v2, different by data length
-const REQUEST_LEASE_TAG: &[u8] = "RqLs".as_bytes();
-const DURABLE_HANDLE_REQUEST_V2_TAG: &[u8] = "DH2Q".as_bytes();
-const DURABLE_HANDLE_RECONNECT_V2_TAG: &[u8] = "DH2C".as_bytes();
-const APP_INSTANCE_ID_TAG: &[u8] = &[
+pub const REQUEST_LEASE_TAG: &[u8] = "RqLs".as_bytes();
+pub const DURABLE_HANDLE_REQUEST_V2_TAG: &[u8] = "DH2Q".as_bytes();
+pub const DURABLE_HANDLE_RECONNECT_V2_TAG: &[u8] = "DH2C".as_bytes();
+pub const APP_INSTANCE_ID_TAG: &[u8] = &[
     0x45, 0xBC, 0xA6, 0x6A, 0xEF, 0xA7, 0xF7, 0x4A, 0x90, 0x08, 0xFA, 0x46, 0x2E, 0x14, 0x4D, 0x74
 ];
-const APP_INSTANCE_VERSION_TAG: &[u8] = &[
+pub const APP_INSTANCE_VERSION_TAG: &[u8] = &[
     0xB9, 0x82, 0xD0, 0xB7, 0x3B, 0x56, 0x07, 0x4F, 0xA0, 0x7B, 0x52, 0x4A, 0x81, 0x16, 0xA0, 0x10
 ];
-const SVHDX_OPEN_DEVICE_CONTEXT_TAG: &[u8] = &[
+pub const SVHDX_OPEN_DEVICE_CONTEXT_TAG: &[u8] = &[
     0x9C, 0xCB, 0xCF, 0x9E, 0x04, 0xC1, 0xE6, 0x43, 0x98, 0x0E, 0x15, 0x8D, 0xA1, 0xF6, 0xEC, 0x83
 ];
-const RESERVED: &[u8] = &[
+pub const RESERVED: &[u8] = &[
     0x93, 0xAD, 0x25, 0x50, 0x9C, 0xB4, 0x11, 0xE7, 0xB4, 0x23, 0x83, 0xDE, 0x96, 0x8B, 0xCD, 0x7C
 ];
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
-pub struct CreateContextWrapper {
-    #[smb_buffer(offset(inner(start = 4, num_type = "u16")), length(inner(start = 6, num_type = "u16")), order = 0)]
-    name: Vec<u8>,
-    #[smb_buffer(offset(inner(start = 10, num_type = "u16")), length(inner(start = 12, num_type = "u32")), order = 1)]
-    data: Vec<u8>,
-}
-
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum CreateContext {
+pub enum CreateRequestContext {
     EABuffer(EABuffer),
     SDBuffer(SDBuffer),
     DurableHandleRequest(DurableHandleRequest),
@@ -107,32 +56,31 @@ pub enum CreateContext {
     AppInstanceID(AppInstanceID),
     AppInstanceVersion(AppInstanceVersion),
     SVHDXOpenDeviceContext(SVHDXOpenDeviceContext),
-    // Add other contexts
 }
 
-impl SMBByteSize for CreateContext {
+impl SMBByteSize for CreateRequestContext {
     fn smb_byte_size(&self) -> usize {
         match self {
-            CreateContext::EABuffer(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::SDBuffer(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::DurableHandleRequest(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::DurableHandleReconnect(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::AllocationSize(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::QueryMaximalAccessRequest(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::TimewarpToken(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::QueryOnDiskID(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::RequestLease(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::RequestLeaseV2(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::DurableHandleRequestV2(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::DurableHandleReconnectV2(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::AppInstanceID(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::AppInstanceVersion(x) => create_ctx_smb_byte_size!(x),
-            CreateContext::SVHDXOpenDeviceContext(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::EABuffer(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::SDBuffer(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::DurableHandleRequest(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::DurableHandleReconnect(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::AllocationSize(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::QueryMaximalAccessRequest(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::TimewarpToken(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::QueryOnDiskID(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::RequestLease(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::RequestLeaseV2(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::DurableHandleRequestV2(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::DurableHandleReconnectV2(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::AppInstanceID(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::AppInstanceVersion(x) => create_ctx_smb_byte_size!(x),
+            CreateRequestContext::SVHDXOpenDeviceContext(x) => create_ctx_smb_byte_size!(x),
         }
     }
 }
 
-impl SMBFromBytes for CreateContext {
+impl SMBFromBytes for CreateRequestContext {
     fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
         println!("parsing wrapper");
         let (remaining, wrapper) = CreateContextWrapper::smb_from_bytes(input)?;
@@ -227,24 +175,24 @@ impl SMBFromBytes for CreateContext {
     }
 }
 
-impl SMBToBytes for CreateContext {
+impl SMBToBytes for CreateRequestContext {
     fn smb_to_bytes(&self) -> Vec<u8> {
         match self {
-            CreateContext::EABuffer(x) => create_ctx_smb_to_bytes!(x, EA_BUFFER_TAG),
-            CreateContext::SDBuffer(x) => create_ctx_smb_to_bytes!(x, SD_BUFFER_TAG),
-            CreateContext::DurableHandleRequest(x) => create_ctx_smb_to_bytes!(x, DURABLE_HANDLE_REQUEST_TAG),
-            CreateContext::DurableHandleReconnect(x) => create_ctx_smb_to_bytes!(x, DURABLE_HANDLE_RECONNECT_TAG),
-            CreateContext::AllocationSize(x) => create_ctx_smb_to_bytes!(x, ALLOCATION_SIZE_TAG),
-            CreateContext::QueryMaximalAccessRequest(x) => create_ctx_smb_to_bytes!(x, QUERY_MAXIMAL_ACCESS_REQUEST_TAG),
-            CreateContext::TimewarpToken(x) => create_ctx_smb_to_bytes!(x, TIMEWARP_TOKEN_TAG),
-            CreateContext::QueryOnDiskID(x) => create_ctx_smb_to_bytes!(x, QUERY_ON_DISK_ID_TAG),
-            CreateContext::RequestLease(x) => create_ctx_smb_to_bytes!(x, REQUEST_LEASE_TAG),
-            CreateContext::RequestLeaseV2(x) => create_ctx_smb_to_bytes!(x, REQUEST_LEASE_TAG),
-            CreateContext::DurableHandleRequestV2(x) => create_ctx_smb_to_bytes!(x, DURABLE_HANDLE_REQUEST_V2_TAG),
-            CreateContext::DurableHandleReconnectV2(x) => create_ctx_smb_to_bytes!(x, DURABLE_HANDLE_RECONNECT_V2_TAG),
-            CreateContext::AppInstanceID(x) => create_ctx_smb_to_bytes!(x, APP_INSTANCE_ID_TAG),
-            CreateContext::AppInstanceVersion(x) => create_ctx_smb_to_bytes!(x, APP_INSTANCE_VERSION_TAG),
-            CreateContext::SVHDXOpenDeviceContext(x) => create_ctx_smb_to_bytes!(x, SVHDX_OPEN_DEVICE_CONTEXT_TAG),
+            CreateRequestContext::EABuffer(x) => create_ctx_smb_to_bytes!(x, EA_BUFFER_TAG),
+            CreateRequestContext::SDBuffer(x) => create_ctx_smb_to_bytes!(x, SD_BUFFER_TAG),
+            CreateRequestContext::DurableHandleRequest(x) => create_ctx_smb_to_bytes!(x, DURABLE_HANDLE_REQUEST_TAG),
+            CreateRequestContext::DurableHandleReconnect(x) => create_ctx_smb_to_bytes!(x, DURABLE_HANDLE_RECONNECT_TAG),
+            CreateRequestContext::AllocationSize(x) => create_ctx_smb_to_bytes!(x, ALLOCATION_SIZE_TAG),
+            CreateRequestContext::QueryMaximalAccessRequest(x) => create_ctx_smb_to_bytes!(x, QUERY_MAXIMAL_ACCESS_REQUEST_TAG),
+            CreateRequestContext::TimewarpToken(x) => create_ctx_smb_to_bytes!(x, TIMEWARP_TOKEN_TAG),
+            CreateRequestContext::QueryOnDiskID(x) => create_ctx_smb_to_bytes!(x, QUERY_ON_DISK_ID_TAG),
+            CreateRequestContext::RequestLease(x) => create_ctx_smb_to_bytes!(x, REQUEST_LEASE_TAG),
+            CreateRequestContext::RequestLeaseV2(x) => create_ctx_smb_to_bytes!(x, REQUEST_LEASE_TAG),
+            CreateRequestContext::DurableHandleRequestV2(x) => create_ctx_smb_to_bytes!(x, DURABLE_HANDLE_REQUEST_V2_TAG),
+            CreateRequestContext::DurableHandleReconnectV2(x) => create_ctx_smb_to_bytes!(x, DURABLE_HANDLE_RECONNECT_V2_TAG),
+            CreateRequestContext::AppInstanceID(x) => create_ctx_smb_to_bytes!(x, APP_INSTANCE_ID_TAG),
+            CreateRequestContext::AppInstanceVersion(x) => create_ctx_smb_to_bytes!(x, APP_INSTANCE_VERSION_TAG),
+            CreateRequestContext::SVHDXOpenDeviceContext(x) => create_ctx_smb_to_bytes!(x, SVHDX_OPEN_DEVICE_CONTEXT_TAG),
         }
     }
 }
