@@ -40,6 +40,7 @@ mod lock;
 mod echo;
 mod cancel;
 mod query_directory;
+mod change_notify;
 
 pub trait Body<S: Header>: SMBEnumFromBytes + SMBToBytes {
     fn parse_with_cc(bytes: &[u8], command_code: S::CommandCode) -> SMBParseResult<&[u8], Self> where Self: Sized;
