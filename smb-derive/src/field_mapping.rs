@@ -240,7 +240,7 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq
         SMBFieldMappingType::NamedStruct => {
             quote! {
                 #(#recurse)*
-                println!("Size: {}", current_pos);
+                // println!("Size: {}", current_pos);
                 Ok((remaining, Self {
                     #(#names,)*
                 }))

@@ -1,3 +1,5 @@
+use std::default::Default;
+
 use darling::{FromAttributes, FromDeriveInput, FromField, FromMeta};
 use darling::ast::NestedMeta;
 use proc_macro2::{Ident, TokenStream};
@@ -279,9 +281,13 @@ impl Buffer {
 
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, PartialEq, Eq)]
 #[darling(attributes(smb_vector))]
+#[darling(and_then = "Vector::validate_attrs")]
 pub struct Vector {
     pub order: usize,
+    #[darling(default)]
     pub count: AttributeInfo,
+    #[darling(default)]
+    pub length: AttributeInfo,
     #[darling(default)]
     pub offset: AttributeInfo,
     #[darling(default)]
@@ -289,6 +295,15 @@ pub struct Vector {
 }
 
 impl Vector {
+    pub(crate) fn validate_attrs(self) -> darling::Result<Self> {
+        let default = AttributeInfo::default();
+        if self.count == default && self.length == default {
+            return Err(darling::Error::custom("count or length must be specified for smb_vector types"));
+        } else if self.count != default && self.length != default {
+            return Err(darling::Error::custom("only one of count or length can be specified for smb_vector types"));
+        }
+        Ok(self)
+    }
     pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> TokenStream {
         let count = self.count.smb_from_bytes(spanned, "item_count");
         println!("Count: {}", count);
@@ -297,14 +312,14 @@ impl Vector {
         quote_spanned! { spanned.span() =>
             #count
             if #align > 0 && current_pos % #align != 0 {
-                current_pos += 8 - (current_pos % #align);
+                current_pos += #align - (current_pos % #align);
             }
             #offset
             let item_offset = item_offset as usize;
             if item_offset >= input.len() {
                 return Err(::smb_core::error::SMBError::payload_too_small(item_offset, input.len()));
             }
-            let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytes::smb_from_bytes_vec(&input[item_offset..], item_count as usize)?;
+            let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytesCnt::smb_from_bytes_vec_cnt(&input[item_offset..], #align as usize, item_count as usize)?;
             current_pos = item_offset + ::smb_core::SMBVecByteSize::smb_byte_size_vec(&#name, #align, item_offset);
         }
     }
@@ -397,7 +412,7 @@ impl SMBString {
             if item_offset >= input.len() {
                 return Err(::smb_core::error::SMBError::payload_too_small(item_offset, input.len()));
             }
-            let (remaining, #vec_name): (&[u8], Vec<#num_type>) = ::smb_core::SMBVecFromBytes::smb_from_bytes_vec(&input[item_offset..], (item_count/2) as usize)?;
+            let (remaining, #vec_name): (&[u8], Vec<#num_type>) = ::smb_core::SMBVecFromBytesCnt::smb_from_bytes_vec_cnt(&input[item_offset..], 0, (item_count/2) as usize)?;
             #string_parser
             current_pos = item_offset + ::smb_core::SMBVecByteSize::smb_byte_size_vec(&#name, 0, item_offset);
         }

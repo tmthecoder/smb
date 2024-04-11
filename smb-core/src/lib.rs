@@ -67,9 +67,9 @@ impl<T> SMBByteSize for PhantomData<T> {
     }
 }
 
-impl SMBVecFromBytes for String {
-    fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized {
-        let (remaining, vec) = <Vec<u8>>::smb_from_bytes_vec(input, count)?;
+impl SMBVecFromBytesCnt for String {
+    fn smb_from_bytes_vec_cnt(input: &[u8], align: usize, count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized {
+        let (remaining, vec) = <Vec<u8>>::smb_from_bytes_vec_cnt(input, align, count)?;
         let str = String::from_utf8(vec)
             .map_err(|_e| SMBError::parse_error("Invalid byte slice"))?;
         Ok((remaining, str))
@@ -82,22 +82,31 @@ impl SMBVecByteSize for String {
     }
 }
 
-pub trait SMBVecFromBytes {
-    fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized;
+pub trait SMBVecFromBytesCnt {
+    fn smb_from_bytes_vec_cnt(input: &[u8], align: usize, count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized;
+}
+
+pub trait SMBVecFromBytesLen {
+    fn smb_from_bytes_vec_len(input: &[u8], len: usize) -> SMBParseResult<&[u8], Self> where Self: Sized;
 }
 
 pub trait SMBEnumFromBytes {
     fn smb_enum_from_bytes(input: &[u8], discriminator: u64) -> SMBParseResult<&[u8], Self> where Self: Sized;
 }
 
-impl<T: SMBFromBytes> SMBVecFromBytes for Vec<T> {
-    fn smb_from_bytes_vec(input: &[u8], count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized {
-        println!("attempting to parse {:?}", count);
+impl<T: SMBFromBytes> SMBVecFromBytesCnt for Vec<T> {
+    fn smb_from_bytes_vec_cnt(input: &[u8], align: usize, count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized {
+        // println!("attempting to parse {:?}", count);
         let mut remaining = input;
         let mut done_cnt = 0;
         let mut msg_vec = Vec::<T>::new();
+        let mut pos = 0;
         while done_cnt < count {
             let (r, val) = T::smb_from_bytes(remaining)?;
+            pos += T::smb_byte_size(&val);
+            if align > 0 && pos % align != 0 {
+                pos += align - (pos % align);
+            }
             msg_vec.push(val);
             remaining = r;
             done_cnt += 1;

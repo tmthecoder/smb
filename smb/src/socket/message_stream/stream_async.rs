@@ -33,6 +33,7 @@ async fn make_future<'a, T: SMBReadStream>(mut iterator: SMBMessageIterator<'a, 
     } else {
         Err(res.err().unwrap())
     };
+    println!("got msg: {:?}. bytes remaining: {:?}", msg_res, iterator.buffer);
     (msg_res, iterator)
 }
 

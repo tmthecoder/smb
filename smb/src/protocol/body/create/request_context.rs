@@ -82,10 +82,8 @@ impl SMBByteSize for CreateRequestContext {
 
 impl SMBFromBytes for CreateRequestContext {
     fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
-        println!("parsing wrapper");
         let (remaining, wrapper) = CreateContextWrapper::smb_from_bytes(input)?;
 
-        println!("got ctx wrapper: {:02x?}", wrapper);
         let context = match wrapper.name.as_slice() {
             EA_BUFFER_TAG => create_ctx_smb_from_bytes!(
                 Self::EABuffer,
