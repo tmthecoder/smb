@@ -9,12 +9,22 @@ use smb_core::{SMBByteSize, SMBEnumFromBytes, SMBFromBytes, SMBParseResult, SMBT
 use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBToBytes};
 
-use crate::protocol::body::create::SMBCreateRequest;
+use crate::protocol::body::cancel::SMBCancelRequest;
+use crate::protocol::body::change_notify::{SMBChangeNotifyRequest, SMBChangeNotifyResponse};
+use crate::protocol::body::close::{SMBCloseRequest, SMBCloseResponse};
+use crate::protocol::body::create::{SMBCreateRequest, SMBCreateResponse};
+use crate::protocol::body::echo::{SMBEchoRequest, SMBEchoResponse};
+use crate::protocol::body::flush::{SMBFlushRequest, SMBFlushResponse};
+use crate::protocol::body::lock::{SMBLockRequest, SMBLockResponse};
 use crate::protocol::body::logoff::{SMBLogoffRequest, SMBLogoffResponse};
 use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
+use crate::protocol::body::query_directory::{SMBQueryDirectoryRequest, SMBQueryDirectoryResponse};
+use crate::protocol::body::query_info::{SMBQueryInfoRequest, SMBQueryInfoResponse};
+use crate::protocol::body::read::{SMBReadRequest, SMBReadResponse};
 use crate::protocol::body::session_setup::{SMBSessionSetupRequest, SMBSessionSetupResponse};
 use crate::protocol::body::tree_connect::{SMBTreeConnectRequest, SMBTreeConnectResponse};
 use crate::protocol::body::tree_disconnect::{SMBTreeDisconnectRequest, SMBTreeDisconnectResponse};
+use crate::protocol::body::write::{SMBWriteRequest, SMBWriteResponse};
 use crate::protocol::header::command_code::{LegacySMBCommandCode, SMBCommandCode};
 use crate::protocol::header::Header;
 use crate::protocol::header::LegacySMBHeader;
@@ -88,6 +98,77 @@ pub enum SMBBody {
     #[smb_discriminator(value = 0x5)]
     #[smb_direct(start(fixed = 0))]
     CreateRequest(SMBCreateRequest),
+    #[smb_discriminator(value = 0x5)]
+    #[smb_discriminator(flag = 0b10000)]
+    #[smb_direct(start(fixed = 0))]
+    CreateResponse(SMBCreateResponse),
+    #[smb_discriminator(value = 0x6)]
+    #[smb_direct(start(fixed = 0))]
+    CloseRequest(SMBCloseRequest),
+    #[smb_discriminator(value = 0x6)]
+    #[smb_discriminator(flag = 0b10000)]
+    #[smb_direct(start(fixed = 0))]
+    CloseResponse(SMBCloseResponse),
+    #[smb_discriminator(value = 0x7)]
+    #[smb_direct(start(fixed = 0))]
+    FlushRequest(SMBFlushRequest),
+    #[smb_discriminator(value = 0x7)]
+    #[smb_discriminator(flag = 0b10000)]
+    #[smb_direct(start(fixed = 0))]
+    FlushResponse(SMBFlushResponse),
+    #[smb_discriminator(value = 0x8)]
+    #[smb_direct(start(fixed = 0))]
+    ReadRequest(SMBReadRequest),
+    #[smb_discriminator(value = 0x8)]
+    #[smb_discriminator(flag = 0b10000)]
+    #[smb_direct(start(fixed = 0))]
+    ReadResponse(SMBReadResponse),
+    #[smb_discriminator(value = 0x9)]
+    #[smb_direct(start(fixed = 0))]
+    WriteRequest(SMBWriteRequest),
+    #[smb_discriminator(value = 0x9)]
+    #[smb_discriminator(flag = 0b10000)]
+    #[smb_direct(start(fixed = 0))]
+    WriteResponse(SMBWriteResponse),
+    #[smb_discriminator(value = 0x10)]
+    #[smb_direct(start(fixed = 0))]
+    LockRequest(SMBLockRequest),
+    #[smb_discriminator(value = 0x10)]
+    #[smb_discriminator(flag = 0b10000)]
+    #[smb_direct(start(fixed = 0))]
+    LockResponse(SMBLockResponse),
+    // TODO IOCTL is val 11
+    #[smb_discriminator(value = 0x12)]
+    #[smb_direct(start(fixed = 0))]
+    CancelRequest(SMBCancelRequest),
+    #[smb_discriminator(value = 0x13)]
+    #[smb_direct(start(fixed = 0))]
+    EchoRequest(SMBEchoRequest),
+    #[smb_discriminator(value = 0x13)]
+    #[smb_discriminator(flag = 0b10000)]
+    #[smb_direct(start(fixed = 0))]
+    EchoResponse(SMBEchoResponse),
+    #[smb_discriminator(value = 0x14)]
+    #[smb_direct(start(fixed = 0))]
+    QueryDirectoryRequest(SMBQueryDirectoryRequest),
+    #[smb_discriminator(value = 0x14)]
+    #[smb_discriminator(flag = 0b10000)]
+    #[smb_direct(start(fixed = 0))]
+    QueryDirectoryResponse(SMBQueryDirectoryResponse),
+    #[smb_discriminator(value = 0x15)]
+    #[smb_direct(start(fixed = 0))]
+    ChangeNotifyRequest(SMBChangeNotifyRequest),
+    #[smb_discriminator(value = 0x15)]
+    #[smb_discriminator(flag = 0b10000)]
+    #[smb_direct(start(fixed = 0))]
+    ChangeNotifyResponse(SMBChangeNotifyResponse),
+    #[smb_discriminator(value = 0x16)]
+    #[smb_direct(start(fixed = 0))]
+    QueryInfoRequest(SMBQueryInfoRequest),
+    #[smb_discriminator(value = 0x16)]
+    #[smb_discriminator(flag = 0b10000)]
+    #[smb_direct(start(fixed = 0))]
+    QueryInfoResponse(SMBQueryInfoResponse),
     #[smb_discriminator(value = 0x999)]
     #[smb_enum(start(fixed = 0), discriminator(inner(start = 0, num_type = "u8")))]
     LegacyCommand(LegacySMBBody),

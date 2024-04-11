@@ -318,10 +318,11 @@ impl<C: Connection, S: Server<SessionType=Self>> Session<C, S::AuthType> for SMB
     }
 
     async fn handle_message(locked: Arc<RwLock<Self>>, message: &SMBMessageType) -> SMBResult<SMBMessageType> {
+        println!("Command code: {:?}", message.header.command_code());
         let mut msg_res = match message.header.command_code() {
             SMBCommandCode::SessionSetup => locked.handle_session_setup(message).await,
             SMBCommandCode::TreeConnect => locked.handle_tree_connect(message).await,
-            _ => Err(SMBError::parse_error("Invalid command code"))
+            _ => Err(SMBError::parse_error("Invalid command code}"))
         }?;
         let sess_rd = locked.read().await;
         if !sess_rd.full_session_key.is_empty() {
