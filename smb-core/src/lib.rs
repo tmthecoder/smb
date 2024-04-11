@@ -87,7 +87,7 @@ pub trait SMBVecFromBytesCnt {
 }
 
 pub trait SMBVecFromBytesLen {
-    fn smb_from_bytes_vec_len(input: &[u8], len: usize) -> SMBParseResult<&[u8], Self> where Self: Sized;
+    fn smb_from_bytes_vec_len(input: &[u8], align: usize, len: usize) -> SMBParseResult<&[u8], Self> where Self: Sized;
 }
 
 pub trait SMBEnumFromBytes {
@@ -101,15 +101,43 @@ impl<T: SMBFromBytes> SMBVecFromBytesCnt for Vec<T> {
         let mut done_cnt = 0;
         let mut msg_vec = Vec::<T>::new();
         let mut pos = 0;
+        let mut extra = 0;
         while done_cnt < count {
+            remaining = &remaining[extra..];
             let (r, val) = T::smb_from_bytes(remaining)?;
             pos += T::smb_byte_size(&val);
-            if align > 0 && pos % align != 0 {
-                pos += align - (pos % align);
-            }
+            extra = if align > 0 && pos % align != 0 {
+                align - (pos % align)
+            } else {
+                0
+            };
             msg_vec.push(val);
             remaining = r;
+            pos += extra;
             done_cnt += 1;
+        }
+        Ok((remaining, msg_vec))
+    }
+}
+
+impl<T: SMBFromBytes> SMBVecFromBytesLen for Vec<T> {
+    fn smb_from_bytes_vec_len(input: &[u8], align: usize, len: usize) -> SMBParseResult<&[u8], Self> where Self: Sized {
+        let mut remaining = input;
+        let mut msg_vec = Vec::<T>::new();
+        let mut pos = 0;
+        let mut extra = 0;
+        while pos < len {
+            remaining = &remaining[extra..];
+            let (r, val) = T::smb_from_bytes(remaining)?;
+            pos += T::smb_byte_size(&val);
+            extra = if align > 0 && pos % align != 0 {
+                align - (pos % align)
+            } else {
+                0
+            };
+            msg_vec.push(val);
+            remaining = r;
+            pos += extra;
         }
         Ok((remaining, msg_vec))
     }

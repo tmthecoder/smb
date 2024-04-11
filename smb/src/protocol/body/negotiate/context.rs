@@ -48,10 +48,11 @@ macro_rules! ctx_smb_from_bytes_enumify {
         } else {
             8 - $len % 8
         };
-        let remove_size = (6 + $len + padding) as usize;
-        if remove_size > $data.len() {
-            return Err(SMBError::parse_error("Invalid padding block"));
-        }
+        let remove_size = (6 + $len) as usize;
+        // let remove_size = (6 + $len + padding) as usize;
+        // if remove_size > $data.len() {
+        //     return Err(SMBError::parse_error("Invalid padding block"));
+        // }
         let remaining = &$data[remove_size..];
         Ok((remaining, $enumType(body)))
     }};
