@@ -46,6 +46,7 @@ impl DirectInner {
                     return Err(::smb_core::error::SMBError::payload_too_small(#start, input.len()));
                 }
                 let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBFromBytes::smb_from_bytes(&input[#start..])?;
+                // println!("value of item: {:?}", #name);
             }
         } else {
             quote! { let #name = current_pos; }
@@ -305,12 +306,27 @@ impl Vector {
         Ok(self)
     }
     pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, ty: &Type) -> TokenStream {
-        let count = self.count.smb_from_bytes(spanned, "item_count");
-        println!("Count: {}", count);
+        let vec_count_or_len = if self.count == AttributeInfo::default() {
+            self.length.smb_from_bytes(spanned, "item_length")
+        } else {
+            self.count.smb_from_bytes(spanned, "item_count")
+        };
+        // println!("Count: {}", vec_count_or_len);
         let align = self.align;
         let offset = self.offset.smb_from_bytes(spanned, "item_offset");
+        let parser = if self.count == AttributeInfo::default() {
+            quote! {
+                let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytesLen::smb_from_bytes_vec_len(&input[item_offset..], #align as usize, item_length as usize)?;
+            }
+        } else {
+            quote! {
+                let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytesCnt::smb_from_bytes_vec_cnt(&input[item_offset..], #align as usize, item_count as usize)?;
+            }
+        };
+        let name_str = name.to_string();
         quote_spanned! { spanned.span() =>
-            #count
+            // println!("cnt/len parse for {:?}", #name_str);
+            #vec_count_or_len
             if #align > 0 && current_pos % #align != 0 {
                 current_pos += #align - (current_pos % #align);
             }
@@ -319,15 +335,27 @@ impl Vector {
             if item_offset >= input.len() {
                 return Err(::smb_core::error::SMBError::payload_too_small(item_offset, input.len()));
             }
-            let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytesCnt::smb_from_bytes_vec_cnt(&input[item_offset..], #align as usize, item_count as usize)?;
+            #parser
+            // let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytesCnt::smb_from_bytes_vec_cnt(&input[item_offset..], #align as usize, item_count as usize)?;
             current_pos = item_offset + ::smb_core::SMBVecByteSize::smb_byte_size_vec(&#name, #align, item_offset);
         }
     }
 
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, raw_token: &TokenStream) -> TokenStream {
-        let count_info = self.count.smb_to_bytes(spanned, "item_count", Some(quote! {
-          #raw_token.len()
-        }));
+        let count_info = if self.count == AttributeInfo::default() {
+            quote! {}
+        } else {
+            self.count.smb_to_bytes(spanned, "item_count", Some(quote! {
+              #raw_token.len()
+            }))
+        };
+        let len_info = if self.length == AttributeInfo::default() {
+            quote! {}
+        } else {
+            self.length.smb_to_bytes(spanned, "item_length", Some(quote! {
+                byte_size
+            }))
+        };
         let offset_info = self.offset.smb_to_bytes(spanned, "item_offset", None);
         let align = self.align;
 
@@ -341,6 +369,7 @@ impl Vector {
                 }
             };
             current_pos = get_aligned_pos(#align, current_pos);
+            let start_pos = current_pos;
             #offset_info
             for entry in #raw_token.iter() {
                 let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(entry);
@@ -354,6 +383,8 @@ impl Vector {
                 // }
                 current_pos += item_bytes.len();
             }
+            let byte_size = current_pos - start_pos;
+            #len_info
         }
     }
 

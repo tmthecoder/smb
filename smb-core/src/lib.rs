@@ -138,6 +138,7 @@ impl<T: SMBFromBytes> SMBVecFromBytesLen for Vec<T> {
             msg_vec.push(val);
             remaining = r;
             pos += extra;
+            // println!("Parsed with pos: {:?}, len: {:?}", pos, len);
         }
         Ok((remaining, msg_vec))
     }

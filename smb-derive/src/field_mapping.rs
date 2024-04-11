@@ -41,7 +41,7 @@ impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug> SMBFieldM
                     false => f.get_named_token(),
                 };
                 let size = f.get_smb_message_size(token.clone());
-                println!("token: {}, size: {}", token, size);
+                // println!("token: {}, size: {}", token, size);
                 size
             }).collect(),
             SMBFieldMappingType::UnnamedStruct => self.fields.iter().enumerate().map(|(idx, f)| {
@@ -116,11 +116,11 @@ pub(crate) fn get_num_enum_mapping(input: &DeriveInput, parent_attrs: Vec<SMBFie
 
 pub(crate) fn get_desc_enum_mapping(info: &DataEnum) -> Result<Vec<SMBFieldMapping<Fields, Field>>, SMBDeriveError<Field>> {
     info.variants.iter().map(|variant| {
-        println!("attrs: {:?}", variant.attrs);
+        // println!("attrs: {:?}", variant.attrs);
         let discriminators = Discriminator::from_attributes(&variant.attrs).map(|d| d.values.iter().map(|val| val | d.flag).collect())
             .map_err(|_e| SMBDeriveError::MissingField)?;
 
-        println!("Discs: {:?}", discriminators);
+        // println!("Discs: {:?}", discriminators);
         get_struct_field_mapping(&variant.fields, vec![SMBFieldType::from_attributes(&variant.attrs).unwrap()], discriminators, Some(variant.ident.clone()))
     }).collect()
 }

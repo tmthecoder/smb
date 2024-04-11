@@ -317,7 +317,7 @@ impl FromAttributes for SMBFieldType {
         } else if let Ok(string) = SMBString::from_attributes(attrs) {
             Ok(SMBFieldType::String(string))
         } else if let Ok(smb_enum) = SMBEnum::from_attributes(attrs) {
-            println!("Got enum: {:?}", smb_enum);
+            // println!("Got enum: {:?}", smb_enum);
             Ok(SMBFieldType::Enum(smb_enum))
         } else if let Ok(skip) = Skip::from_attributes(attrs) {
             Ok(SMBFieldType::Skip(skip))
