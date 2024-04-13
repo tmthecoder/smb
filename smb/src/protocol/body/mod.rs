@@ -58,115 +58,117 @@ pub trait Body<S: Header>: SMBEnumFromBytes + SMBToBytes {
     fn as_bytes(&self) -> Vec<u8>;
 }
 
+const SMB_REQ_FLAG: u64 = 1 << 16;
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBToBytes, SMBByteSize)]
 pub enum SMBBody {
     #[smb_discriminator(value = 0x0)]
     #[smb_direct(start(fixed = 0))]
     NegotiateRequest(SMBNegotiateRequest),
     #[smb_discriminator(value = 0x0)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     NegotiateResponse(SMBNegotiateResponse),
     #[smb_discriminator(value = 0x1)]
     #[smb_direct(start(fixed = 0))]
     SessionSetupRequest(SMBSessionSetupRequest),
     #[smb_discriminator(value = 0x1)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     SessionSetupResponse(SMBSessionSetupResponse),
     #[smb_discriminator(value = 0x3)]
     #[smb_direct(start(fixed = 0))]
     TreeConnectRequest(SMBTreeConnectRequest),
     #[smb_discriminator(value = 0x3)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     TreeConnectResponse(SMBTreeConnectResponse),
     #[smb_discriminator(value = 0x2)]
     #[smb_direct(start(fixed = 0))]
     LogoffRequest(SMBLogoffRequest),
     #[smb_discriminator(value = 0x2)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     LogoffResponse(SMBLogoffResponse),
     #[smb_discriminator(value = 0x4)]
     #[smb_direct(start(fixed = 0))]
     TreeDisconnectRequest(SMBTreeDisconnectRequest),
     #[smb_discriminator(value = 0x4)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     TreeDisconnectResponse(SMBTreeDisconnectResponse),
     #[smb_discriminator(value = 0x5)]
     #[smb_direct(start(fixed = 0))]
     CreateRequest(SMBCreateRequest),
     #[smb_discriminator(value = 0x5)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     CreateResponse(SMBCreateResponse),
     #[smb_discriminator(value = 0x6)]
     #[smb_direct(start(fixed = 0))]
     CloseRequest(SMBCloseRequest),
     #[smb_discriminator(value = 0x6)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     CloseResponse(SMBCloseResponse),
     #[smb_discriminator(value = 0x7)]
     #[smb_direct(start(fixed = 0))]
     FlushRequest(SMBFlushRequest),
     #[smb_discriminator(value = 0x7)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     FlushResponse(SMBFlushResponse),
     #[smb_discriminator(value = 0x8)]
     #[smb_direct(start(fixed = 0))]
     ReadRequest(SMBReadRequest),
     #[smb_discriminator(value = 0x8)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     ReadResponse(SMBReadResponse),
     #[smb_discriminator(value = 0x9)]
     #[smb_direct(start(fixed = 0))]
     WriteRequest(SMBWriteRequest),
     #[smb_discriminator(value = 0x9)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     WriteResponse(SMBWriteResponse),
-    #[smb_discriminator(value = 0x10)]
+    #[smb_discriminator(value = 0xA)]
     #[smb_direct(start(fixed = 0))]
     LockRequest(SMBLockRequest),
-    #[smb_discriminator(value = 0x10)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(value = 0xA)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     LockResponse(SMBLockResponse),
-    // TODO IOCTL is val 11
-    #[smb_discriminator(value = 0x12)]
+    // TODO IOCTL is val 11 (0xB)
+    #[smb_discriminator(value = 0xC)]
     #[smb_direct(start(fixed = 0))]
     CancelRequest(SMBCancelRequest),
-    #[smb_discriminator(value = 0x13)]
+    #[smb_discriminator(value = 0xD)]
     #[smb_direct(start(fixed = 0))]
     EchoRequest(SMBEchoRequest),
-    #[smb_discriminator(value = 0x13)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(value = 0xD)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     EchoResponse(SMBEchoResponse),
-    #[smb_discriminator(value = 0x14)]
+    #[smb_discriminator(value = 0xE)]
     #[smb_direct(start(fixed = 0))]
     QueryDirectoryRequest(SMBQueryDirectoryRequest),
-    #[smb_discriminator(value = 0x14)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(value = 0xE)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     QueryDirectoryResponse(SMBQueryDirectoryResponse),
-    #[smb_discriminator(value = 0x15)]
+    #[smb_discriminator(value = 0xF)]
     #[smb_direct(start(fixed = 0))]
     ChangeNotifyRequest(SMBChangeNotifyRequest),
-    #[smb_discriminator(value = 0x15)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(value = 0xF)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     ChangeNotifyResponse(SMBChangeNotifyResponse),
-    #[smb_discriminator(value = 0x16)]
+    #[smb_discriminator(value = 0x10)]
     #[smb_direct(start(fixed = 0))]
     QueryInfoRequest(SMBQueryInfoRequest),
-    #[smb_discriminator(value = 0x16)]
-    #[smb_discriminator(flag = 0b10000)]
+    #[smb_discriminator(value = 0x10)]
+    #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     QueryInfoResponse(SMBQueryInfoResponse),
     #[smb_discriminator(value = 0x999)]

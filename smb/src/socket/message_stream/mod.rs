@@ -28,8 +28,11 @@ pub trait SMBReadStream: SMBStream {
     #[cfg(feature = "async")]
     fn messages(&mut self) -> SMBMessageStream<Self> where Self: Sized;
     fn read_message_inner(buffer: &[u8]) -> SMBParseResult<&[u8], SMBMessage<SMBSyncHeader, SMBBody>> {
+        println!("in inner read");
         if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
+            println!("found s at pos: {}", pos);
             if buffer[(pos)..].starts_with(b"SMB") {
+                println!("found smb");
                 let result = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[(pos - 1)..]);
                 return if result.is_err() {
                     let (remaining, legacy_msg) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::parse(&buffer[(pos - 1)..])?;

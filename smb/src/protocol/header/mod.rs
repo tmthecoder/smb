@@ -21,7 +21,7 @@ pub mod flags2;
 pub mod extra;
 
 pub enum SMBSender {
-    Client,
+    Client = 0x0,
     Server,
 }
 

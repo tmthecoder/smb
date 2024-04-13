@@ -128,17 +128,17 @@ impl<T: SMBFromBytes> SMBVecFromBytesLen for Vec<T> {
         let mut extra = 0;
         while pos < len {
             remaining = &remaining[extra..];
-            let (r, val) = T::smb_from_bytes(remaining)?;
-            pos += T::smb_byte_size(&val);
+            let (_, val) = T::smb_from_bytes(remaining)?;
+            let size = T::smb_byte_size(&val);
+            pos += size; 
             extra = if align > 0 && pos % align != 0 {
                 align - (pos % align)
             } else {
                 0
             };
             msg_vec.push(val);
-            remaining = r;
+            remaining = &input[pos..];
             pos += extra;
-            // println!("Parsed with pos: {:?}, len: {:?}", pos, len);
         }
         Ok((remaining, msg_vec))
     }

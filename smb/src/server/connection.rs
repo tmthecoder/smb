@@ -224,7 +224,8 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
         let server = {
             connection.read().await.server.clone()
         };
-        while let Some(message) = read.messages().next().await {
+        let mut messages = read.messages();
+        while let Some(message) = messages.next().await {
             println!("Got message: {:?}", message);
             let message = match message.header.command_code() {
                 SMBCommandCode::LegacyNegotiate => connection.handle_legacy_negotiate(),

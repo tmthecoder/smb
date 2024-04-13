@@ -14,7 +14,7 @@ use crate::protocol::header::SMBSyncHeader;
 use crate::protocol::message::{Message, SMBMessage};
 use crate::socket::message_stream::{SMBMessageIterator, SMBMessageStream, SMBReadStream, SMBSocketConnection, SMBStream, SMBWriteStream};
 
-async fn make_future<'a, T: SMBReadStream>(mut iterator: SMBMessageIterator<'a, T>) -> (SMBResult<SMBMessage<SMBSyncHeader, SMBBody>>, SMBMessageIterator<'a, T>) {
+async fn make_future<T: SMBReadStream>(mut iterator: SMBMessageIterator<'_, T>) -> (SMBResult<SMBMessage<SMBSyncHeader, SMBBody>>, SMBMessageIterator<'_, T>) {
     let res = loop {
         match iterator.reader.read_message(&mut iterator.buffer).await {
             Ok(msg) => break Ok(msg),
@@ -33,7 +33,7 @@ async fn make_future<'a, T: SMBReadStream>(mut iterator: SMBMessageIterator<'a, 
     } else {
         Err(res.err().unwrap())
     };
-    println!("got msg: {:?}. bytes remaining: {:?}", msg_res, iterator.buffer);
+    println!("got msg: {:?}. bytes remaining: {:02x?}", msg_res, iterator.buffer);
     (msg_res, iterator)
 }
 
@@ -57,6 +57,10 @@ impl<Writer> SMBWriteStream for Writer where Writer: AsyncWriteExt + Unpin + Sen
 
 impl<Reader> SMBReadStream for Reader where Reader: AsyncReadExt + Unpin + Send + Sync + SMBStream {
     async fn read_message<'a>(&'a mut self, existing: &'a mut Vec<u8>) -> SMBParseResult<&'a [u8], SMBMessage<SMBSyncHeader, SMBBody>> {
+        println!("read called w/ existing buffer: {:02x?}", existing);
+        if let Ok((remaining, res)) = Self::read_message_inner(existing) {
+            return Ok((&existing[(existing.len() - remaining.len())..], res));
+        }
         let mut buffer = [0u8; 512];
         if let Ok(read) = self.read(&mut buffer).await {
             existing.extend_from_slice(&buffer[..read]);

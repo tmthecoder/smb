@@ -60,7 +60,7 @@ impl<S: Header + Debug, T: Body<S>> Message for SMBMessage<S, T> {
     fn parse(bytes: &[u8]) -> SMBParseResult<&[u8], Self> {
         let (remaining, header) = S::smb_from_bytes(bytes)?;
         println!("header: {:?}", header);
-        let discriminator_code = (header.command_code().into()) | ((header.sender() as u64) << 4);
+        let discriminator_code = (header.command_code().into()) | ((header.sender() as u64) << 16);
         let (remaining, body) = T::smb_enum_from_bytes(remaining, discriminator_code)?;
         Ok((remaining, Self { header, body }))
     }
