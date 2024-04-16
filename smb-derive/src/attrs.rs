@@ -43,7 +43,7 @@ impl DirectInner {
         let chunk = if self.num_type != "direct" {
             quote! {
                 if #start >= input.len() {
-                    return Err(::smb_core::error::SMBError::payload_too_small(#start, input.len()));
+                    return Err(::smb_core::error::SMBError::payload_too_small(#start as usize, input.len()));
                 }
                 let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBFromBytes::smb_from_bytes(&input[#start..])?;
                 // println!("value of item: {:?}", #name);
@@ -150,7 +150,7 @@ impl AttributeInfo {
                 let ty = get_type(num_ty, spanned);
                 quote! {
                     if item_offset >= input.len() {
-                        return Err(::smb_core::error::SMBError::payload_too_small(item_offset, input.len()));
+                        return Err(::smb_core::error::SMBError::payload_too_small(item_offset as usize, input.len()));
                     }
                     let mut val = &input[item_offset..];
                     let size = ::smb_core::SMBByteSize::smb_byte_size(&(0 as #ty));
@@ -333,7 +333,7 @@ impl Vector {
             #offset
             let item_offset = item_offset as usize;
             if item_offset >= input.len() {
-                return Err(::smb_core::error::SMBError::payload_too_small(item_offset, input.len()));
+                return Err(::smb_core::error::SMBError::payload_too_small(item_offset as usize, input.len()));
             }
             #parser
             // let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytesCnt::smb_from_bytes_vec_cnt(&input[item_offset..], #align as usize, item_count as usize)?;
@@ -441,7 +441,7 @@ impl SMBString {
             let item_offset = item_offset as usize;
             #length
             if item_offset >= input.len() {
-                return Err(::smb_core::error::SMBError::payload_too_small(item_offset, input.len()));
+                return Err(::smb_core::error::SMBError::payload_too_small(item_offset as usize, input.len()));
             }
             let (remaining, #vec_name): (&[u8], Vec<#num_type>) = ::smb_core::SMBVecFromBytesCnt::smb_from_bytes_vec_cnt(&input[item_offset..], 0, (item_count/2) as usize)?;
             #string_parser
@@ -515,9 +515,9 @@ impl SMBEnum {
             #start_info
             #discriminator_info
             if item_start as usize >= input.len() {
-                return Err(::smb_core::error::SMBError::payload_too_small(item_start, input.len()));
+                return Err(::smb_core::error::SMBError::payload_too_small(item_start as usize, input.len()));
             }
-            let (remaining, #name) = ::smb_core::SMBEnumFromBytes::smb_enum_from_bytes(&input[item_start..], item_discriminator as u64)?;
+            let (remaining, #name) = ::smb_core::SMBEnumFromBytes::smb_enum_from_bytes(&input[item_start as usize..], item_discriminator as u64)?;
         }
     }
 
