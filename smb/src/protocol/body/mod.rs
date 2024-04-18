@@ -59,8 +59,6 @@ pub trait Body<S: Header>: SMBEnumFromBytes + SMBToBytes {
     fn as_bytes(&self) -> Vec<u8>;
 }
 
-const SMB_REQ_FLAG: u64 = 1 << 16;
-
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBToBytes, SMBByteSize)]
 pub enum SMBBody {
     #[smb_discriminator(value = 0x0)]
