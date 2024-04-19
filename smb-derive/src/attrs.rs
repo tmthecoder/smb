@@ -496,6 +496,35 @@ pub struct Discriminator {
     pub flag: u64,
 }
 
+#[derive(Debug, Default, PartialEq, Eq, FromMeta)]
+pub enum SMBAttributeModifier {
+    #[default] None,
+    And(u64),
+    Or(u64),
+    RShift(u64),
+    LShift(u64),
+}
+
+impl SMBAttributeModifier {
+    pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident, name_ty: &Type) -> TokenStream {
+        match self {
+            SMBAttributeModifier::None => quote! {},
+            SMBAttributeModifier::And(value) => quote_spanned! {spanned.span()=>
+                let #name = #name & (#value as #name_ty);
+            },
+            SMBAttributeModifier::Or(value) => quote_spanned! {spanned.span()=>
+                let name = #name | (#value as #name_ty);
+            },
+            SMBAttributeModifier::RShift(value) => quote_spanned! {spanned.span()=>
+                let #name = #name >> (#value as #name_ty);
+            },
+            SMBAttributeModifier::LShift(value) => quote_spanned! {spanned.span()=>
+                let #name = #name << (#value as #name_ty);
+            },
+        }
+    }
+}
+
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, Eq, PartialEq)]
 #[darling(attributes(smb_enum))]
 pub struct SMBEnum {
@@ -504,16 +533,35 @@ pub struct SMBEnum {
     pub start: AttributeInfo,
     #[darling(default)]
     pub order: usize,
+    #[darling(multiple, default, rename = "modifier")]
+    pub modifiers: Vec<SMBAttributeModifier>,
+    #[darling(default = "SMBEnum::default_should_write")]
+    pub should_write: bool
 }
 
 impl SMBEnum {
+    pub(crate) fn default_should_write() -> bool {
+        true
+    }
     pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T, name: &Ident) -> TokenStream {
         let discriminator_info = self.discriminator.smb_from_bytes(spanned, "item_discriminator");
         let start_info = self.start.smb_from_bytes(spanned, "item_start");
-
+        let discrim_type = match &self.discriminator {
+            AttributeInfo::Inner(inner) => get_type(&inner.num_type, spanned),
+            _ => get_type("usize", spanned)
+        };
+        let discrim_ident = format_ident!("item_discriminator");
+        let all_modifier_ops: Vec<TokenStream> = self.modifiers.iter()
+            .map(|modifier| modifier.smb_from_bytes(spanned, &discrim_ident, &discrim_type))
+            .collect();
+        let modifier_info = quote_spanned! {spanned.span()=>
+            #(#all_modifier_ops)*
+        };
+        println!("modifier_info: {:?}", modifier_info.to_string());
         quote! {
             #start_info
             #discriminator_info
+            #modifier_info
             if item_start as usize >= input.len() {
                 return Err(::smb_core::error::SMBError::payload_too_small(item_start as usize, input.len()));
             }
@@ -523,6 +571,11 @@ impl SMBEnum {
 
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, token: &TokenStream) -> TokenStream {
         let start_info = self.start.smb_to_bytes(spanned, "item_start", None);
+        // TODO should we write the discriminator here?
+        // let discriminator_info = match self.should_write {
+        //     true => self.discriminator.smb_to_bytes(spanned, "discriminator_info", None),
+        //     false => quote!{}
+        // };
         quote! {
             #start_info
             let size = ::smb_core::SMBByteSize::smb_byte_size(#token);

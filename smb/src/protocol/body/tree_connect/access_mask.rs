@@ -5,7 +5,7 @@ use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBToBytes};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize, SMBToBytes)]
 pub enum SMBAccessMask {
-    #[smb_discriminator(value = 0x2, value = 0x3)]
+    #[smb_discriminator(value = 0x2, value = 0x3, value = 0x0)]
     #[smb_direct(start(fixed = 0))]
     FilePipePrinter(SMBFilePipePrinterAccessMask),
     #[smb_discriminator(value = 0x1)]

@@ -15,7 +15,7 @@ use crate::protocol::body::create::options::SMBCreateOptions;
 use crate::protocol::body::create::request_context::CreateRequestContext;
 use crate::protocol::body::create::share_access::SMBShareAccess;
 use crate::protocol::body::filetime::FileTime;
-use crate::protocol::body::tree_connect::access_mask::SMBFilePipePrinterAccessMask;
+use crate::protocol::body::tree_connect::access_mask::{SMBAccessMask, SMBFilePipePrinterAccessMask};
 
 pub mod options;
 pub mod oplock;
@@ -39,8 +39,8 @@ pub struct SMBCreateRequest {
     oplock_level: SMBOplockLevel,
     #[smb_direct(start(fixed = 4))]
     impersonation_level: SMBImpersonationLevel,
-    #[smb_direct(start(fixed = 24))]
-    desired_access: SMBFilePipePrinterAccessMask,
+    #[smb_enum(start(fixed = 24), discriminator(inner(start = 28, num_type = "u32")), modifier(and = 0x10))]
+    desired_access: SMBAccessMask,
     #[smb_direct(start(fixed = 28))]
     attributes: SMBFileAttributes,
     #[smb_direct(start(fixed = 32))]

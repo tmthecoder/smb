@@ -46,6 +46,8 @@ pub trait LockedSessionMessageHandler {
 trait LockedInternalSessionMessageHandler {
     fn handle_session_setup(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> impl Future<Output=SMBResult<SMBMessageType>>;
     fn handle_tree_connect(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> impl Future<Output=SMBResult<SMBMessageType>>;
+    fn handle_create(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> impl Future<Output=SMBResult<SMBMessageType>>;
+    fn handle_close(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> impl Future<Output=SMBResult<SMBMessageType>>;
 }
 
 pub trait Session<C: Connection, A: AuthProvider>: Send + Sync {
@@ -148,39 +150,7 @@ fn generate_key(secure_key: &[u8], label: &str, context: &[u8], output_len: usiz
         &[0]
     ].concat();
     return derive_key(mac, &label_bytes, context, (output_len * 8) as u32);
-    // let hkdf = Hkdf::<Sha256>::new(None, secure_key);
-    // // let hkdf = Hkdf::<Sha256>::from_prk(secure_key).expect("Session PRK should be good");
-    // let info_arr = [
-    //     label.as_bytes(),
-    //     &[0x0; 2][..],
-    //     context,
-    //     &[0x0],
-    //     &(secure_key.len() as u32).to_be_bytes()
-    // ].concat();
-    // let mut output_arr = vec![0; output_len];
-    // hkdf.expand(&info_arr, &mut output_arr).expect("Shouldn't fail");
-    // output_arr.to_vec()
 }
-
-// fn generate_smb3_signing_key(session_key: &[u8]) -> Vec<u8> {
-//     let hk = Hkdf::<Hmac<Sha256>>::new(None, session_key);
-//
-//     let label = b"SMB2AESCMAC";
-//     let context = b"SmbSign";
-//     // The desired length of the signing key depends on the algorithm, e.g., 16 bytes for AES-128.
-//     let mut okm = vec![0u8; 16]; // Output keying material of the desired length
-//
-//     // Construct the info parameter as concatenation of label + 0x00 + context + length of the okm as 4-byte BE
-//     let mut info = Vec::new();
-//     info.extend_from_slice(label);
-//     info.push(0x00); // Separator
-//     info.extend_from_slice(context);
-//     info.extend_from_slice(&(okm.len() as u32).to_be_bytes());
-//
-//     hk.expand(&info, &mut okm).expect("HKDF expand operation failed");
-//
-//     okm
-// }
 
 impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessionMessageHandler for Arc<RwLock<SMBSession<C, S>>> {
     async fn handle_session_setup(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> SMBResult<SMBMessageType> {
@@ -210,7 +180,7 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
                 let resp = SMBSessionSetupResponse::from_session_state::<S>(&session_read, response.as_bytes());
                 (session_read.id(), resp)
             };
-            let header = message.header.create_response_header(status.clone() as u32, id, 0);
+            let header = message.header.create_response_header(status as u32, id, 0);
             Ok(SMBMessage::new(header, SMBBody::SessionSetupResponse(session_setup)))
         } else {
             Err(SMBError::parse_error("Invalid SMB request body (expected SessionSetupRequest)"))
@@ -239,6 +209,14 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
         } else {
             Err(SMBError::parse_error("Invalid SMB request body (expected TreeConnectRequest)"))
         }
+    }
+
+    async fn handle_create(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> SMBResult<SMBMessageType> {
+        todo!()
+    }
+
+    async fn handle_close(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> SMBResult<SMBMessageType> {
+        todo!()
     }
 }
 
@@ -322,6 +300,8 @@ impl<C: Connection, S: Server<SessionType=Self>> Session<C, S::AuthType> for SMB
         let mut msg_res = match message.header.command_code() {
             SMBCommandCode::SessionSetup => locked.handle_session_setup(message).await,
             SMBCommandCode::TreeConnect => locked.handle_tree_connect(message).await,
+            SMBCommandCode::Create => locked.handle_create(message).await,
+            SMBCommandCode::Close => locked.handle_close(message).await,
             _ => Err(SMBError::parse_error("Invalid command code}"))
         }?;
         let sess_rd = locked.read().await;
