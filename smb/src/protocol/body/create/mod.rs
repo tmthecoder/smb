@@ -39,7 +39,7 @@ pub struct SMBCreateRequest {
     oplock_level: SMBOplockLevel,
     #[smb_direct(start(fixed = 4))]
     impersonation_level: SMBImpersonationLevel,
-    #[smb_enum(start(fixed = 24), discriminator(inner(start = 28, num_type = "u32")), modifier(and = 0x10))]
+    #[smb_enum(start(fixed = 24), discriminator(inner(start = 28, num_type = "u32")), modifier(and = 0x10), modifier(right_shift = 3))]
     desired_access: SMBAccessMask,
     #[smb_direct(start(fixed = 28))]
     attributes: SMBFileAttributes,

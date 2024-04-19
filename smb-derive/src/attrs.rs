@@ -501,8 +501,8 @@ pub enum SMBAttributeModifier {
     #[default] None,
     And(u64),
     Or(u64),
-    RShift(u64),
-    LShift(u64),
+    RightShift(u64),
+    LeftShift(u64),
 }
 
 impl SMBAttributeModifier {
@@ -513,12 +513,12 @@ impl SMBAttributeModifier {
                 let #name = #name & (#value as #name_ty);
             },
             SMBAttributeModifier::Or(value) => quote_spanned! {spanned.span()=>
-                let name = #name | (#value as #name_ty);
+                let #name = #name | (#value as #name_ty);
             },
-            SMBAttributeModifier::RShift(value) => quote_spanned! {spanned.span()=>
+            SMBAttributeModifier::RightShift(value) => quote_spanned! {spanned.span()=>
                 let #name = #name >> (#value as #name_ty);
             },
-            SMBAttributeModifier::LShift(value) => quote_spanned! {spanned.span()=>
+            SMBAttributeModifier::LeftShift(value) => quote_spanned! {spanned.span()=>
                 let #name = #name << (#value as #name_ty);
             },
         }
