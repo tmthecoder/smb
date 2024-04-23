@@ -409,7 +409,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBSta
             sha.update(self.preauth_integtiry_hash_value());
             sha.update(&request.smb_to_bytes());
             let preauth_val = sha.finalize().to_vec();
-            let session = S::SessionType::init(1, server.encrypt_data(), preauth_val, locked_conn, server.auth_provider().clone());
+            let session = S::SessionType::init(1, server.encrypt_data(), preauth_val, Arc::downgrade(&locked_conn), server.auth_provider().clone());
             let id = session.id();
             let wrapped_session = Arc::new(RwLock::new(session));
             self.session_table.insert(id, wrapped_session.clone());

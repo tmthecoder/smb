@@ -37,7 +37,7 @@ pub trait Server: Send + Sync {
     type ConnectionType: Connection;
     type SessionType: Session<Self::ConnectionType, Self::AuthType>;
     type AuthType: AuthProvider;
-    fn shares(&self) -> &HashMap<String, Box<dyn SharedResource>>;
+    fn shares(&self) -> &HashMap<String, Arc<Box<dyn SharedResource>>>;
     fn opens(&self) -> &HashMap<u64, Box<dyn Open>>;
     fn sessions(&self) -> &HashMap<u64, Arc<RwLock<Self::SessionType>>>;
     fn sessions_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<Self::SessionType>>>;
@@ -80,8 +80,8 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthP
     statistics: Arc<RwLock<SMBServerDiagnostics>>,
     #[builder(default = "false")]
     enabled: bool,
-    #[builder(field(type = "HashMap<String, Box<dyn SharedResource>>"))]
-    share_list: HashMap<String, Box<dyn SharedResource>>,
+    #[builder(field(type = "HashMap<String, Arc<Box<dyn SharedResource>>>"))]
+    share_list: HashMap<String, Arc<Box<dyn SharedResource>>>,
     #[builder(field(type = "HashMap<u64, Box<dyn Open>>"))]
     open_table: HashMap<u64, Box<dyn Open>>,
     #[builder(field(type = "HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth>>>>"))]
@@ -148,7 +148,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server 
     type SessionType = SMBSessionType<Addrs, Listener, Auth>;
     type AuthType = Auth;
 
-    fn shares(&self) -> &HashMap<String, Box<dyn SharedResource>> {
+    fn shares(&self) -> &HashMap<String, Arc<Box<dyn SharedResource>>> {
         &self.share_list
     }
 
@@ -262,7 +262,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> SMBServ
     }
 
     pub fn add_share<Key: Into<String>, S: SharedResource + 'static>(mut self, key: Key, share: S) -> Self {
-        self.share_list.insert(key.into(), Box::new(share));
+        self.share_list.insert(key.into(), Arc::new(Box::new(share)));
         self
     }
 
@@ -287,7 +287,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider + 'stati
         // *self = Self::new()
     }
 
-    pub fn add_share(&mut self, name: String, share: Box<dyn SharedResource>) {
+    pub fn add_share(&mut self, name: String, share: Arc<Box<dyn SharedResource>>) {
         self.share_list.insert(name, share);
     }
 

@@ -86,6 +86,10 @@ impl SMBTreeConnectResponse {
             maximal_access: SMBAccessMask::FilePipePrinter(SMBFilePipePrinterAccessMask::from_bits_truncate(0x001f01ff)),
         }
     }
+
+    pub fn access_mask(&self) -> &SMBAccessMask {
+        &self.maximal_access
+    }
 }
 
 #[repr(u8)]

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBToBytes};
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize, SMBToBytes, Clone)]
 pub enum SMBAccessMask {
     #[smb_discriminator(value = 0x2, value = 0x3, value = 0x0)]
     #[smb_direct(start(fixed = 0))]
@@ -40,7 +40,7 @@ bitflags! {
 }
 
 bitflags! {
-    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy)]
     pub struct SMBDirectoryAccessMask: u32 {
         const FILE_LIST_DIRECTORY    = 0x00000001;
         const FILE_ADD_FILE          = 0x00000002;

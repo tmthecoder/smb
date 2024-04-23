@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::io::Read;
-use std::sync::Arc;
+use std::ops::Deref;
+use std::sync::{Arc, Weak};
 
 use derive_builder::Builder;
 use digest::Mac;
@@ -29,7 +30,8 @@ use crate::protocol::message::{Message, SMBMessage};
 use crate::server::connection::Connection;
 use crate::server::open::Open;
 use crate::server::Server;
-use crate::server::tree_connect::TreeConnect;
+use crate::server::share::SharedResource;
+use crate::server::tree_connect::SMBTreeConnect;
 use crate::util::auth::{AuthContext, AuthProvider};
 use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenResponseBody};
 use crate::util::crypto::sp800_108::derive_key;
@@ -51,10 +53,11 @@ trait LockedInternalSessionMessageHandler {
 }
 
 pub trait Session<C: Connection, A: AuthProvider>: Send + Sync {
-    fn init(id: u64, encrypt_data: bool, preauth_integrity_hash_value: Vec<u8>, conn: Arc<RwLock<C>>, provider: Arc<A>) -> Self;
+    fn init(id: u64, encrypt_data: bool, preauth_integrity_hash_value: Vec<u8>, conn: Weak<RwLock<C>>, provider: Arc<A>) -> Self;
     fn id(&self) -> u64;
-    fn connection(&self) -> Arc<RwLock<C>>;
-    fn set_connection(&mut self, connection: Arc<RwLock<C>>);
+    fn connection(&self) -> Weak<RwLock<C>>;
+    fn connection_res(&self) -> SMBResult<Arc<RwLock<C>>>;
+    fn set_connection(&mut self, connection: Weak<RwLock<C>>);
     fn state(&self) -> SessionState;
     fn anonymous(&self) -> bool;
     fn guest(&self) -> bool;
@@ -77,9 +80,9 @@ pub struct SMBSession<C: Connection, S: Server> {
     session_key: [u8; 16],
     signing_required: bool,
     open_table: HashMap<u64, Box<dyn Open>>,
-    tree_connect_table: HashMap<u64, Box<dyn TreeConnect>>,
+    tree_connect_table: HashMap<u64, SMBTreeConnect<Box<dyn SharedResource>, C, S>>,
     expiration_time: u64,
-    connection: Arc<RwLock<C>>,
+    connection: Weak<RwLock<C>>,
     global_id: u32,
     creation_time: u64,
     idle_time: u64,
@@ -101,6 +104,22 @@ impl<C: Connection, S: Server> Debug for SMBSession<C, S> {
 }
 
 impl<C: Connection, S: Server> SMBSession<C, S> {
+    fn get_connection(&self) -> SMBResult<Arc<RwLock<C>>> {
+        self.connection.upgrade()
+            .ok_or(SMBError::server_error("Connection not found for session"))
+    }
+    async fn handle_successful_setup(&mut self, session_key: Vec<u8>) -> SMBResult<()> {
+        self.state = SessionState::Valid;
+        self.full_session_key = session_key;
+        let conn = self.get_connection()?;
+        let conn_rd = conn.read().await;
+        let dialect = conn_rd.dialect();
+        let cipher = conn_rd.cipher_id();
+        drop(conn_rd);
+        self.set_session_key();
+        self.generate_keys(dialect, cipher);
+        Ok(())
+    }
     fn set_session_key(&mut self) {
         // Set session_key to first 16 bytes of full key (or right padded if full key is less)
         for num in 0..(min(16, self.full_session_key.len())) {
@@ -139,6 +158,14 @@ impl<C: Connection, S: Server> SMBSession<C, S> {
         self.application_key = generate_key(&self.session_key, application_key_label, application_key_context, key_length);
         println!("signing: {:?}, application: {:?}", self.signing_key, self.application_key);
     }
+    fn get_next_tree_id(&self) -> u32 {
+        for i in 1..u32::MAX {
+            if self.tree_connect_table.get(&(i as u64)).is_none() {
+                return i;
+            }
+        }
+        return 0
+    }
 }
 
 fn generate_key(secure_key: &[u8], label: &str, context: &[u8], output_len: usize) -> Vec<u8> {
@@ -163,14 +190,8 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
             let (status, msg) = token.get_message(provider.as_ref(), ctx)?;
             if status == NTStatus::StatusSuccess {
                 let session_key = ctx.session_key().to_vec();
-                session_write.state = SessionState::Valid;
-                session_write.full_session_key = session_key;
-                let conn = session_write.connection.read().await;
-                let dialect = conn.dialect();
-                let cipher = conn.cipher_id();
-                drop(conn);
-                session_write.set_session_key();
-                session_write.generate_keys(dialect, cipher);
+                session_write.handle_successful_setup(session_key).await;
+                ;
                 println!("session key: {:02x?}", session_write.session_key);
             }
             drop(session_write);
@@ -192,7 +213,8 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
         if let SMBBody::TreeConnectRequest(req) = &message.body {
             println!("Share: {:?}", req.share());
             let self_rd = self.read().await;
-            let conn_rd = self_rd.connection.read().await;
+            let conn = self_rd.get_connection()?;
+            let conn_rd = conn.read().await;
             let server_ref = conn_rd.server_ref().upgrade();
             if server_ref.is_none() {
                 return Err(SMBError::response_error(NTStatus::BadNetworkName))
@@ -203,8 +225,15 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
             if share.is_none() {
                 return Err(SMBError::response_error(NTStatus::BadNetworkName))
             }
-            let response = SMBTreeConnectResponse::for_share(share.unwrap());
+            let share = share.unwrap();
+            let response = SMBTreeConnectResponse::for_share(share.deref());
+            let tree_id = self_rd.get_next_tree_id();
+            let tree_connect = SMBTreeConnect::init(tree_id, Arc::downgrade(self), share.clone(), response.access_mask().clone());
             let header = SMBSyncHeader::create_response_header(&message.header, 0, self_rd.id(), 1);
+            drop(self_rd);
+            let mut self_wr = self.write().await;
+            self_wr.tree_connect_table.insert(tree_id as u64, tree_connect);
+
             Ok(SMBMessage::new(header, SMBBody::TreeConnectResponse(response)))
         } else {
             Err(SMBError::parse_error("Invalid SMB request body (expected TreeConnectRequest)"))
@@ -212,15 +241,17 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> LockedInternalSessi
     }
 
     async fn handle_create(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> SMBResult<SMBMessageType> {
-        todo!()
+        if let SMBBody::CreateRequest(req) = &message.body {
+            todo!()
+        } else {
+            Err(SMBError::parse_error("Invalid SMB request body (expected CreateRequest)"))
+        }
     }
 
     async fn handle_close(&self, message: &SMBMessage<SMBSyncHeader, SMBBody>) -> SMBResult<SMBMessageType> {
         todo!()
     }
 }
-
-impl<C: Connection, S: Server> SMBSession<C, S> {}
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum SessionState {
@@ -230,7 +261,7 @@ pub enum SessionState {
 }
 
 impl<C: Connection, S: Server<SessionType=Self>> Session<C, S::AuthType> for SMBSession<C, S> {
-    fn init(id: u64, encrypt_data: bool, preauth_integrity_hash_value: Vec<u8>, conn: Arc<RwLock<C>>, provider: Arc<S::AuthType>) -> Self {
+    fn init(id: u64, encrypt_data: bool, preauth_integrity_hash_value: Vec<u8>, conn: Weak<RwLock<C>>, provider: Arc<S::AuthType>) -> Self {
 
         Self {
             session_id: id,
@@ -263,11 +294,16 @@ impl<C: Connection, S: Server<SessionType=Self>> Session<C, S::AuthType> for SMB
         self.session_id
     }
 
-    fn connection(&self) -> Arc<RwLock<C>> {
+    fn connection(&self) -> Weak<RwLock<C>> {
         self.connection.clone()
     }
 
-    fn set_connection(&mut self, connection: Arc<RwLock<C>>) {
+    fn connection_res(&self) -> SMBResult<Arc<RwLock<C>>> {
+        self.connection.upgrade()
+            .ok_or(SMBError::server_error("Connection not found for session"))
+    }
+
+    fn set_connection(&mut self, connection: Weak<RwLock<C>>) {
         self.connection = connection;
     }
 

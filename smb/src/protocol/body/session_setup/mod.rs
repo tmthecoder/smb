@@ -56,7 +56,7 @@ impl SMBSessionSetupRequest {
         }
 
         if connection.dialect().is_smb3() && server.multi_channel_capable() && self.flags.contains(SMBSessionSetupFlags::BINDING) {
-            let locked_conn = session.connection();
+            let locked_conn = session.connection_res()?;
             let session_conn = locked_conn.read().await;
             if session_conn.dialect() != connection.dialect() ||
                 header.flags.contains(SMBFlags::SIGNED) {
