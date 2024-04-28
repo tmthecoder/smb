@@ -32,6 +32,8 @@ pub mod request;
 pub mod session;
 pub mod share;
 pub mod tree_connect;
+mod message_handler;
+mod safe_locked_getter;
 
 pub trait Server: Send + Sync {
     type ConnectionType: Connection;
@@ -320,12 +322,9 @@ impl<Addrs: Send + Sync + 'static, Listener: SMBSocket<Addrs> + 'static, Auth: A
                 self.write().await.connection_list.insert(name, Arc::downgrade(&wrapped_connection));
             }
             let update_channel = rx.clone();
-            let auth_provider = {
-                self.read().await.auth_provider.clone()
-            };
             tokio::spawn(async move {
                 let mut stream = socket.lock().await;
-                let _ = SMBConnection::start_message_handler(&mut stream, wrapped_connection, auth_provider, update_channel).await;
+                let _ = SMBConnection::start_message_handler::<Auth>(&mut stream, wrapped_connection, update_channel).await;
             });
         }
 

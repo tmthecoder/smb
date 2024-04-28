@@ -28,8 +28,10 @@ use crate::protocol::header::command_code::SMBCommandCode;
 use crate::protocol::header::flags::SMBFlags;
 use crate::protocol::message::SMBMessage;
 use crate::server::{Server, SMBServerDiagnosticsUpdate};
+use crate::server::message_handler::{SMBHandlerState, SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
 use crate::server::preauth_session::SMBPreauthSession;
 use crate::server::request::Request;
+use crate::server::safe_locked_getter::{InnerGetter, SafeLockedGetter};
 use crate::server::session::Session;
 use crate::socket::message_stream::{SMBReadStream, SMBSocketConnection, SMBWriteStream};
 use crate::util::auth::{AuthMessage, AuthProvider};
@@ -211,32 +213,25 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> Connection for SMBConnectio
     }
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBConnection<R, W, S> {
-    pub fn underlying_socket(&self) -> Arc<Mutex<SMBSocketConnection<R, W>>> {
-        self.underlying_stream.clone()
-    }
-    pub fn sessions(&self) -> &HashMap<u64, Arc<RwLock<S::SessionType>>> {
-        &self.session_table
-    }
-    pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, connection: Arc<RwLock<SMBConnection<R, W, S>>>, auth_provider: Arc<A>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBConnection<R, W, S>
+    where Arc<RwLock<S::SessionType>>: SMBLockedMessageHandlerBase {
+    pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, connection: Arc<RwLock<SMBConnection<R, W, S>>>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
         let (read, write) = stream.streams();
         println!("Start message handler");
-        let server = {
-            connection.read().await.server.clone()
-        };
         let mut messages = read.messages();
         while let Some(message) = messages.next().await {
             println!("Got message: {:?}", message);
-            let message = match message.header.command_code() {
-                SMBCommandCode::LegacyNegotiate => connection.handle_legacy_negotiate(),
-                SMBCommandCode::Negotiate => connection.handle_negotiate::<A>(&server, message).await,
-                SMBCommandCode::SessionSetup => connection.handle_session_setup(&server, message).await,
-                SMBCommandCode::LogOff => {
-                    println!("got logoff");
-                    break;
-                }
-                _ => connection.generic_message_handler(message).await
-            };
+            let message = connection.handle_message_full(&message).await;
+            // let message = match message.header.command_code() {
+            //     SMBCommandCode::LegacyNegotiate => connection.handle_legacy_negotiate(),
+            //     SMBCommandCode::Negotiate => connection.handle_negotiate(&message).await,
+            //     SMBCommandCode::SessionSetup => connection.handle_session_setup(&server, message).await,
+            //     SMBCommandCode::LogOff => {
+            //         println!("got logoff");
+            //         break;
+            //     }
+            //     _ => connection.generic_message_handler(message).await
+            // };
             println!("After handler: {:?}", message);
             if let Ok(message) = message {
                 println!("Writing message {:?}", message);
@@ -250,7 +245,15 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
         let _ = write.close_stream().await;
         Ok(())
     }
+}
 
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBConnection<R, W, S> {
+    pub fn underlying_socket(&self) -> Arc<Mutex<SMBSocketConnection<R, W>>> {
+        self.underlying_stream.clone()
+    }
+    pub fn sessions(&self) -> &HashMap<u64, Arc<RwLock<S::SessionType>>> {
+        &self.session_table
+    }
     pub fn apply_update(&mut self, mut update: SMBConnectionUpdate<R, W, S>) {
         if let Some(command_sequence_window) = update.command_sequence_window.take() {
             self.command_sequence_window.extend(command_sequence_window);
@@ -349,46 +352,51 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
 }
 
 type LockedSMBConnection<R, W, S> = Arc<RwLock<SMBConnection<R, W, S>>>;
-type SMBMessageType = SMBMessage<SMBSyncHeader, SMBBody>;
+// impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>> SMBLockedHandler<S> for LockedSMBConnection<R, W, S> {
+//     async fn handle_negotiate<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+//         let server = server.upgrade().ok_or(SMBError::server_error("No server available"))?;
+//         let unlocked = server.read().await;
+//         self.write().await.handle_negotiate::<A>(&unlocked, message)
+//     }
+//
+//     // TODO refactor this to make sure this follows the steps in the MS-SMB2 PDF
+//     async fn handle_session_setup(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+//         let server = server.upgrade().ok_or(SMBError::server_error("No server available"))?;
+//         let unlocked = server.read().await;
+//         let cloned_arc = self.clone();
+//         let get_locked = || {
+//             cloned_arc
+//         };
+//         let session = if message.header.session_id != 0 {
+//             if let SMBBody::SessionSetupRequest(request) = &message.body {
+//                 self.read().await.get_session(&unlocked, &message.header, request.flags())
+//             } else {
+//                 Err(SMBError::parse_error("Invalid request body, expected SessionSetupRequest"))
+//             }
+//         } else {
+//             self.write().await.handle_session_setup(&unlocked, &message, get_locked).await
+//         }?;
+//         drop(unlocked);
+//         S::SessionType::handle_message(session, &message).await
+//     }
+//
+//     async fn generic_message_handler(&self, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+//         let session = self.read().await.session_table.get(&message.header.session_id)
+//             .map(Arc::clone)
+//             .ok_or(SMBError::response_error(NTStatus::UserSessionDeleted))?;
+//         S::SessionType::handle_message(session.clone(), &message).await
+//     }
+// }
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>> SMBLockedHandler<S> for LockedSMBConnection<R, W, S> {
-    async fn handle_negotiate<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
-        let server = server.upgrade().ok_or(SMBError::server_error("No server available"))?;
-        let unlocked = server.read().await;
-        self.write().await.handle_negotiate::<A>(&unlocked, message)
-    }
-
-    // TODO refactor this to make sure this follows the steps in the MS-SMB2 PDF
-    async fn handle_session_setup(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
-        let server = server.upgrade().ok_or(SMBError::server_error("No server available"))?;
-        let unlocked = server.read().await;
-        let cloned_arc = self.clone();
-        let get_locked = || {
-            cloned_arc
-        };
-        let session = if message.header.session_id != 0 {
-            if let SMBBody::SessionSetupRequest(request) = &message.body {
-                self.read().await.get_session(&unlocked, &message.header, request.flags())
-            } else {
-                Err(SMBError::parse_error("Invalid request body, expected SessionSetupRequest"))
-            }
-        } else {
-            self.write().await.handle_session_setup(&unlocked, &message, get_locked).await
-        }?;
-        drop(unlocked);
-        S::SessionType::handle_message(session, &message).await
-    }
-
-    async fn generic_message_handler(&self, message: SMBMessageType) -> SMBResult<SMBMessageType> {
-        let session = self.read().await.session_table.get(&message.header.session_id)
-            .map(Arc::clone)
-            .ok_or(SMBError::response_error(NTStatus::UserSessionDeleted))?;
-        S::SessionType::handle_message(session.clone(), &message).await
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> InnerGetter<S> for SMBConnection<R, W, S> {
+    fn server(&self) -> Option<Arc<RwLock<S>>> {
+        self.server.upgrade()
     }
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBStatefulHandler<S> for SMBConnection<R, W, S> {
-    fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, message: SMBMessageType) -> SMBResult<SMBMessageType> {
+
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBConnection<R, W, S> {
+    fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, message: &SMBMessageType) -> SMBResult<SMBMessageType> {
         let SMBMessage { header, body } = message;
         if let SMBBody::NegotiateRequest(request) = body {
             let (update, contexts) = request.validate_and_set_state(self, server)?;
@@ -425,12 +433,56 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBSta
 
     fn get_session(&self, server: &S, header: &SMBSyncHeader, flags: SMBSessionSetupFlags) -> SMBResult<Arc<RwLock<S::SessionType>>> {
         if self.dialect.is_smb3() && server.multi_channel_capable() && flags.contains(SMBSessionSetupFlags::BINDING) {
+            println!("getting from server map: {:?}", server.sessions().keys());
             server.sessions().get(&header.session_id)
         } else if !self.dialect.is_smb3() && !server.multi_channel_capable() && flags.contains(SMBSessionSetupFlags::BINDING) {
             None
         } else {
+            println!("getting from session map: {:?}", self.sessions().keys());
             self.sessions().get(&header.session_id)
         }.map(Arc::clone).ok_or(SMBError::response_error(NTStatus::UserSessionDeleted))
+    }
+}
+
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>> SMBLockedMessageHandlerBase for LockedSMBConnection<R, W, S> {
+    type Inner = Arc<RwLock<S::SessionType>>;
+
+    async fn inner(&self, message: &SMBMessageType) -> Option<Arc<RwLock<S::SessionType>>> {
+        println!("Getting inner for message {:?}", message);
+        let read = self.read().await;
+        let server = read.server.upgrade()?;
+        let server_rd = server.read().await;
+        println!("Getting session");
+        // TODO
+        if let SMBBody::SessionSetupRequest(req) = &message.body {
+            read.get_session(&server_rd, &message.header, req.flags())
+                .ok()
+        } else {
+            server_rd.sessions().get(&message.header.session_id)
+                .or(read.sessions().get(&message.header.session_id))
+                .map(Arc::clone)
+        }
+    }
+    async fn handle_negotiate(&self, message: &SMBMessageType) -> SMBResult<SMBHandlerState<Arc<RwLock<S::SessionType>>>> {
+        let server = self.server().await?;
+        let unlocked = server.read().await;
+        let message = self.write().await.handle_negotiate::<S::AuthType>(&unlocked, message)?;
+        Ok(SMBHandlerState::Finished(message))
+    }
+
+    async fn handle_session_setup(&self, message: &SMBMessageType) -> SMBResult<SMBHandlerState<Arc<RwLock<S::SessionType>>>> {
+        let server = self.server().await?;
+        let unlocked = server.read().await;
+        let cloned_arc = self.clone();
+        let get_locked = || {
+            cloned_arc
+        };
+        if message.header.session_id == 0 {
+            let session = self.write().await.handle_session_setup(&unlocked, message, get_locked).await?;
+            Ok(SMBHandlerState::Next(Some(session)))
+        } else {
+            Ok(SMBHandlerState::Next(None))
+        }
     }
 }
 
