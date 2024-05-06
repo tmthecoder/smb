@@ -15,13 +15,16 @@ use crate::protocol::body::close::{SMBCloseRequest, SMBCloseResponse};
 use crate::protocol::body::create::{SMBCreateRequest, SMBCreateResponse};
 use crate::protocol::body::echo::{SMBEchoRequest, SMBEchoResponse};
 use crate::protocol::body::flush::{SMBFlushRequest, SMBFlushResponse};
+use crate::protocol::body::ioctl::{SMBIoCtlRequest, SMBIoCtlResponse};
 use crate::protocol::body::lock::{SMBLockRequest, SMBLockResponse};
 use crate::protocol::body::logoff::{SMBLogoffRequest, SMBLogoffResponse};
 use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
+use crate::protocol::body::oplock_break::{SMBOplockBreakAcknowledgement, SMBOplockBreakContent};
 use crate::protocol::body::query_directory::{SMBQueryDirectoryRequest, SMBQueryDirectoryResponse};
 use crate::protocol::body::query_info::{SMBQueryInfoRequest, SMBQueryInfoResponse};
 use crate::protocol::body::read::{SMBReadRequest, SMBReadResponse};
 use crate::protocol::body::session_setup::{SMBSessionSetupRequest, SMBSessionSetupResponse};
+use crate::protocol::body::set_info::{SMBSetInfoRequest, SMBSetInfoResponse};
 use crate::protocol::body::tree_connect::{SMBTreeConnectRequest, SMBTreeConnectResponse};
 use crate::protocol::body::tree_disconnect::{SMBTreeDisconnectRequest, SMBTreeDisconnectResponse};
 use crate::protocol::body::write::{SMBWriteRequest, SMBWriteResponse};
@@ -42,17 +45,19 @@ pub mod tree_disconnect;
 pub mod empty;
 pub mod create;
 mod error;
-mod close;
-mod flush;
-mod read;
-mod write;
-mod lock;
-mod echo;
-mod cancel;
-mod query_directory;
-mod change_notify;
-mod query_info;
-mod ioctl;
+pub mod close;
+pub mod flush;
+pub mod read;
+pub mod write;
+pub mod lock;
+pub mod echo;
+pub mod cancel;
+pub mod query_directory;
+pub mod change_notify;
+pub mod query_info;
+pub mod ioctl;
+pub mod set_info;
+pub mod oplock_break;
 
 pub trait Body<S: Header>: SMBEnumFromBytes + SMBToBytes {
     fn parse_with_cc(bytes: &[u8], command_code: S::CommandCode) -> SMBParseResult<&[u8], Self> where Self: Sized;
@@ -138,7 +143,13 @@ pub enum SMBBody {
     #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     LockResponse(SMBLockResponse),
-    // TODO IOCTL is val 11 (0xB)
+    #[smb_discriminator(value = 0xB)]
+    #[smb_direct(start(fixed = 0))]
+    IoCtlRequest(SMBIoCtlRequest),
+    #[smb_discriminator(value = 0xB)]
+    #[smb_discriminator(flag = 0x10000)]
+    #[smb_direct(start(fixed = 0))]
+    IoCtlResponse(SMBIoCtlResponse),
     #[smb_discriminator(value = 0xC)]
     #[smb_direct(start(fixed = 0))]
     CancelRequest(SMBCancelRequest),
@@ -170,6 +181,20 @@ pub enum SMBBody {
     #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     QueryInfoResponse(SMBQueryInfoResponse),
+    #[smb_discriminator(value = 0x11)]
+    #[smb_direct(start(fixed = 0))]
+    SetInfoRequest(SMBSetInfoRequest),
+    #[smb_discriminator(value = 0x11)]
+    #[smb_discriminator(flag = 0x10000)]
+    #[smb_direct(start(fixed = 0))]
+    SetInfoResponse(SMBSetInfoResponse),
+    #[smb_discriminator(value = 0x12)]
+    #[smb_direct(start(fixed = 0))]
+    OplockBreak(SMBOplockBreakContent),
+    #[smb_discriminator(value = 0x12)]
+    #[smb_discriminator(flag = 0x10000)]
+    #[smb_direct(start(fixed = 0))]
+    OplockBreakAcknowledgement(SMBOplockBreakAcknowledgement),
     #[smb_discriminator(value = 0x999)]
     #[smb_enum(start(fixed = 0), discriminator(inner(start = 0, num_type = "u8")))]
     LegacyCommand(LegacySMBBody),

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::future::Future;
 use std::sync::{Arc, Weak};
 
 use derive_builder::Builder;
@@ -18,14 +17,13 @@ use smb_core::nt_status::NTStatus;
 use crate::protocol::body::capabilities::Capabilities;
 use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::filetime::FileTime;
+use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
 use crate::protocol::body::negotiate::context::{CompressionAlgorithm, EncryptionCipher, HashAlgorithm, RDMATransformID, SigningAlgorithm};
 use crate::protocol::body::negotiate::security_mode::NegotiateSecurityMode;
-use crate::protocol::body::negotiate::SMBNegotiateResponse;
 use crate::protocol::body::session_setup::flags::SMBSessionSetupFlags;
+use crate::protocol::body::session_setup::SMBSessionSetupRequest;
 use crate::protocol::body::SMBBody;
 use crate::protocol::header::{Header, SMBSyncHeader};
-use crate::protocol::header::command_code::SMBCommandCode;
-use crate::protocol::header::flags::SMBFlags;
 use crate::protocol::message::SMBMessage;
 use crate::server::{Server, SMBServerDiagnosticsUpdate};
 use crate::server::message_handler::{SMBHandlerState, SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
@@ -396,39 +394,29 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> InnerG
 
 
 impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBConnection<R, W, S> {
-    fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, message: &SMBMessageType) -> SMBResult<SMBMessageType> {
-        let SMBMessage { header, body } = message;
-        if let SMBBody::NegotiateRequest(request) = body {
-            let (update, contexts) = request.validate_and_set_state(self, server)?;
-            self.apply_update(update);
-            let resp_header = header.create_response_header(0x0, 0, 0);
-            let resp_body = SMBNegotiateResponse::from_connection_state::<A, R, W, S>(self, server, contexts);
-            Ok(SMBMessage::new(resp_header, SMBBody::NegotiateResponse(resp_body)))
-        } else {
-            Err(SMBError::parse_error("Invalid SMB request body (expected NegotiateRequest)"))
-        }
+    fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, header: &SMBSyncHeader, request: &SMBNegotiateRequest) -> SMBResult<SMBMessageType> {
+        let (update, contexts) = request.validate_and_set_state(self, server)?;
+        self.apply_update(update);
+        let resp_header = header.create_response_header(0x0, 0, 0);
+        let resp_body = SMBNegotiateResponse::from_connection_state::<A, R, W, S>(self, server, contexts);
+        Ok(SMBMessage::new(resp_header, SMBBody::NegotiateResponse(resp_body)))
     }
 
-    async fn handle_session_setup<F: FnOnce() -> Arc<RwLock<Self>>>(&mut self, server: &S, message: &SMBMessageType, get_locked: F) -> SMBResult<Arc<RwLock<S::SessionType>>> {
-        let SMBMessage { header, body } = message;
-        if let SMBBody::SessionSetupRequest(request) = body {
-            let locked_conn = get_locked();
-            let mut sha = Sha512::default();
-            sha.update(self.preauth_integtiry_hash_value());
-            sha.update(&request.smb_to_bytes());
-            let preauth_val = sha.finalize().to_vec();
-            let session = S::SessionType::init(1, server.encrypt_data(), preauth_val, Arc::downgrade(&locked_conn), server.auth_provider().clone());
-            let id = session.id();
-            let wrapped_session = Arc::new(RwLock::new(session));
-            self.session_table.insert(id, wrapped_session.clone());
-            let unlocked = wrapped_session.read().await;
-            let update = request.validate_and_set_state(self, server, &unlocked, header).await?;
-            drop(unlocked);
-            self.apply_update(update);
-            Ok(wrapped_session)
-        } else {
-            Err(SMBError::parse_error("Invalid SMB Request Body (expected SessionSetupRequest"))
-        }
+    async fn handle_session_setup<F: FnOnce() -> Arc<RwLock<Self>>>(&mut self, server: &S, header: &SMBSyncHeader, request: &SMBSessionSetupRequest, get_locked: F) -> SMBResult<Arc<RwLock<S::SessionType>>> {
+        let locked_conn = get_locked();
+        let mut sha = Sha512::default();
+        sha.update(self.preauth_integtiry_hash_value());
+        sha.update(&request.smb_to_bytes());
+        let preauth_val = sha.finalize().to_vec();
+        let session = S::SessionType::init(1, server.encrypt_data(), preauth_val, Arc::downgrade(&locked_conn), server.auth_provider().clone());
+        let id = session.id();
+        let wrapped_session = Arc::new(RwLock::new(session));
+        self.session_table.insert(id, wrapped_session.clone());
+        let unlocked = wrapped_session.read().await;
+        let update = request.validate_and_set_state(self, server, &unlocked, header).await?;
+        drop(unlocked);
+        self.apply_update(update);
+        Ok(wrapped_session)
     }
 
     fn get_session(&self, server: &S, header: &SMBSyncHeader, flags: SMBSessionSetupFlags) -> SMBResult<Arc<RwLock<S::SessionType>>> {
@@ -463,54 +451,27 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection
                 .map(Arc::clone)
         }
     }
-    async fn handle_negotiate(&self, message: &SMBMessageType) -> SMBResult<SMBHandlerState<Arc<RwLock<S::SessionType>>>> {
+    async fn handle_negotiate(&self, header: &SMBSyncHeader, message: &SMBNegotiateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let server = self.server().await?;
         let unlocked = server.read().await;
-        let message = self.write().await.handle_negotiate::<S::AuthType>(&unlocked, message)?;
+        let message = self.write().await.handle_negotiate::<S::AuthType>(&unlocked, header, message)?;
         Ok(SMBHandlerState::Finished(message))
     }
 
-    async fn handle_session_setup(&self, message: &SMBMessageType) -> SMBResult<SMBHandlerState<Arc<RwLock<S::SessionType>>>> {
+    async fn handle_session_setup(&self, header: &SMBSyncHeader, message: &SMBSessionSetupRequest) -> SMBResult<SMBHandlerState<Arc<RwLock<S::SessionType>>>> {
         let server = self.server().await?;
         let unlocked = server.read().await;
         let cloned_arc = self.clone();
         let get_locked = || {
             cloned_arc
         };
-        if message.header.session_id == 0 {
-            let session = self.write().await.handle_session_setup(&unlocked, message, get_locked).await?;
+        if header.session_id == 0 {
+            let session = self.write().await.handle_session_setup(&unlocked, header, message, get_locked).await?;
             Ok(SMBHandlerState::Next(Some(session)))
         } else {
             Ok(SMBHandlerState::Next(None))
         }
     }
-}
-
-trait SMBLockedHandler<S: Server> {
-    fn handle_legacy_negotiate(&self) -> SMBResult<SMBMessageType> {
-        let resp_body = SMBBody::NegotiateResponse(SMBNegotiateResponse::legacy_response());
-        let resp_header = SMBSyncHeader::new(
-            SMBCommandCode::Negotiate,
-            SMBFlags::SERVER_TO_REDIR,
-            0,
-            0,
-            65535,
-            65535,
-            [0; 16],
-        );
-        Ok(SMBMessage::new(resp_header, resp_body))
-    }
-
-    fn handle_negotiate<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>>;
-
-    fn handle_session_setup(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>>;
-    fn generic_message_handler(&self, message: SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>>;
-}
-
-trait SMBStatefulHandler<S: Server> {
-    fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, message: SMBMessageType) -> SMBResult<SMBMessageType>;
-    fn handle_session_setup<F: FnOnce() -> Arc<RwLock<Self>>>(&mut self, server: &S, message: &SMBMessageType, create_session_closure: F) -> impl Future<Output=SMBResult<Arc<RwLock<S::SessionType>>>>;
-    fn get_session(&self, server: &S, message: &SMBSyncHeader, flags: SMBSessionSetupFlags) -> SMBResult<Arc<RwLock<S::SessionType>>>;
 }
 
 impl<R: SMBReadStream, W: SMBWriteStream, S: Server> TryFrom<(SMBSocketConnection<R, W>, Weak<RwLock<S>>)> for SMBConnection<R, W, S> {

@@ -16,12 +16,13 @@ use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
 use smb_core::SMBResult;
 
+use crate::protocol::body::create::SMBCreateRequest;
 use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::negotiate::context::EncryptionCipher;
 use crate::protocol::body::negotiate::context::EncryptionCipher::AES256CCM;
-use crate::protocol::body::session_setup::SMBSessionSetupResponse;
+use crate::protocol::body::session_setup::{SMBSessionSetupRequest, SMBSessionSetupResponse};
 use crate::protocol::body::SMBBody;
-use crate::protocol::body::tree_connect::SMBTreeConnectResponse;
+use crate::protocol::body::tree_connect::{SMBTreeConnectRequest, SMBTreeConnectResponse};
 use crate::protocol::header::{Header, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
 use crate::server::connection::Connection;
@@ -168,78 +169,65 @@ fn generate_key(secure_key: &[u8], label: &str, context: &[u8], output_len: usiz
 
 impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> SMBLockedMessageHandlerBase for Arc<RwLock<SMBSession<C, S>>> {
     type Inner = ();
-    async fn inner(&self, message: &crate::server::message_handler::SMBMessageType) -> Option<Self::Inner> {
+    async fn inner(&self, message: &SMBMessageType) -> Option<Self::Inner> {
         None
     }
 
-    async fn handle_session_setup(&self, message: &crate::server::message_handler::SMBMessageType) -> SMBResult<SMBHandlerState<Self::Inner>> {
-        if let SMBBody::SessionSetupRequest(request) = &message.body {
-            let buffer = request.buffer();
-            let (_, token) = SPNEGOToken::<S::AuthType>::parse(buffer)?;
-            let mut session_write = self.write().await;
-            let provider = session_write.provider.clone();
-            let ctx = session_write.security_context_mut();
-            let (status, msg) = token.get_message(provider.as_ref(), ctx)?;
-            if status == NTStatus::StatusSuccess {
-                let session_key = ctx.session_key().to_vec();
-                session_write.handle_successful_setup(session_key).await;
-                println!("session key: {:02x?}", session_write.session_key);
-            }
-            drop(session_write);
-            let response = SPNEGOTokenResponseBody::<S::AuthType>::new(status.clone(), msg);
-            let (id, session_setup) = {
-                let session_read = self.read().await;
-                let resp = SMBSessionSetupResponse::from_session_state::<S>(&session_read, response.as_bytes());
-                (session_read.id(), resp)
-            };
-            let header = message.header.create_response_header(status as u32, id, 0);
-            let message = SMBMessage::new(header, SMBBody::SessionSetupResponse(session_setup));
-            Ok(SMBHandlerState::Finished(message))
-        } else {
-            Err(SMBError::parse_error("Invalid SMB request body (expected SessionSetupRequest)"))
+    async fn handle_session_setup(&self, header: &SMBSyncHeader, request: &SMBSessionSetupRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+        let buffer = request.buffer();
+        let (_, token) = SPNEGOToken::<S::AuthType>::parse(buffer)?;
+        let mut session_write = self.write().await;
+        let provider = session_write.provider.clone();
+        let ctx = session_write.security_context_mut();
+        let (status, msg) = token.get_message(provider.as_ref(), ctx)?;
+        if status == NTStatus::StatusSuccess {
+            let session_key = ctx.session_key().to_vec();
+            session_write.handle_successful_setup(session_key).await?;
+            println!("session key: {:02x?}", session_write.session_key);
         }
+        drop(session_write);
+        let response = SPNEGOTokenResponseBody::<S::AuthType>::new(status, msg);
+        let (id, session_setup) = {
+            let session_read = self.read().await;
+            let resp = SMBSessionSetupResponse::from_session_state::<S>(&session_read, response.as_bytes());
+            (session_read.id(), resp)
+        };
+        let header = header.create_response_header(status as u32, id, 0);
+        let message = SMBMessage::new(header, SMBBody::SessionSetupResponse(session_setup));
+        Ok(SMBHandlerState::Finished(message))
     }
 
-    async fn handle_tree_connect(&self, message: &crate::server::message_handler::SMBMessageType) -> SMBResult<SMBHandlerState<Self::Inner>> {
-        println!("GOT TREE CONNECT {:?}", message);
-        if let SMBBody::TreeConnectRequest(req) = &message.body {
-            println!("Share: {:?}", req.share());
-            let self_rd = self.read().await;
-            let conn = self_rd.get_connection()?;
-            drop(self_rd);
-            let conn_rd = conn.read().await;
-            let self_rd = self.read().await;
-            let server_ref = conn_rd.server_ref().upgrade();
-            if server_ref.is_none() {
-                return Err(SMBError::response_error(NTStatus::BadNetworkName))
-            }
-            let server_ref = server_ref.unwrap();
-            let server_rd = server_ref.read().await;
-            let share = server_rd.shares().get(&req.share().to_lowercase());
-            if share.is_none() {
-                return Err(SMBError::response_error(NTStatus::BadNetworkName))
-            }
-            let share = share.unwrap();
-            let response = SMBTreeConnectResponse::for_share(share.deref());
-            let tree_id = self_rd.get_next_tree_id();
-            let tree_connect = SMBTreeConnect::init(tree_id, Arc::downgrade(self), share.clone(), response.access_mask().clone());
-            let header = SMBSyncHeader::create_response_header(&message.header, 0, self_rd.id(), 1);
-            drop(self_rd);
-            let mut self_wr = self.write().await;
-            self_wr.tree_connect_table.insert(tree_id as u64, tree_connect);
-            let message = SMBMessage::new(header, SMBBody::TreeConnectResponse(response));
-            Ok(SMBHandlerState::Finished(message))
-        } else {
-            Err(SMBError::parse_error("Invalid SMB request body (expected TreeConnectRequest)"))
+    async fn handle_tree_connect(&self, header: &SMBSyncHeader, request: &SMBTreeConnectRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+        let self_rd = self.read().await;
+        let conn = self_rd.get_connection()?;
+        drop(self_rd);
+        let conn_rd = conn.read().await;
+        let self_rd = self.read().await;
+        let server_ref = conn_rd.server_ref().upgrade();
+        if server_ref.is_none() {
+            return Err(SMBError::response_error(NTStatus::BadNetworkName))
         }
+        let server_ref = server_ref.unwrap();
+        let server_rd = server_ref.read().await;
+        let share = server_rd.shares().get(&request.share().to_lowercase());
+        if share.is_none() {
+            return Err(SMBError::response_error(NTStatus::BadNetworkName))
+        }
+        let share = share.unwrap();
+        let response = SMBTreeConnectResponse::for_share(share.deref());
+        let tree_id = self_rd.get_next_tree_id();
+        let tree_connect = SMBTreeConnect::init(tree_id, Arc::downgrade(self), share.clone(), response.access_mask().clone());
+        let header = SMBSyncHeader::create_response_header(&header, 0, self_rd.id(), 1);
+        drop(self_rd);
+        let mut self_wr = self.write().await;
+        self_wr.tree_connect_table.insert(tree_id as u64, tree_connect);
+        let message = SMBMessage::new(header, SMBBody::TreeConnectResponse(response));
+        Ok(SMBHandlerState::Finished(message))
     }
 
-    async fn handle_create(&self, message: &crate::server::message_handler::SMBMessageType) -> SMBResult<SMBHandlerState<Self::Inner>> {
-        if let SMBBody::CreateRequest(req) = &message.body {
-            todo!()
-        } else {
-            Err(SMBError::parse_error("Invalid SMB request body (expected CreateRequest)"))
-        }
+    async fn handle_create(&self, header: &SMBSyncHeader, request: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+        println!("GOT CREATE {:?}", request);
+        todo!()
     }
 }
 
