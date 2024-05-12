@@ -13,7 +13,9 @@ use crate::server::session::SMBSession;
 use crate::server::share::SharedResource;
 use crate::server::tree_connect::SMBTreeConnect;
 
-pub trait Open: Debug + Send + Sync {}
+pub trait Open: Debug + Send + Sync {
+    fn file_name(&self) -> &str;
+}
 
 pub struct SMBOpen<T: SharedResource, C: Connection, S: Server> {
     file_id: u32,

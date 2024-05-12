@@ -44,7 +44,7 @@ impl AuthProvider for NTLMAuthProvider {
                 if auth_status == 0 {
                     (NTStatus::StatusSuccess, NTLMMessage::Dummy)
                 } else {
-                    (NTStatus::StatusLogonFailure, NTLMMessage::Dummy)
+                    (NTStatus::LogonFailure, NTLMMessage::Dummy)
                 }
             },
             NTLMMessage::Dummy => {

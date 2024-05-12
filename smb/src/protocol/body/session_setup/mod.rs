@@ -74,7 +74,7 @@ impl SMBSessionSetupRequest {
             }
 
             if session.anonymous() || session.guest() {
-                return Err(SMBError::response_error(NTStatus::StatusNotSupported));
+                return Err(SMBError::response_error(NTStatus::NotSupported));
             }
             if connection.dialect() == SMBDialect::V3_1_1 && !connection.preauth_sessions().contains_key(&session.id()) {
                 let mut sha = Sha512::default();

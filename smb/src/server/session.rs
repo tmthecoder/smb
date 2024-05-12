@@ -16,7 +16,6 @@ use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
 use smb_core::SMBResult;
 
-use crate::protocol::body::create::SMBCreateRequest;
 use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::negotiate::context::EncryptionCipher;
 use crate::protocol::body::negotiate::context::EncryptionCipher::AES256CCM;
@@ -26,7 +25,7 @@ use crate::protocol::body::tree_connect::{SMBTreeConnectRequest, SMBTreeConnectR
 use crate::protocol::header::{Header, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
 use crate::server::connection::Connection;
-use crate::server::message_handler::{SMBHandlerState, SMBLockedMessageHandlerBase};
+use crate::server::message_handler::{NonEndingHandler, SMBHandlerState, SMBLockedMessageHandlerBase};
 use crate::server::open::Open;
 use crate::server::Server;
 use crate::server::share::SharedResource;
@@ -68,7 +67,7 @@ pub struct SMBSession<C: Connection, S: Server> {
     session_key: [u8; 16],
     signing_required: bool,
     open_table: HashMap<u64, Box<dyn Open>>,
-    tree_connect_table: HashMap<u64, SMBTreeConnect<Box<dyn SharedResource>, C, S>>,
+    tree_connect_table: HashMap<u32, Arc<SMBTreeConnect<Box<dyn SharedResource>, C, S>>>,
     expiration_time: u64,
     connection: Weak<RwLock<C>>,
     global_id: u32,
@@ -148,7 +147,7 @@ impl<C: Connection, S: Server> SMBSession<C, S> {
     }
     fn get_next_tree_id(&self) -> u32 {
         for i in 1..u32::MAX {
-            if self.tree_connect_table.get(&(i as u64)).is_none() {
+            if self.tree_connect_table.get(&i).is_none() {
                 return i;
             }
         }
@@ -167,13 +166,17 @@ fn generate_key(secure_key: &[u8], label: &str, context: &[u8], output_len: usiz
     derive_key(mac, &label_bytes, context, (output_len * 8) as u32)
 }
 
+impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> NonEndingHandler for Arc<RwLock<SMBSession<C, S>>> {}
 impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> SMBLockedMessageHandlerBase for Arc<RwLock<SMBSession<C, S>>> {
-    type Inner = ();
+    type Inner = Arc<SMBTreeConnect<Box<dyn SharedResource>, C, S>>;
     async fn inner(&self, message: &SMBMessageType) -> Option<Self::Inner> {
-        None
+        let write = self.write().await;
+        println!("Getting tree connect for message: {:?}", message);
+        write.tree_connect_table.get(&message.header.tree_id)
+            .map(Arc::clone)
     }
 
-    async fn handle_session_setup(&self, header: &SMBSyncHeader, request: &SMBSessionSetupRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+    async fn handle_session_setup(&mut self, header: &SMBSyncHeader, request: &SMBSessionSetupRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let buffer = request.buffer();
         let (_, token) = SPNEGOToken::<S::AuthType>::parse(buffer)?;
         let mut session_write = self.write().await;
@@ -197,7 +200,7 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> SMBLockedMessageHan
         Ok(SMBHandlerState::Finished(message))
     }
 
-    async fn handle_tree_connect(&self, header: &SMBSyncHeader, request: &SMBTreeConnectRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+    async fn handle_tree_connect(&mut self, header: &SMBSyncHeader, request: &SMBTreeConnectRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let self_rd = self.read().await;
         let conn = self_rd.get_connection()?;
         drop(self_rd);
@@ -220,14 +223,9 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> SMBLockedMessageHan
         let header = SMBSyncHeader::create_response_header(&header, 0, self_rd.id(), 1);
         drop(self_rd);
         let mut self_wr = self.write().await;
-        self_wr.tree_connect_table.insert(tree_id as u64, tree_connect);
+        self_wr.tree_connect_table.insert(tree_id, Arc::new(tree_connect));
         let message = SMBMessage::new(header, SMBBody::TreeConnectResponse(response));
         Ok(SMBHandlerState::Finished(message))
-    }
-
-    async fn handle_create(&self, header: &SMBSyncHeader, request: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
-        println!("GOT CREATE {:?}", request);
-        todo!()
     }
 }
 

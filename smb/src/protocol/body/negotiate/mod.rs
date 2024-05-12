@@ -53,6 +53,7 @@ impl SMBNegotiateRequest {
         }
         let mut update = SMBConnectionUpdate::default();
         let mut received_ctxs = HashSet::new();
+        // TODO: uncomment after signing is fixed + working
         // for context in self.negotiate_contexts.iter() {
         //     let (change, actual) = context.validate_and_set_state(update, server)?;
         //     update = change;

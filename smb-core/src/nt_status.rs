@@ -12,12 +12,13 @@ pub enum NTStatus {
     SecIContinueNeeded = 0x00090312,
     InvalidParameter = 0xC000000D,
     AccessDenied = 0xC0000022,
-    StatusLogonFailure = 0xC000006D,
-    StatusNotSupported = 0xC00000BB,
+    LogonFailure = 0xC000006D,
+    NotSupported = 0xC00000BB,
     BadNetworkName = 0xC00000CC,
     RequestNotAccepted = 0xC00000D0,
     UserSessionDeleted = 0xC0000203,
     NetworkSessionExpired = 0xC000035C,
+    FileNotAvailable = 0xC0000467,
     UnknownError = 0xFFFFFFFF,
 }
 

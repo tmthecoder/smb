@@ -15,7 +15,7 @@ use crate::protocol::body::create::options::SMBCreateOptions;
 use crate::protocol::body::create::request_context::CreateRequestContext;
 use crate::protocol::body::create::share_access::SMBShareAccess;
 use crate::protocol::body::filetime::FileTime;
-use crate::protocol::body::tree_connect::access_mask::{SMBAccessMask, SMBFilePipePrinterAccessMask};
+use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 
 pub mod options;
 pub mod oplock;
@@ -53,6 +53,12 @@ pub struct SMBCreateRequest {
     file_name: String,
     #[smb_vector(order = 1, align = 8, length(inner(start = 52, num_type = "u32")), offset(inner(start = 48, num_type = "u32", subtract = 64)))]
     contexts: Vec<CreateRequestContext>,
+}
+
+impl SMBCreateRequest {
+    pub fn file_name(&self) -> &str {
+        &self.file_name
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]

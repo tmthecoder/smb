@@ -15,6 +15,7 @@ use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
 
 use crate::protocol::body::capabilities::Capabilities;
+use crate::protocol::body::create::SMBCreateRequest;
 use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
@@ -23,10 +24,10 @@ use crate::protocol::body::negotiate::security_mode::NegotiateSecurityMode;
 use crate::protocol::body::session_setup::flags::SMBSessionSetupFlags;
 use crate::protocol::body::session_setup::SMBSessionSetupRequest;
 use crate::protocol::body::SMBBody;
-use crate::protocol::header::{Header, SMBSyncHeader};
+use crate::protocol::header::SMBSyncHeader;
 use crate::protocol::message::SMBMessage;
 use crate::server::{Server, SMBServerDiagnosticsUpdate};
-use crate::server::message_handler::{SMBHandlerState, SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
+use crate::server::message_handler::{NonEndingHandler, SMBHandlerState, SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
 use crate::server::preauth_session::SMBPreauthSession;
 use crate::server::request::Request;
 use crate::server::safe_locked_getter::{InnerGetter, SafeLockedGetter};
@@ -212,14 +213,14 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> Connection for SMBConnectio
 }
 
 impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBConnection<R, W, S>
-    where Arc<RwLock<S::SessionType>>: SMBLockedMessageHandlerBase {
-    pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, connection: Arc<RwLock<SMBConnection<R, W, S>>>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
+    where Arc<RwLock<S::SessionType>>: SMBLockedMessageHandler {
+    pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, mut connection: Arc<RwLock<SMBConnection<R, W, S>>>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
         let (read, write) = stream.streams();
         println!("Start message handler");
         let mut messages = read.messages();
         while let Some(message) = messages.next().await {
             println!("Got message: {:?}", message);
-            let message = connection.handle_message_full(&message).await;
+            let message = connection.handle_message(&message).await;
             // let message = match message.header.command_code() {
             //     SMBCommandCode::LegacyNegotiate => connection.handle_legacy_negotiate(),
             //     SMBCommandCode::Negotiate => connection.handle_negotiate(&message).await,
@@ -350,41 +351,6 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
 }
 
 type LockedSMBConnection<R, W, S> = Arc<RwLock<SMBConnection<R, W, S>>>;
-// impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>> SMBLockedHandler<S> for LockedSMBConnection<R, W, S> {
-//     async fn handle_negotiate<A: AuthProvider>(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
-//         let server = server.upgrade().ok_or(SMBError::server_error("No server available"))?;
-//         let unlocked = server.read().await;
-//         self.write().await.handle_negotiate::<A>(&unlocked, message)
-//     }
-//
-//     // TODO refactor this to make sure this follows the steps in the MS-SMB2 PDF
-//     async fn handle_session_setup(&self, server: &Weak<RwLock<S>>, message: SMBMessageType) -> SMBResult<SMBMessageType> {
-//         let server = server.upgrade().ok_or(SMBError::server_error("No server available"))?;
-//         let unlocked = server.read().await;
-//         let cloned_arc = self.clone();
-//         let get_locked = || {
-//             cloned_arc
-//         };
-//         let session = if message.header.session_id != 0 {
-//             if let SMBBody::SessionSetupRequest(request) = &message.body {
-//                 self.read().await.get_session(&unlocked, &message.header, request.flags())
-//             } else {
-//                 Err(SMBError::parse_error("Invalid request body, expected SessionSetupRequest"))
-//             }
-//         } else {
-//             self.write().await.handle_session_setup(&unlocked, &message, get_locked).await
-//         }?;
-//         drop(unlocked);
-//         S::SessionType::handle_message(session, &message).await
-//     }
-//
-//     async fn generic_message_handler(&self, message: SMBMessageType) -> SMBResult<SMBMessageType> {
-//         let session = self.read().await.session_table.get(&message.header.session_id)
-//             .map(Arc::clone)
-//             .ok_or(SMBError::response_error(NTStatus::UserSessionDeleted))?;
-//         S::SessionType::handle_message(session.clone(), &message).await
-//     }
-// }
 
 impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> InnerGetter<S> for SMBConnection<R, W, S> {
     fn server(&self) -> Option<Arc<RwLock<S>>> {
@@ -421,17 +387,16 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
 
     fn get_session(&self, server: &S, header: &SMBSyncHeader, flags: SMBSessionSetupFlags) -> SMBResult<Arc<RwLock<S::SessionType>>> {
         if self.dialect.is_smb3() && server.multi_channel_capable() && flags.contains(SMBSessionSetupFlags::BINDING) {
-            println!("getting from server map: {:?}", server.sessions().keys());
             server.sessions().get(&header.session_id)
         } else if !self.dialect.is_smb3() && !server.multi_channel_capable() && flags.contains(SMBSessionSetupFlags::BINDING) {
             None
         } else {
-            println!("getting from session map: {:?}", self.sessions().keys());
             self.sessions().get(&header.session_id)
         }.map(Arc::clone).ok_or(SMBError::response_error(NTStatus::UserSessionDeleted))
     }
 }
 
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>> NonEndingHandler for LockedSMBConnection<R, W, S> {}
 impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>> SMBLockedMessageHandlerBase for LockedSMBConnection<R, W, S> {
     type Inner = Arc<RwLock<S::SessionType>>;
 
@@ -451,14 +416,14 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection
                 .map(Arc::clone)
         }
     }
-    async fn handle_negotiate(&self, header: &SMBSyncHeader, message: &SMBNegotiateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+    async fn handle_negotiate(&mut self, header: &SMBSyncHeader, message: &SMBNegotiateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let server = self.server().await?;
         let unlocked = server.read().await;
         let message = self.write().await.handle_negotiate::<S::AuthType>(&unlocked, header, message)?;
         Ok(SMBHandlerState::Finished(message))
     }
 
-    async fn handle_session_setup(&self, header: &SMBSyncHeader, message: &SMBSessionSetupRequest) -> SMBResult<SMBHandlerState<Arc<RwLock<S::SessionType>>>> {
+    async fn handle_session_setup(&mut self, header: &SMBSyncHeader, message: &SMBSessionSetupRequest) -> SMBResult<SMBHandlerState<Arc<RwLock<S::SessionType>>>> {
         let server = self.server().await?;
         let unlocked = server.read().await;
         let cloned_arc = self.clone();
@@ -471,6 +436,21 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection
         } else {
             Ok(SMBHandlerState::Next(None))
         }
+    }
+
+    async fn handle_create(&mut self, header: &SMBSyncHeader, message: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+        let server = self.server().await?;
+        let server_rd = server.read().await;
+        let conn = self.read().await;
+        // TODO check that RECONNECT or RECONNECT_V2 aren't included
+        if conn.dialect == SMBDialect::V3_1_1 || conn.dialect == SMBDialect::V3_0_0 {
+            for v in server_rd.opens().values() {
+                if v.file_name() == message.file_name() {
+                    return Err(SMBError::response_error(NTStatus::FileNotAvailable));
+                }
+            }
+        }
+        Ok(SMBHandlerState::Next(None))
     }
 }
 
