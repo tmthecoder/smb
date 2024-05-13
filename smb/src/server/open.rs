@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::fs::File;
 
 use uuid::Uuid;
 
@@ -17,15 +16,13 @@ pub trait Open: Debug + Send + Sync {
     fn file_name(&self) -> &str;
 }
 
-pub struct SMBOpen<T: SharedResource, C: Connection, S: Server> {
+pub struct SMBOpen<R: SharedResource, C: Connection, S: Server> {
     file_id: u32,
     file_global_id: u32,
     durable_file_id: u32,
     session: Option<SMBSession<C, S>>,
-    tree_connect: Option<SMBTreeConnect<T, C, S>>,
+    tree_connect: Option<SMBTreeConnect<R, C, S>>,
     connection: Option<C>,
-    local_open: File,
-    // TODO make this an interface for different open types
     granted_access: SMBAccessMask,
     oplock_level: SMBOplockLevel,
     oplock_state: SMBOplockState,

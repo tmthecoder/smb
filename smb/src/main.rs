@@ -7,7 +7,7 @@ use tokio::net::TcpListener;
 use smb_core::SMBResult;
 use smb_reader::protocol::body::tree_connect::access_mask::{SMBAccessMask, SMBDirectoryAccessMask};
 use smb_reader::server::{SMBServerBuilder, StartSMBServer};
-use smb_reader::server::share::SMBShare;
+use smb_reader::server::share::file_system::SMBFileSystemShare;
 use smb_reader::util::auth::ntlm::NTLMAuthProvider;
 use smb_reader::util::auth::User;
 
@@ -17,7 +17,7 @@ const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
 #[cfg(feature = "async")]
 #[tokio::main]
 async fn main() -> SMBResult<()> {
-    let share = SMBShare::disk("TEST".into(), file_allowed, get_file_perms);
+    let share = SMBFileSystemShare::root("TEST".into(), file_allowed, get_file_perms);
     let builder = SMBServerBuilder::<_, TcpListener, NTLMAuthProvider>::default()
         .anonymous_access(true)
         .unencrypted_access(true)
