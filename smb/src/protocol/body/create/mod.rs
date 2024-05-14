@@ -2,6 +2,9 @@ use std::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
 
+use smb_core::error::SMBError;
+use smb_core::nt_status::NTStatus;
+use smb_core::SMBResult;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::protocol::body::create::action::SMBCreateAction;
@@ -13,9 +16,11 @@ use crate::protocol::body::create::impersonation_level::SMBImpersonationLevel;
 use crate::protocol::body::create::oplock::SMBOplockLevel;
 use crate::protocol::body::create::options::SMBCreateOptions;
 use crate::protocol::body::create::request_context::CreateRequestContext;
+use crate::protocol::body::create::response_context::CreateResponseContext;
 use crate::protocol::body::create::share_access::SMBShareAccess;
 use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
+use crate::server::share::{ResourceType, SharedResource};
 
 pub mod options;
 pub mod oplock;
@@ -59,6 +64,19 @@ impl SMBCreateRequest {
     pub fn file_name(&self) -> &str {
         &self.file_name
     }
+
+    fn validate_print(&self) -> bool {
+        !self.attributes.contains(SMBFileAttributes::DIRECTORY) &&
+            self.desired_access.validate_print() &&
+            self.create_disposition == SMBCreateDisposition::Create
+    }
+
+    pub fn validate<R: SharedResource>(&self, resource: &R) -> SMBResult<()> {
+        if resource.resource_type() == ResourceType::PRINT_QUEUE && !self.validate_print() {
+            return Err(SMBError::response_error(NTStatus::NotSupported))
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
@@ -87,6 +105,5 @@ pub struct SMBCreateResponse {
     #[smb_direct(start(fixed = 60))]
     file_id: SMBFileId,
     #[smb_vector(order = 0, align = 8, offset(inner(start = 64, num_type = "u32", subtract = 64)), count(inner(start = 68, num_type = "u32")), )]
-    // TODO split into response ctx
-    contexts: Vec<CreateRequestContext>,
+    contexts: Vec<CreateResponseContext>,
 }

@@ -13,6 +13,15 @@ pub enum SMBAccessMask {
     Directory(SMBDirectoryAccessMask),
 }
 
+impl SMBAccessMask {
+    pub fn validate_print(&self) -> bool {
+        match &self {
+            SMBAccessMask::FilePipePrinter(access_mask) => access_mask.validate_print(),
+            _ => false,
+        }
+    }
+}
+
 bitflags! {
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy)]
     pub struct SMBFilePipePrinterAccessMask: u32 {
@@ -36,6 +45,14 @@ bitflags! {
         const GENERIC_EXECUTE        = 0x20000000;
         const GENERIC_WRITE          = 0x40000000;
         const GENERIC_READ           = 0x80000000;
+    }
+}
+
+impl SMBFilePipePrinterAccessMask {
+    pub fn validate_print(&self) -> bool {
+        self.contains(SMBFilePipePrinterAccessMask::FILE_WRITE_DATA)
+            || self.contains(SMBFilePipePrinterAccessMask::FILE_APPEND_DATA)
+            || self.contains(SMBFilePipePrinterAccessMask::GENERIC_WRITE)
     }
 }
 

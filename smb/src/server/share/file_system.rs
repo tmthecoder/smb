@@ -1,6 +1,9 @@
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
 
+use smb_core::error::SMBError;
+use smb_core::SMBResult;
+
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::server::share::{ResourceHandle, ResourceType, SharedResource};
@@ -9,7 +12,11 @@ pub struct SMBFileSystemHandle {
     underlying: File,
 }
 
-impl ResourceHandle for SMBFileSystemHandle {}
+impl ResourceHandle for SMBFileSystemHandle {
+    fn close(self: Box<Self>) -> SMBResult<()> {
+        Ok(())
+    }
+}
 
 pub struct SMBFileSystemShare<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask + Send> {
     name: String,
@@ -23,7 +30,6 @@ pub struct SMBFileSystemShare<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms:
     allow_namespace_caching: bool,
     force_shared_delete: bool,
     restrict_exclusive_options: bool,
-    share_type: ResourceType,
     remark: String,
     max_uses: u64,
     current_uses: u64,
@@ -49,7 +55,6 @@ impl<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask
             .field("allow_namespace_caching", &self.allow_namespace_caching)
             .field("force_shared_delete", &self.force_shared_delete)
             .field("restrict_exclusive_options", &self.restrict_exclusive_options)
-            .field("share_type", &self.share_type)
             .field("remark", &self.remark)
             .field("max_uses", &self.max_uses)
             .field("current_uses", &self.current_uses)
@@ -71,15 +76,17 @@ impl<ConnectAllowed: Fn(u64) -> bool + Send + Sync, FilePerms: Fn(u64) -> SMBAcc
     }
 
     fn resource_type(&self) -> ResourceType {
-        self.share_type
+        ResourceType::DISK
     }
 
     fn flags(&self) -> SMBShareFlags {
         self.csc_flags
     }
 
-    fn open(&self, path: &str) -> Box<dyn ResourceHandle> {
-        todo!()
+    fn open(&self, path: &str) -> SMBResult<Box<dyn ResourceHandle>> {
+        let file = File::open(format!("{}/{}", self.local_path, path))
+            .map_err(SMBError::io_error)?;
+        Ok(Box::new(SMBFileSystemHandle { underlying: file }))
     }
 }
 
@@ -97,7 +104,6 @@ impl<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask
             allow_namespace_caching: false,
             force_shared_delete: false,
             restrict_exclusive_options: false,
-            share_type: ResourceType::DISK,
             remark: "some share comment".into(),
             max_uses: 10,
             current_uses: 0,
