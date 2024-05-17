@@ -5,11 +5,11 @@ use serde::{Deserialize, Serialize};
 
 use smb_core::SMBResult;
 
+use crate::protocol::body::create::disposition::SMBCreateDisposition;
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::protocol::body::tree_connect::SMBShareType;
 
 pub mod file_system;
-
 pub trait ResourceHandle {
     fn close(self: Box<Self>) -> SMBResult<()>;
 }
@@ -18,8 +18,7 @@ pub trait SharedResource: Debug + Send + Sync {
     fn name(&self) -> &str;
     fn resource_type(&self) -> ResourceType;
     fn flags(&self) -> SMBShareFlags;
-
-    fn open(&self, path: &str) -> SMBResult<Box<dyn ResourceHandle>>;
+    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition) -> SMBResult<Box<dyn ResourceHandle>>;
     fn close(&self, handle: Box<dyn ResourceHandle>) -> SMBResult<()> {
         handle.close()
     }
@@ -38,8 +37,8 @@ impl<T: ?Sized + SharedResource> SharedResource for Box<T> {
         T::flags(self)
     }
 
-    fn open(&self, path: &str) -> SMBResult<Box<dyn ResourceHandle>> {
-        T::open(self, path)
+    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition) -> SMBResult<Box<dyn ResourceHandle>> {
+        T::handle_create(self, path, disposition)
     }
 
     fn close(&self, handle: Box<dyn ResourceHandle>) -> SMBResult<()> {

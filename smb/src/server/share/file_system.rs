@@ -1,9 +1,10 @@
 use std::fmt::{Debug, Formatter};
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 
 use smb_core::error::SMBError;
 use smb_core::SMBResult;
 
+use crate::protocol::body::create::disposition::SMBCreateDisposition;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::server::share::{ResourceHandle, ResourceType, SharedResource};
@@ -83,8 +84,30 @@ impl<ConnectAllowed: Fn(u64) -> bool + Send + Sync, FilePerms: Fn(u64) -> SMBAcc
         self.csc_flags
     }
 
-    fn open(&self, path: &str) -> SMBResult<Box<dyn ResourceHandle>> {
-        let file = File::open(format!("{}/{}", self.local_path, path))
+    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition) -> SMBResult<Box<dyn ResourceHandle>> {
+        let path = format!("{}/{}", self.local_path, path);
+        let mut options = OpenOptions::new();
+        options.read(true)
+            .write(true);
+        match disposition {
+            SMBCreateDisposition::Supersede => options
+                .truncate(true)
+                .create(true),
+            SMBCreateDisposition::Open => options
+                .create(false),
+            SMBCreateDisposition::Create => options
+                .create_new(true),
+            SMBCreateDisposition::OpenIf => options
+                .truncate(false)
+                .create(true),
+            SMBCreateDisposition::Overwrite => options
+                .truncate(true)
+                .create(false),
+            SMBCreateDisposition::OverwriteIf => options
+                .truncate(false)
+                .create(true)
+        };
+        let file = options.open(path)
             .map_err(SMBError::io_error)?;
         Ok(Box::new(SMBFileSystemHandle { underlying: file }))
     }
