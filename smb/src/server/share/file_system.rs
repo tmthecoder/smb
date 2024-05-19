@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Formatter};
 use std::fs::{File, OpenOptions};
+use std::marker::PhantomData;
 
 use smb_core::error::SMBError;
 use smb_core::SMBResult;
@@ -9,17 +10,57 @@ use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::server::share::{ResourceHandle, ResourceType, SharedResource};
 
-pub struct SMBFileSystemHandle {
-    underlying: File,
+pub enum SMBFileSystemHandle {
+    File(File),
+    Directory(String)
 }
 
 impl ResourceHandle for SMBFileSystemHandle {
     fn close(self: Box<Self>) -> SMBResult<()> {
         Ok(())
     }
+
+    fn is_directory(&self) -> bool {
+        match &self {
+            SMBFileSystemHandle::File(_) => false,
+            SMBFileSystemHandle::Directory(_) => true
+        }
+    }
 }
 
-pub struct SMBFileSystemShare<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask + Send> {
+impl SMBFileSystemHandle {
+    fn file(path: &str, disposition: SMBCreateDisposition) -> SMBResult<Self> {
+        let mut options = OpenOptions::new();
+        options.read(true)
+            .write(true);
+        match disposition {
+            SMBCreateDisposition::Supersede => options
+                .truncate(true)
+                .create(true),
+            SMBCreateDisposition::Open => options
+                .create(false),
+            SMBCreateDisposition::Create => options
+                .create_new(true),
+            SMBCreateDisposition::OpenIf => options
+                .truncate(false)
+                .create(true),
+            SMBCreateDisposition::Overwrite => options
+                .truncate(true)
+                .create(false),
+            SMBCreateDisposition::OverwriteIf => options
+                .truncate(false)
+                .create(true)
+        };
+        let file = options.open(path).map_err(SMBError::io_error)?;
+        Ok(Self::File(file))
+    }
+
+    fn directory(path: &str) -> SMBResult<Self> {
+        Ok(Self::Directory(path.into()))
+    }
+}
+
+pub struct SMBFileSystemShare<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePerms: Fn(&UserName) -> SMBAccessMask + Send> {
     name: String,
     server_name: String,
     local_path: String,
@@ -42,9 +83,10 @@ pub struct SMBFileSystemShare<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms:
     encrypt_data: bool,
     supports_identity_remoting: bool,
     compress_data: bool,
+    user_name_type: PhantomData<UserName>
 }
 
-impl<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask + Send> Debug for SMBFileSystemShare<ConnectAllowed, FilePerms> {
+impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePerms: Fn(&UserName) -> SMBAccessMask + Send> Debug for SMBFileSystemShare<UserName, ConnectAllowed, FilePerms> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SMBServer")
             .field("name", &self.name)
@@ -71,7 +113,9 @@ impl<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask
     }
 }
 
-impl<ConnectAllowed: Fn(u64) -> bool + Send + Sync, FilePerms: Fn(u64) -> SMBAccessMask + Send + Sync> SharedResource for SMBFileSystemShare<ConnectAllowed, FilePerms> {
+impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send + Sync, FilePerms: Fn(&UserName) -> SMBAccessMask + Send + Sync> SharedResource for SMBFileSystemShare<UserName, ConnectAllowed, FilePerms> {
+    type UserName = UserName;
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -85,35 +129,20 @@ impl<ConnectAllowed: Fn(u64) -> bool + Send + Sync, FilePerms: Fn(u64) -> SMBAcc
     }
 
     fn handle_create(&self, path: &str, disposition: SMBCreateDisposition) -> SMBResult<Box<dyn ResourceHandle>> {
-        let path = format!("{}/{}", self.local_path, path);
-        let mut options = OpenOptions::new();
-        options.read(true)
-            .write(true);
-        match disposition {
-            SMBCreateDisposition::Supersede => options
-                .truncate(true)
-                .create(true),
-            SMBCreateDisposition::Open => options
-                .create(false),
-            SMBCreateDisposition::Create => options
-                .create_new(true),
-            SMBCreateDisposition::OpenIf => options
-                .truncate(false)
-                .create(true),
-            SMBCreateDisposition::Overwrite => options
-                .truncate(true)
-                .create(false),
-            SMBCreateDisposition::OverwriteIf => options
-                .truncate(false)
-                .create(true)
-        };
-        let file = options.open(path)
-            .map_err(SMBError::io_error)?;
-        Ok(Box::new(SMBFileSystemHandle { underlying: file }))
+        let handle = SMBFileSystemHandle::file(path, disposition)?;
+        Ok(Box::new(handle))
+    }
+
+    fn connect_allowed(&self, uid: &Self::UserName) -> bool {
+        (self.connect_security)(uid)
+    }
+
+    fn resource_perms(&self, uid: &Self::UserName) -> SMBAccessMask {
+        (self.file_security)(uid)
     }
 }
 
-impl<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask + Send> SMBFileSystemShare<ConnectAllowed, FilePerms> {
+impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePerms: Fn(&UserName) -> SMBAccessMask + Send> SMBFileSystemShare<UserName, ConnectAllowed, FilePerms> {
     pub fn root(name: String, connect_security: ConnectAllowed, file_security: FilePerms) -> Self {
         Self {
             name,
@@ -138,6 +167,7 @@ impl<ConnectAllowed: Fn(u64) -> bool + Send, FilePerms: Fn(u64) -> SMBAccessMask
             encrypt_data: true,
             supports_identity_remoting: true,
             compress_data: false,
+            user_name_type: PhantomData
         }
     }
 }

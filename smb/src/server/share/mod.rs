@@ -6,15 +6,18 @@ use serde::{Deserialize, Serialize};
 use smb_core::SMBResult;
 
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
+use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::protocol::body::tree_connect::SMBShareType;
 
 pub mod file_system;
 pub trait ResourceHandle {
     fn close(self: Box<Self>) -> SMBResult<()>;
+    fn is_directory(&self) -> bool;
 }
 
 pub trait SharedResource: Debug + Send + Sync {
+    type UserName: Send + Sync;
     fn name(&self) -> &str;
     fn resource_type(&self) -> ResourceType;
     fn flags(&self) -> SMBShareFlags;
@@ -22,9 +25,14 @@ pub trait SharedResource: Debug + Send + Sync {
     fn close(&self, handle: Box<dyn ResourceHandle>) -> SMBResult<()> {
         handle.close()
     }
+    fn connect_allowed(&self, uid: &Self::UserName) -> bool;
+
+    fn resource_perms(&self, uid: &Self::UserName) -> SMBAccessMask;
 }
 
 impl<T: ?Sized + SharedResource> SharedResource for Box<T> {
+    type UserName = T::UserName;
+
     fn name(&self) -> &str {
         T::name(self)
     }
@@ -43,6 +51,14 @@ impl<T: ?Sized + SharedResource> SharedResource for Box<T> {
 
     fn close(&self, handle: Box<dyn ResourceHandle>) -> SMBResult<()> {
         T::close(self, handle)
+    }
+
+    fn connect_allowed(&self, uid: &Self::UserName) -> bool {
+        T::connect_allowed(self, uid)
+    }
+
+    fn resource_perms(&self, uid: &Self::UserName) -> SMBAccessMask {
+        T::resource_perms(self, uid)
     }
 }
 

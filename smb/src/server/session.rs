@@ -28,7 +28,6 @@ use crate::server::connection::Connection;
 use crate::server::message_handler::{NonEndingHandler, SMBHandlerState, SMBLockedMessageHandlerBase};
 use crate::server::open::Open;
 use crate::server::Server;
-use crate::server::share::SharedResource;
 use crate::server::tree_connect::SMBTreeConnect;
 use crate::util::auth::{AuthContext, AuthProvider};
 use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenResponseBody};
@@ -59,15 +58,15 @@ pub trait Session<C: Connection, A: AuthProvider>: Send + Sync {
 pub struct SMBSession<C: Connection, S: Server> {
     session_id: u64,
     state: SessionState,
-    security_context: <S::AuthType as AuthProvider>::Context,
-    provider: Arc<S::AuthType>,
+    security_context: <S::AuthProvider as AuthProvider>::Context,
+    provider: Arc<S::AuthProvider>,
     // TODO >>
     is_anonymous: bool,
     is_guest: bool,
     session_key: [u8; 16],
     signing_required: bool,
     open_table: HashMap<u64, Box<dyn Open>>,
-    tree_connect_table: HashMap<u32, Arc<SMBTreeConnect<Box<dyn SharedResource>, C, S>>>,
+    tree_connect_table: HashMap<u32, Arc<SMBTreeConnect<C, S>>>,
     expiration_time: u64,
     connection: Weak<RwLock<C>>,
     global_id: u32,
@@ -166,9 +165,10 @@ fn generate_key(secure_key: &[u8], label: &str, context: &[u8], output_len: usiz
     derive_key(mac, &label_bytes, context, (output_len * 8) as u32)
 }
 
-impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> NonEndingHandler for Arc<RwLock<SMBSession<C, S>>> {}
-impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> SMBLockedMessageHandlerBase for Arc<RwLock<SMBSession<C, S>>> {
-    type Inner = Arc<SMBTreeConnect<Box<dyn SharedResource>, C, S>>;
+impl<C: Connection<Server=S>, S: Server<Session=SMBSession<C, S>>> NonEndingHandler for Arc<RwLock<SMBSession<C, S>>> {}
+
+impl<C: Connection<Server=S>, S: Server<Session=SMBSession<C, S>>> SMBLockedMessageHandlerBase for Arc<RwLock<SMBSession<C, S>>> {
+    type Inner = Arc<SMBTreeConnect<C, S>>;
     async fn inner(&self, message: &SMBMessageType) -> Option<Self::Inner> {
         let write = self.write().await;
         println!("Getting tree connect for message: {:?}", message);
@@ -178,7 +178,7 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> SMBLockedMessageHan
 
     async fn handle_session_setup(&mut self, header: &SMBSyncHeader, request: &SMBSessionSetupRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let buffer = request.buffer();
-        let (_, token) = SPNEGOToken::<S::AuthType>::parse(buffer)?;
+        let (_, token) = SPNEGOToken::<S::AuthProvider>::parse(buffer)?;
         let mut session_write = self.write().await;
         let provider = session_write.provider.clone();
         let ctx = session_write.security_context_mut();
@@ -189,7 +189,7 @@ impl<C: Connection, S: Server<SessionType=SMBSession<C, S>>> SMBLockedMessageHan
             println!("session key: {:02x?}", session_write.session_key);
         }
         drop(session_write);
-        let response = SPNEGOTokenResponseBody::<S::AuthType>::new(status, msg);
+        let response = SPNEGOTokenResponseBody::<S::AuthProvider>::new(status, msg);
         let (id, session_setup) = {
             let session_read = self.read().await;
             let resp = SMBSessionSetupResponse::from_session_state::<S>(&session_read, response.as_bytes());
@@ -236,13 +236,13 @@ pub enum SessionState {
     Expired
 }
 
-impl<C: Connection, S: Server<SessionType=Self>> Session<C, S::AuthType> for SMBSession<C, S> {
-    fn init(id: u64, encrypt_data: bool, preauth_integrity_hash_value: Vec<u8>, conn: Weak<RwLock<C>>, provider: Arc<S::AuthType>) -> Self {
+impl<C: Connection, S: Server<Session=Self>> Session<C, S::AuthProvider> for SMBSession<C, S> {
+    fn init(id: u64, encrypt_data: bool, preauth_integrity_hash_value: Vec<u8>, conn: Weak<RwLock<C>>, provider: Arc<S::AuthProvider>) -> Self {
 
         Self {
             session_id: id,
             state: SessionState::InProgress,
-            security_context: <S::AuthType as AuthProvider>::Context::init(),
+            security_context: <S::AuthProvider as AuthProvider>::Context::init(),
             provider,
             is_anonymous: false,
             is_guest: false,
@@ -295,11 +295,11 @@ impl<C: Connection, S: Server<SessionType=Self>> Session<C, S::AuthType> for SMB
         self.is_guest
     }
 
-    fn security_context_mut(&mut self) -> &mut <S::AuthType as AuthProvider>::Context {
+    fn security_context_mut(&mut self) -> &mut <S::AuthProvider as AuthProvider>::Context {
         &mut self.security_context
     }
 
-    fn provider(&self) -> &Arc<S::AuthType> {
+    fn provider(&self) -> &Arc<S::AuthProvider> {
         &self.provider
     }
 

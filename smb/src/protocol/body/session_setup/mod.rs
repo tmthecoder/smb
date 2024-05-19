@@ -47,7 +47,7 @@ impl SMBSessionSetupRequest {
     pub fn flags(&self) -> SMBSessionSetupFlags {
         self.flags
     }
-    pub async fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>>(&self, connection: &SMBConnection<R, W, S>, server: &S, session: &S::SessionType, header: &SMBSyncHeader) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
+    pub async fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=SMBConnection<R, W, S>>>(&self, connection: &SMBConnection<R, W, S>, server: &S, session: &S::Session, header: &SMBSyncHeader) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
         let mut update = SMBConnectionUpdate::default();
         if server.encrypt_data() && (!server.unencrypted_access()
             && (connection.dialect().is_smb3()
@@ -106,7 +106,7 @@ impl SMBSessionSetupResponse {
         }
     }
 
-    pub fn from_session_state<S: Server>(session: &S::SessionType, buffer: Vec<u8>) -> Self {
+    pub fn from_session_state<S: Server>(session: &S::Session, buffer: Vec<u8>) -> Self {
         let mut session_flags = SMBSessionFlags::empty();
         if session.guest() {
             session_flags |= SMBSessionFlags::IS_GUEST;

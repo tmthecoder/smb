@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
 
 bitflags! {
-    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Copy, Clone)]
     pub struct SMBCreateOptions: u32 {
         const DIRECTORY_FILE            = 0x000001;
         const WRITE_THROUGH             = 0x000002;
@@ -18,7 +18,7 @@ bitflags! {
         const RANDOM_ACCESS             = 0x000800;
         const DELETE_ON_CLOSE           = 0x001000;
         const OPEN_BY_FILE_ID           = 0x002000;
-        const OPEN_FOR_BACKUP_INTENR    = 0x004000;
+        const OPEN_FOR_BACKUP_INTENT    = 0x004000;
         const NO_COMPRESSION            = 0x008000;
         const OPEN_REMOTE_INSTANCE      = 0x000400; // Ignored
         const OPEN_REQUIRING_OPLOCK     = 0x010000; // Ignored
@@ -27,6 +27,17 @@ bitflags! {
         const OPEN_REPARSE_POINT        = 0x200000;
         const OPEN_NO_RECALL            = 0x400000;
         const OPEN_FOR_FREE_SPACE_QUERY = 0x800000;
+    }
+}
+
+impl SMBCreateOptions {
+    pub fn validate_directory(&self) -> bool {
+        let flag = SMBCreateOptions::WRITE_THROUGH |
+            SMBCreateOptions::OPEN_FOR_BACKUP_INTENT |
+            SMBCreateOptions::DELETE_ON_CLOSE |
+            SMBCreateOptions::OPEN_REPARSE_POINT |
+            SMBCreateOptions::DIRECTORY_FILE;
+        (flag.complement() & *self) == SMBCreateOptions::empty()
     }
 }
 

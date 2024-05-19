@@ -47,10 +47,10 @@ fn main() -> anyhow::Result<()> {
     server.start()
 }
 
-fn file_allowed(test: u64) -> bool {
+fn file_allowed(test: &String) -> bool {
     true
 }
 
-fn get_file_perms(test: u64) -> SMBAccessMask {
+fn get_file_perms(test: &String) -> SMBAccessMask {
     SMBAccessMask::Directory(SMBDirectoryAccessMask::GENERIC_ALL)
 }

@@ -39,6 +39,7 @@ use crate::util::auth::{AuthMessage, AuthProvider};
 // use tokio_stream::StreamExt;
 
 pub trait Connection: Send + Sync {
+    type Server: Server;
     fn client_capabilities(&self) -> Capabilities;
 
     fn negotiate_dialect(&self) -> SMBDialect;
@@ -74,7 +75,7 @@ pub trait Connection: Send + Sync {
     fn accept_transport_security(&self) -> bool;
     fn preauth_sessions(&self) -> &HashMap<u64, SMBPreauthSession>;
 
-    fn server_ref(&self) -> Weak<RwLock<impl Server>>;
+    fn server_ref(&self) -> Weak<RwLock<Self::Server>>;
 }
 
 #[derive(Debug, Builder)]
@@ -94,7 +95,7 @@ pub struct SMBConnection<R: SMBReadStream, W: SMBWriteStream, S: Server> {
     max_read_size: u32,
     supports_multi_credit: bool,
     transport_name: String,
-    session_table: HashMap<u64, Arc<RwLock<S::SessionType>>>,
+    session_table: HashMap<u64, Arc<RwLock<S::Session>>>,
     creation_time: FileTime,
     preauth_session_table: HashMap<u64, SMBPreauthSession>, // TODO
     client_guid: Uuid,
@@ -119,6 +120,8 @@ pub struct SMBConnection<R: SMBReadStream, W: SMBWriteStream, S: Server> {
 
 // Getters
 impl<R: SMBReadStream, W: SMBWriteStream, S: Server> Connection for SMBConnection<R, W, S> {
+    type Server = S;
+
     fn client_capabilities(&self) -> Capabilities {
         self.client_capabilities
     }
@@ -207,13 +210,13 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> Connection for SMBConnectio
         &self.preauth_session_table
     }
 
-    fn server_ref(&self) -> Weak<RwLock<impl Server>> {
+    fn server_ref(&self) -> Weak<RwLock<Self::Server>> {
         self.server.clone()
     }
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBConnection<R, W, S>
-    where Arc<RwLock<S::SessionType>>: SMBLockedMessageHandler {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnection<R, W, S>
+    where Arc<RwLock<S::Session>>: SMBLockedMessageHandler {
     pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, mut connection: Arc<RwLock<SMBConnection<R, W, S>>>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
         let (read, write) = stream.streams();
         println!("Start message handler");
@@ -246,11 +249,11 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
     }
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBConnection<R, W, S> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnection<R, W, S> {
     pub fn underlying_socket(&self) -> Arc<Mutex<SMBSocketConnection<R, W>>> {
         self.underlying_stream.clone()
     }
-    pub fn sessions(&self) -> &HashMap<u64, Arc<RwLock<S::SessionType>>> {
+    pub fn sessions(&self) -> &HashMap<u64, Arc<RwLock<S::Session>>> {
         &self.session_table
     }
     pub fn apply_update(&mut self, mut update: SMBConnectionUpdate<R, W, S>) {
@@ -352,14 +355,14 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
 
 type LockedSMBConnection<R, W, S> = Arc<RwLock<SMBConnection<R, W, S>>>;
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> InnerGetter<S> for SMBConnection<R, W, S> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> InnerGetter<S> for SMBConnection<R, W, S> {
     fn server(&self) -> Option<Arc<RwLock<S>>> {
         self.server.upgrade()
     }
 }
 
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBConnection<R, W, S> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnection<R, W, S> {
     fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, header: &SMBSyncHeader, request: &SMBNegotiateRequest) -> SMBResult<SMBMessageType> {
         let (update, contexts) = request.validate_and_set_state(self, server)?;
         self.apply_update(update);
@@ -368,13 +371,13 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
         Ok(SMBMessage::new(resp_header, SMBBody::NegotiateResponse(resp_body)))
     }
 
-    async fn handle_session_setup<F: FnOnce() -> Arc<RwLock<Self>>>(&mut self, server: &S, header: &SMBSyncHeader, request: &SMBSessionSetupRequest, get_locked: F) -> SMBResult<Arc<RwLock<S::SessionType>>> {
+    async fn handle_session_setup<F: FnOnce() -> Arc<RwLock<Self>>>(&mut self, server: &S, header: &SMBSyncHeader, request: &SMBSessionSetupRequest, get_locked: F) -> SMBResult<Arc<RwLock<S::Session>>> {
         let locked_conn = get_locked();
         let mut sha = Sha512::default();
         sha.update(self.preauth_integtiry_hash_value());
         sha.update(&request.smb_to_bytes());
         let preauth_val = sha.finalize().to_vec();
-        let session = S::SessionType::init(1, server.encrypt_data(), preauth_val, Arc::downgrade(&locked_conn), server.auth_provider().clone());
+        let session = S::Session::init(1, server.encrypt_data(), preauth_val, Arc::downgrade(&locked_conn), server.auth_provider().clone());
         let id = session.id();
         let wrapped_session = Arc::new(RwLock::new(session));
         self.session_table.insert(id, wrapped_session.clone());
@@ -385,7 +388,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
         Ok(wrapped_session)
     }
 
-    fn get_session(&self, server: &S, header: &SMBSyncHeader, flags: SMBSessionSetupFlags) -> SMBResult<Arc<RwLock<S::SessionType>>> {
+    fn get_session(&self, server: &S, header: &SMBSyncHeader, flags: SMBSessionSetupFlags) -> SMBResult<Arc<RwLock<S::Session>>> {
         if self.dialect.is_smb3() && server.multi_channel_capable() && flags.contains(SMBSessionSetupFlags::BINDING) {
             server.sessions().get(&header.session_id)
         } else if !self.dialect.is_smb3() && !server.multi_channel_capable() && flags.contains(SMBSessionSetupFlags::BINDING) {
@@ -396,11 +399,12 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=Self>> SMBCon
     }
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>> NonEndingHandler for LockedSMBConnection<R, W, S> {}
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection<R, W, S>>> SMBLockedMessageHandlerBase for LockedSMBConnection<R, W, S> {
-    type Inner = Arc<RwLock<S::SessionType>>;
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=SMBConnection<R, W, S>>> NonEndingHandler for LockedSMBConnection<R, W, S> {}
 
-    async fn inner(&self, message: &SMBMessageType) -> Option<Arc<RwLock<S::SessionType>>> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=SMBConnection<R, W, S>>> SMBLockedMessageHandlerBase for LockedSMBConnection<R, W, S> {
+    type Inner = Arc<RwLock<S::Session>>;
+
+    async fn inner(&self, message: &SMBMessageType) -> Option<Arc<RwLock<S::Session>>> {
         println!("Getting inner for message {:?}", message);
         let read = self.read().await;
         let server = read.server.upgrade()?;
@@ -419,11 +423,11 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<ConnectionType=SMBConnection
     async fn handle_negotiate(&mut self, header: &SMBSyncHeader, message: &SMBNegotiateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let server = self.server().await?;
         let unlocked = server.read().await;
-        let message = self.write().await.handle_negotiate::<S::AuthType>(&unlocked, header, message)?;
+        let message = self.write().await.handle_negotiate::<S::AuthProvider>(&unlocked, header, message)?;
         Ok(SMBHandlerState::Finished(message))
     }
 
-    async fn handle_session_setup(&mut self, header: &SMBSyncHeader, message: &SMBSessionSetupRequest) -> SMBResult<SMBHandlerState<Arc<RwLock<S::SessionType>>>> {
+    async fn handle_session_setup(&mut self, header: &SMBSyncHeader, message: &SMBSessionSetupRequest) -> SMBResult<SMBHandlerState<Arc<RwLock<S::Session>>>> {
         let server = self.server().await?;
         let unlocked = server.read().await;
         let cloned_arc = self.clone();

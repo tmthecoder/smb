@@ -9,19 +9,19 @@ use crate::server::connection::Connection;
 use crate::server::lease::SMBLease;
 use crate::server::Server;
 use crate::server::session::SMBSession;
-use crate::server::share::SharedResource;
+use crate::server::share::ResourceHandle;
 use crate::server::tree_connect::SMBTreeConnect;
 
 pub trait Open: Debug + Send + Sync {
     fn file_name(&self) -> &str;
 }
 
-pub struct SMBOpen<R: SharedResource, C: Connection, S: Server> {
+pub struct SMBOpen<C: Connection, S: Server> {
     file_id: u32,
     file_global_id: u32,
     durable_file_id: u32,
     session: Option<SMBSession<C, S>>,
-    tree_connect: Option<SMBTreeConnect<R, C, S>>,
+    tree_connect: Option<SMBTreeConnect<C, S>>,
     connection: Option<C>,
     granted_access: SMBAccessMask,
     oplock_level: SMBOplockLevel,
@@ -31,7 +31,7 @@ pub struct SMBOpen<R: SharedResource, C: Connection, S: Server> {
     durable_open_timeout: u64,
     durable_open_scavenger_timeout: u64,
     durable_owner: u64,
-    // TODO
+    underlying: Box<dyn ResourceHandle>,
     current_ea_index: u32,
     current_quota_index: u32,
     lock_count: u32,

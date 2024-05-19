@@ -13,3 +13,12 @@ pub enum SMBCreateDisposition {
     Overwrite = 0x4,
     OverwriteIf = 0x5,
 }
+
+impl SMBCreateDisposition {
+    pub fn validate_directory(&self) -> bool {
+        match &self {
+            Self::Supersede | Self::Overwrite | Self::OverwriteIf => false,
+            Self::Open | Self::Create | Self::OpenIf => true,
+        }
+    }
+}

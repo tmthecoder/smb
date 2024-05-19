@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
+use smb_core::SMBResult;
 
 use crate::util::auth::{AuthContext, AuthProvider};
 use crate::util::auth::ntlm::ntlm_message::NTLMMessage;
@@ -86,11 +88,17 @@ impl Default for NTLMAuthContext {
 }
 
 impl AuthContext for NTLMAuthContext {
+    type UserName = String;
+
     fn init() -> Self {
         Self::new()
     }
 
     fn session_key(&self) -> &[u8] {
         &self.session_key
+    }
+
+    fn user_name(&self) -> SMBResult<&Self::UserName> {
+        self.user_name.as_ref().ok_or(SMBError::server_error("No user name"))
     }
 }

@@ -15,10 +15,10 @@ use crate::server::Server;
 use crate::server::session::SMBSession;
 use crate::server::share::SharedResource;
 
-pub struct SMBTreeConnect<T: SharedResource, C: Connection, S: Server> {
+pub struct SMBTreeConnect<C: Connection, S: Server> {
     tree_id: u32,
     session: Weak<RwLock<SMBSession<C, S>>>,
-    share: Arc<T>,
+    share: Arc<S::Share>,
     open_count: u64,
     // tree_global_id: u64,
     creation_time: FileTime,
@@ -26,8 +26,8 @@ pub struct SMBTreeConnect<T: SharedResource, C: Connection, S: Server> {
     remoted_identity_security_context: Vec<u8> // TODO
 }
 
-impl<T: SharedResource, C: Connection, S: Server> SMBTreeConnect<T, C, S> {
-    pub fn init(tree_id: u32, session: Weak<RwLock<SMBSession<C, S>>>, share: Arc<T>, maximal_access: SMBAccessMask) -> SMBTreeConnect<T, C, S> {
+impl<C: Connection, S: Server> SMBTreeConnect<C, S> {
+    pub fn init(tree_id: u32, session: Weak<RwLock<SMBSession<C, S>>>, share: Arc<S::Share>, maximal_access: SMBAccessMask) -> SMBTreeConnect<C, S> {
         Self {
             tree_id,
             session,
@@ -40,7 +40,7 @@ impl<T: SharedResource, C: Connection, S: Server> SMBTreeConnect<T, C, S> {
     }
 }
 
-impl<T: SharedResource, C: Connection, S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<T, C, S>> {
+impl<C: Connection, S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<C, S>> {
     type Inner = ();
 
     async fn inner(&self, message: &SMBMessageType) -> Option<Self::Inner> {
@@ -48,9 +48,10 @@ impl<T: SharedResource, C: Connection, S: Server> SMBLockedMessageHandlerBase fo
     }
 
     async fn handle_create(&mut self, header: &SMBSyncHeader, message: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+        self.share.handle_create(message.file_name(), message.disposition())?;
         println!("In tree connect create");
         todo!()
     }
 }
 
-impl<T: SharedResource, C: Connection, S: Server> SMBLockedMessageHandler for Arc<SMBTreeConnect<T, C, S>> {}
+impl<C: Connection, S: Server> SMBLockedMessageHandler for Arc<SMBTreeConnect<C, S>> {}

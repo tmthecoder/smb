@@ -65,6 +65,14 @@ impl SMBCreateRequest {
         &self.file_name
     }
 
+    pub fn disposition(&self) -> SMBCreateDisposition {
+        self.create_disposition
+    }
+
+    fn validate_directory(&self) -> bool {
+        self.create_disposition.validate_directory() && self.create_options.validate_directory()
+    }
+
     fn validate_print(&self) -> bool {
         !self.attributes.contains(SMBFileAttributes::DIRECTORY) &&
             self.desired_access.validate_print() &&
@@ -74,6 +82,11 @@ impl SMBCreateRequest {
     pub fn validate<R: SharedResource>(&self, resource: &R) -> SMBResult<()> {
         if resource.resource_type() == ResourceType::PRINT_QUEUE && !self.validate_print() {
             return Err(SMBError::response_error(NTStatus::NotSupported))
+        }
+        if self.create_options.contains(SMBCreateOptions::DIRECTORY_FILE) &&
+            !self.validate_directory() {
+            // TODO make this the right error code
+            return Err(SMBError::response_error(NTStatus::NotSupported));
         }
         Ok(())
     }

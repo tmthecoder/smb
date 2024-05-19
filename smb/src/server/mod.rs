@@ -20,7 +20,7 @@ use crate::server::open::Open;
 use crate::server::session::{Session, SMBSession};
 use crate::server::share::SharedResource;
 use crate::socket::listener::{SMBListener, SMBSocket};
-use crate::util::auth::AuthProvider;
+use crate::util::auth::{AuthContext, AuthProvider};
 
 pub mod client;
 pub mod channel;
@@ -36,13 +36,14 @@ mod message_handler;
 mod safe_locked_getter;
 
 pub trait Server: Send + Sync {
-    type ConnectionType: Connection;
-    type SessionType: Session<Self::ConnectionType, Self::AuthType>;
-    type AuthType: AuthProvider;
-    fn shares(&self) -> &HashMap<String, Arc<Box<dyn SharedResource>>>;
+    type Connection: Connection;
+    type Session: Session<Self::Connection, Self::AuthProvider>;
+    type Share: SharedResource<UserName=<<Self::AuthProvider as AuthProvider>::Context as AuthContext>::UserName>;
+    type AuthProvider: AuthProvider;
+    fn shares(&self) -> &HashMap<String, Arc<Self::Share>>;
     fn opens(&self) -> &HashMap<u64, Box<dyn Open>>;
-    fn sessions(&self) -> &HashMap<u64, Arc<RwLock<Self::SessionType>>>;
-    fn sessions_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<Self::SessionType>>>;
+    fn sessions(&self) -> &HashMap<u64, Arc<RwLock<Self::Session>>>;
+    fn sessions_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<Self::Session>>>;
     fn guid(&self) -> Uuid;
     fn dfs_capable(&self) -> bool;
     fn copy_max_chunks(&self) -> u64;
@@ -63,7 +64,7 @@ pub trait Server: Send + Sync {
     fn rdma_transform_supported(&self) -> bool;
     fn disable_encryption_over_secure_transport(&self) -> bool;
 
-    fn auth_provider(&self) -> &Arc<Self::AuthType>;
+    fn auth_provider(&self) -> &Arc<Self::AuthProvider>;
 }
 
 pub trait StartSMBServer {
@@ -82,8 +83,8 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthP
     statistics: Arc<RwLock<SMBServerDiagnostics>>,
     #[builder(default = "false")]
     enabled: bool,
-    #[builder(field(type = "HashMap<String, Arc<Box<dyn SharedResource>>>"))]
-    share_list: HashMap<String, Arc<Box<dyn SharedResource>>>,
+    #[builder(field(type = "HashMap<String, Arc<Box<dyn SharedResource<UserName = <Auth::Context as AuthContext>::UserName>>>>"))]
+    share_list: HashMap<String, Arc<Box<dyn SharedResource<UserName=<Auth::Context as AuthContext>::UserName>>>>,
     #[builder(field(type = "HashMap<u64, Box<dyn Open>>"))]
     open_table: HashMap<u64, Box<dyn Open>>,
     #[builder(field(type = "HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth>>>>"))]
@@ -146,11 +147,12 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthP
 }
 
 impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server for SMBServer<Addrs, Listener, Auth> {
-    type ConnectionType = SMBConnectionType<Addrs, Listener, Auth>;
-    type SessionType = SMBSessionType<Addrs, Listener, Auth>;
-    type AuthType = Auth;
+    type Connection = SMBConnectionType<Addrs, Listener, Auth>;
+    type Session = SMBSessionType<Addrs, Listener, Auth>;
+    type Share = Box<dyn SharedResource<UserName=<<Auth as AuthProvider>::Context as AuthContext>::UserName>>;
+    type AuthProvider = Auth;
 
-    fn shares(&self) -> &HashMap<String, Arc<Box<dyn SharedResource>>> {
+    fn shares(&self) -> &HashMap<String, Arc<Self::Share>> {
         &self.share_list
     }
 
@@ -158,11 +160,11 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server 
         &self.open_table
     }
 
-    fn sessions(&self) -> &HashMap<u64, Arc<RwLock<Self::SessionType>>> {
+    fn sessions(&self) -> &HashMap<u64, Arc<RwLock<Self::Session>>> {
         &self.session_table
     }
 
-    fn sessions_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<Self::SessionType>>> {
+    fn sessions_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<Self::Session>>> {
         &mut self.session_table
     }
 
@@ -242,7 +244,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server 
         self.disable_encryption_over_secure_transport
     }
 
-    fn auth_provider(&self) -> &Arc<Self::AuthType> {
+    fn auth_provider(&self) -> &Arc<Self::AuthProvider> {
         &self.auth_provider
     }
 }
@@ -263,7 +265,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> SMBServ
         self
     }
 
-    pub fn add_share<Key: Into<String>, S: SharedResource + 'static>(mut self, key: Key, share: S) -> Self {
+    pub fn add_share<Key: Into<String>, S: SharedResource<UserName=<<Auth as AuthProvider>::Context as AuthContext>::UserName> + 'static>(mut self, key: Key, share: S) -> Self {
         self.share_list.insert(key.into(), Arc::new(Box::new(share)));
         self
     }
@@ -289,7 +291,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider + 'stati
         // *self = Self::new()
     }
 
-    pub fn add_share(&mut self, name: String, share: Arc<Box<dyn SharedResource>>) {
+    pub fn add_share(&mut self, name: String, share: Arc<Box<dyn SharedResource<UserName=<Auth::Context as AuthContext>::UserName>>>) {
         self.share_list.insert(name, share);
     }
 

@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
 pub use auth_context::*;
+use smb_core::{SMBParseResult, SMBResult};
 use smb_core::nt_status::NTStatus;
-use smb_core::SMBParseResult;
 pub use user::*;
 
 pub mod ntlm;
@@ -27,7 +27,9 @@ pub trait AuthMessage {
 }
 
 pub trait AuthContext {
+    type UserName: Send + Sync;
     fn init() -> Self;
     fn session_key(&self) -> &[u8];
+    fn user_name(&self) -> SMBResult<&Self::UserName>;
 }
 
