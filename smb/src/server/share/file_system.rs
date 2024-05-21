@@ -1,5 +1,5 @@
 use std::fmt::{Debug, Formatter};
-use std::fs::{File, OpenOptions};
+use std::fs::{File, OpenOptions, ReadDir};
 use std::marker::PhantomData;
 
 use smb_core::error::SMBError;
@@ -10,9 +10,10 @@ use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::server::share::{ResourceHandle, ResourceType, SharedResource};
 
+#[derive(Debug)]
 pub enum SMBFileSystemHandle {
     File(File),
-    Directory(String)
+    Directory(ReadDir)
 }
 
 impl ResourceHandle for SMBFileSystemHandle {
@@ -56,7 +57,9 @@ impl SMBFileSystemHandle {
     }
 
     fn directory(path: &str) -> SMBResult<Self> {
-        Ok(Self::Directory(path.into()))
+        let res = std::fs::read_dir(path)
+            .map_err(SMBError::io_error)?;
+        Ok(Self::Directory(res))
     }
 }
 
@@ -128,8 +131,13 @@ impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send + Sync,
         self.csc_flags
     }
 
-    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition) -> SMBResult<Box<dyn ResourceHandle>> {
-        let handle = SMBFileSystemHandle::file(path, disposition)?;
+    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Box<dyn ResourceHandle>> {
+        let path = format!("{}/{}", self.local_path, path);
+        let handle = match directory {
+            true => SMBFileSystemHandle::directory(&path),
+            false => SMBFileSystemHandle::file(&path, disposition)
+        }?;
+        println!("Created fs handle: {:?}", handle);
         Ok(Box::new(handle))
     }
 
@@ -147,7 +155,7 @@ impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePe
         Self {
             name,
             server_name: "localhost".into(),
-            local_path: "/".into(),
+            local_path: "".into(),
             connect_security,
             file_security,
             csc_flags: SMBShareFlags::default(),

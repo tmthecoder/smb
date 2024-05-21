@@ -79,7 +79,7 @@ impl SMBCreateRequest {
             self.create_disposition == SMBCreateDisposition::Create
     }
 
-    pub fn validate<R: SharedResource>(&self, resource: &R) -> SMBResult<()> {
+    pub fn validate<R: SharedResource>(&self, resource: &R) -> SMBResult<(&str, SMBCreateDisposition, bool)> {
         if resource.resource_type() == ResourceType::PRINT_QUEUE && !self.validate_print() {
             return Err(SMBError::response_error(NTStatus::NotSupported))
         }
@@ -88,7 +88,7 @@ impl SMBCreateRequest {
             // TODO make this the right error code
             return Err(SMBError::response_error(NTStatus::NotSupported));
         }
-        Ok(())
+        Ok((&self.file_name(), self.disposition(), self.create_options.contains(SMBCreateOptions::DIRECTORY_FILE)))
     }
 }
 

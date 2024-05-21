@@ -21,7 +21,7 @@ pub trait SharedResource: Debug + Send + Sync {
     fn name(&self) -> &str;
     fn resource_type(&self) -> ResourceType;
     fn flags(&self) -> SMBShareFlags;
-    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition) -> SMBResult<Box<dyn ResourceHandle>>;
+    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Box<dyn ResourceHandle>>;
     fn close(&self, handle: Box<dyn ResourceHandle>) -> SMBResult<()> {
         handle.close()
     }
@@ -45,8 +45,8 @@ impl<T: ?Sized + SharedResource> SharedResource for Box<T> {
         T::flags(self)
     }
 
-    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition) -> SMBResult<Box<dyn ResourceHandle>> {
-        T::handle_create(self, path, disposition)
+    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Box<dyn ResourceHandle>> {
+        T::handle_create(self, path, disposition, directory)
     }
 
     fn close(&self, handle: Box<dyn ResourceHandle>) -> SMBResult<()> {

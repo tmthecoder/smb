@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::ops::Deref;
 use std::sync::{Arc, Weak};
 
 use tokio::sync::RwLock;
@@ -48,7 +49,8 @@ impl<C: Connection, S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnec
     }
 
     async fn handle_create(&mut self, header: &SMBSyncHeader, message: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
-        self.share.handle_create(message.file_name(), message.disposition())?;
+        let (path, disposition, directory) = message.validate(self.share.deref())?;
+        self.share.handle_create(path, disposition, directory)?;
         println!("In tree connect create");
         todo!()
     }

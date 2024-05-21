@@ -71,26 +71,28 @@ pub trait StartSMBServer {
     fn start(&self) -> impl Future<Output=SMBResult<()>> + Send;
 }
 
-type SMBConnectionType<Addr, L, A> = SMBConnection<<L as SMBSocket<Addr>>::ReadStream, <L as SMBSocket<Addr>>::WriteStream, SMBServer<Addr, L, A>>;
+type SMBConnectionType<Addr, L, A, S> = SMBConnection<<L as SMBSocket<Addr>>::ReadStream, <L as SMBSocket<Addr>>::WriteStream, SMBServer<Addr, L, A, S>>;
 
-type LockedWeakSMBConnection<Addr, L, A> = Weak<RwLock<SMBConnectionType<Addr, L, A>>>;
-type SMBSessionType<Addr, L, A> = SMBSession<SMBConnectionType<Addr, L, A>, SMBServer<Addr, L, A>>;
+type LockedWeakSMBConnection<Addr, L, A, S> = Weak<RwLock<SMBConnectionType<Addr, L, A, S>>>;
+type SMBSessionType<Addr, L, A, S> = SMBSession<SMBConnectionType<Addr, L, A, S>, SMBServer<Addr, L, A, S>>;
+type UserName<Auth> = <<Auth as AuthProvider>::Context as AuthContext>::UserName;
+type DefaultShare<Auth> = Box<dyn SharedResource<UserName=<<Auth as AuthProvider>::Context as AuthContext>::UserName>>;
 #[derive(Debug, Builder)]
 #[builder(pattern = "owned")]
 #[builder(build_fn(name = "build_inner", private))]
-pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> {
+pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: SharedResource<UserName=UserName<Auth>> = DefaultShare<Auth>> {
     #[builder(default = "Default::default()")]
     statistics: Arc<RwLock<SMBServerDiagnostics>>,
     #[builder(default = "false")]
     enabled: bool,
-    #[builder(field(type = "HashMap<String, Arc<Box<dyn SharedResource<UserName = <Auth::Context as AuthContext>::UserName>>>>"))]
-    share_list: HashMap<String, Arc<Box<dyn SharedResource<UserName=<Auth::Context as AuthContext>::UserName>>>>,
+    #[builder(field(type = "HashMap<String, Arc<Share>>"))]
+    share_list: HashMap<String, Arc<Share>>,
     #[builder(field(type = "HashMap<u64, Box<dyn Open>>"))]
     open_table: HashMap<u64, Box<dyn Open>>,
-    #[builder(field(type = "HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth>>>>"))]
-    session_table: HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth>>>>,
-    #[builder(field(type = "HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth>>"))]
-    connection_list: HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth>>,
+    #[builder(field(type = "HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth, Share>>>>"))]
+    session_table: HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth, Share>>>>,
+    #[builder(field(type = "HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth, Share>>"))]
+    connection_list: HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth, Share>>,
     #[builder(default = "Uuid::new_v4()")]
     guid: Uuid,
     #[builder(default = "FileTime::default()")]
@@ -146,10 +148,10 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthP
     auth_provider: Arc<Auth>,
 }
 
-impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server for SMBServer<Addrs, Listener, Auth> {
-    type Connection = SMBConnectionType<Addrs, Listener, Auth>;
-    type Session = SMBSessionType<Addrs, Listener, Auth>;
-    type Share = Box<dyn SharedResource<UserName=<<Auth as AuthProvider>::Context as AuthContext>::UserName>>;
+impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: SharedResource<UserName=UserName<Auth>>> Server for SMBServer<Addrs, Listener, Auth, Share> {
+    type Connection = SMBConnectionType<Addrs, Listener, Auth, Share>;
+    type Session = SMBSessionType<Addrs, Listener, Auth, Share>;
+    type Share = Share;
     type AuthProvider = Auth;
 
     fn shares(&self) -> &HashMap<String, Arc<Self::Share>> {
@@ -249,7 +251,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> Server 
     }
 }
 
-impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> SMBServerBuilder<Addrs, Listener, Auth> {
+impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: SharedResource<UserName=UserName<Auth>>> SMBServerBuilder<Addrs, Listener, Auth, Share> {
     #[cfg(not(feature = "async"))]
     pub fn listener_address(self, addr: Addrs) -> SMBResult<Self> {
         Ok(self.local_listener(SMBListener::new(addr)?))
@@ -265,12 +267,12 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider> SMBServ
         self
     }
 
-    pub fn add_share<Key: Into<String>, S: SharedResource<UserName=<<Auth as AuthProvider>::Context as AuthContext>::UserName> + 'static>(mut self, key: Key, share: S) -> Self {
-        self.share_list.insert(key.into(), Arc::new(Box::new(share)));
+    pub fn add_share<Key: Into<String>>(mut self, key: Key, share: Share) -> Self {
+        self.share_list.insert(key.into(), Arc::new(share));
         self
     }
 
-    pub fn build(self) -> SMBResult<Arc<RwLock<SMBServer<Addrs, Listener, Auth>>>> {
+    pub fn build(self) -> SMBResult<Arc<RwLock<SMBServer<Addrs, Listener, Auth, Share>>>> {
         let server = self.build_inner().map_err(SMBError::server_error)?;
         Ok(Arc::new(RwLock::new(server)))
     }
@@ -284,14 +286,14 @@ pub enum HashLevel {
     EnableShare,
 }
 
-impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider + 'static> SMBServer<Addrs, Listener, Auth> {
+impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider + 'static, Share: SharedResource<UserName=UserName<Auth>>> SMBServer<Addrs, Listener, Auth, Share> {
     pub fn initialize(&mut self) {
         self.statistics = Default::default();
         self.guid = Uuid::new_v4();
         // *self = Self::new()
     }
 
-    pub fn add_share(&mut self, name: String, share: Arc<Box<dyn SharedResource<UserName=<Auth::Context as AuthContext>::UserName>>>) {
+    pub fn add_share(&mut self, name: String, share: Arc<Share>) {
         self.share_list.insert(name, share);
     }
 
@@ -300,7 +302,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider + 'stati
     }
 }
 
-impl<Addrs: Send + Sync + 'static, Listener: SMBSocket<Addrs> + 'static, Auth: AuthProvider + 'static> StartSMBServer for Arc<RwLock<SMBServer<Addrs, Listener, Auth>>> {
+impl<Addrs: Send + Sync + 'static, Listener: SMBSocket<Addrs> + 'static, Auth: AuthProvider + 'static, Share: SharedResource<UserName=UserName<Auth>> + 'static> StartSMBServer for Arc<RwLock<SMBServer<Addrs, Listener, Auth, Share>>> {
     async fn start(&self) -> SMBResult<()> {
         let (rx, mut tx) = mpsc::channel(10);
         let diagnostics = {

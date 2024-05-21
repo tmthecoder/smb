@@ -18,12 +18,12 @@ const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
 #[tokio::main]
 async fn main() -> SMBResult<()> {
     let share = SMBFileSystemShare::root("TEST".into(), file_allowed, get_file_perms);
-    let builder = SMBServerBuilder::<_, TcpListener, NTLMAuthProvider>::default()
+    let builder = SMBServerBuilder::<_, TcpListener, NTLMAuthProvider, _>::default()
         .anonymous_access(true)
         .unencrypted_access(true)
         .require_message_signing(false)
         .encrypt_data(false)
-        .add_share("test", share)
+        .add_share("test", Box::new(share))
         .auth_provider(NTLMAuthProvider::new(vec![
             User::new("tejasmehta", "password"),
             User::new("tejas2", "password"),
