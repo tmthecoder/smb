@@ -12,10 +12,13 @@ use crate::server::session::SMBSession;
 use crate::server::share::ResourceHandle;
 use crate::server::tree_connect::SMBTreeConnect;
 
-pub trait Open: Debug + Send + Sync {
+pub trait Open: Send + Sync {
     fn file_name(&self) -> &str;
 }
 
+pub trait DebuggableHandle: ResourceHandle + Debug {}
+
+#[derive(Debug)]
 pub struct SMBOpen<C: Connection, S: Server> {
     file_id: u32,
     file_global_id: u32,
@@ -31,7 +34,7 @@ pub struct SMBOpen<C: Connection, S: Server> {
     durable_open_timeout: u64,
     durable_open_scavenger_timeout: u64,
     durable_owner: u64,
-    underlying: Box<dyn ResourceHandle>,
+    underlying: Box<dyn DebuggableHandle>,
     current_ea_index: u32,
     current_quota_index: u32,
     lock_count: u32,
@@ -41,7 +44,7 @@ pub struct SMBOpen<C: Connection, S: Server> {
     create_options: SMBCreateOptions,
     file_attributes: FileAttributes,
     client_guid: Uuid,
-    lease: Option<SMBLease>,
+    lease: Option<SMBLease<C, S>>,
     is_resilient: bool,
     resiliency_timeout: u32,
     resilient_open_timeout: u32,
@@ -57,15 +60,23 @@ pub struct SMBOpen<C: Connection, S: Server> {
     application_instance_version_low: u64,
 }
 
+impl<C: Connection, S: Server> Open for SMBOpen<C, S> {
+    fn file_name(&self) -> &str {
+        &self.file_name
+    }
+}
 // TODO: From MS-FSCC section 2.6
+#[derive(Debug)]
 struct FileAttributes;
 
+#[derive(Debug)]
 pub enum SMBOplockState {
     Held,
     Breaking,
     None
 }
 
+#[derive(Debug)]
 pub struct LockSequence {
     sequence_number: u32,
     valid: bool,

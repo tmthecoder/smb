@@ -3,23 +3,27 @@ use std::collections::HashMap;
 use bitflags::bitflags;
 use uuid::Uuid;
 
-use crate::server::open::Open;
+use crate::server::connection::Connection;
+use crate::server::open::SMBOpen;
+use crate::server::Server;
+
+pub trait Lease: Send + Sync {}
 
 #[derive(Debug)]
-pub struct SMBLeaseTable {
+pub struct SMBLeaseTable<L: Lease> {
     client_guid: Uuid,
-    lease_list: HashMap<u64, SMBLease>
+    lease_list: HashMap<u64, L>
 }
 
 #[derive(Debug)]
-pub struct SMBLease {
+pub struct SMBLease<C: Connection, S: Server> {
     lease_key: u128,
     client_lease_id: u64,
     file_name: String,
     lease_state: SMBLeaseState,
     break_to_lease_state: SMBLeaseState,
     lease_break_timeout: u64,
-    lease_opens: Vec<Box<dyn Open>>,
+    lease_opens: Vec<SMBOpen<C, S>>,
     breaking: bool,
     held: bool,
     break_notification: SMBLeaseBreakNotification,
@@ -28,6 +32,8 @@ pub struct SMBLease {
     parent_lease_key: u128,
     version: u8
 }
+
+impl<C: Connection, S: Server> Lease for SMBLease<C, S> {}
 
 #[derive(Debug)]
 pub struct SMBLeaseBreakNotification {

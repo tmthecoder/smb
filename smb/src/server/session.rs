@@ -26,7 +26,7 @@ use crate::protocol::header::{Header, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
 use crate::server::connection::Connection;
 use crate::server::message_handler::{NonEndingHandler, SMBHandlerState, SMBLockedMessageHandlerBase};
-use crate::server::open::Open;
+use crate::server::open::SMBOpen;
 use crate::server::Server;
 use crate::server::tree_connect::SMBTreeConnect;
 use crate::util::auth::{AuthContext, AuthProvider};
@@ -65,7 +65,7 @@ pub struct SMBSession<C: Connection, S: Server> {
     is_guest: bool,
     session_key: [u8; 16],
     signing_required: bool,
-    open_table: HashMap<u64, Box<dyn Open>>,
+    open_table: HashMap<u32, Arc<SMBOpen<C, S>>>,
     tree_connect_table: HashMap<u32, Arc<SMBTreeConnect<C, S>>>,
     expiration_time: u64,
     connection: Weak<RwLock<C>>,

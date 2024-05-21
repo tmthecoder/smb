@@ -28,6 +28,7 @@ use crate::protocol::header::SMBSyncHeader;
 use crate::protocol::message::SMBMessage;
 use crate::server::{Server, SMBServerDiagnosticsUpdate};
 use crate::server::message_handler::{NonEndingHandler, SMBHandlerState, SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
+use crate::server::open::Open;
 use crate::server::preauth_session::SMBPreauthSession;
 use crate::server::request::Request;
 use crate::server::safe_locked_getter::{InnerGetter, SafeLockedGetter};

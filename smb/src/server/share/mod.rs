@@ -11,7 +11,8 @@ use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::protocol::body::tree_connect::SMBShareType;
 
 pub mod file_system;
-pub trait ResourceHandle {
+
+pub trait ResourceHandle: Send + Sync {
     fn close(self: Box<Self>) -> SMBResult<()>;
     fn is_directory(&self) -> bool;
 }
