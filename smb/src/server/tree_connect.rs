@@ -4,6 +4,7 @@ use std::sync::{Arc, Weak};
 
 use tokio::sync::RwLock;
 
+use smb_core::error::SMBError;
 use smb_core::SMBResult;
 
 use crate::protocol::body::create::SMBCreateRequest;
@@ -12,14 +13,15 @@ use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::header::SMBSyncHeader;
 use crate::server::connection::Connection;
 use crate::server::message_handler::{SMBHandlerState, SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
+use crate::server::open::Open;
 use crate::server::Server;
-use crate::server::session::SMBSession;
+use crate::server::session::Session;
 use crate::server::share::SharedResource;
 
 #[derive(Debug)]
-pub struct SMBTreeConnect<C: Connection, S: Server> {
+pub struct SMBTreeConnect<S: Server> {
     tree_id: u32,
-    session: Weak<RwLock<SMBSession<C, S>>>,
+    session: Weak<RwLock<S::Session>>,
     share: Arc<S::Share>,
     open_count: u64,
     // tree_global_id: u64,
@@ -28,8 +30,8 @@ pub struct SMBTreeConnect<C: Connection, S: Server> {
     remoted_identity_security_context: Vec<u8> // TODO
 }
 
-impl<C: Connection, S: Server> SMBTreeConnect<C, S> {
-    pub fn init(tree_id: u32, session: Weak<RwLock<SMBSession<C, S>>>, share: Arc<S::Share>, maximal_access: SMBAccessMask) -> SMBTreeConnect<C, S> {
+impl<S: Server> SMBTreeConnect<S> {
+    pub fn init(tree_id: u32, session: Weak<RwLock<S::Session>>, share: Arc<S::Share>, maximal_access: SMBAccessMask) -> SMBTreeConnect<S> {
         Self {
             tree_id,
             session,
@@ -42,7 +44,7 @@ impl<C: Connection, S: Server> SMBTreeConnect<C, S> {
     }
 }
 
-impl<C: Connection, S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<C, S>> {
+impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
     type Inner = ();
 
     async fn inner(&self, message: &SMBMessageType) -> Option<Self::Inner> {
@@ -51,10 +53,17 @@ impl<C: Connection, S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnec
 
     async fn handle_create(&mut self, header: &SMBSyncHeader, message: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let (path, disposition, directory) = message.validate(self.share.deref())?;
-        self.share.handle_create(path, disposition, directory)?;
+        let handle = self.share.handle_create(path, disposition, directory)?;
+        let open = Arc::new(RwLock::new(S::Open::init(handle)));
+        let session = self.session.upgrade()
+            .ok_or(SMBError::server_error("No Session Found"))?;
+        session.write().await.add_open(open).await;
+        let c = session.read().await.connection().upgrade()
+            .ok_or(SMBError::server_error("No Connection Found"))?;
+        // let server = c.read().await.server_ref()
         println!("In tree connect create");
-        todo!()
+        todo!("Need to create an open to finish create handler")
     }
 }
 
-impl<C: Connection, S: Server> SMBLockedMessageHandler for Arc<SMBTreeConnect<C, S>> {}
+impl<S: Server> SMBLockedMessageHandler for Arc<SMBTreeConnect<S>> {}

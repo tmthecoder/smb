@@ -1,10 +1,10 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Pointer};
 
 use uuid::Uuid;
 
 use crate::protocol::body::create::oplock::SMBOplockLevel;
 use crate::protocol::body::create::options::SMBCreateOptions;
-use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
+use crate::protocol::body::tree_connect::access_mask::{SMBAccessMask, SMBDirectoryAccessMask};
 use crate::server::connection::Connection;
 use crate::server::lease::SMBLease;
 use crate::server::Server;
@@ -14,18 +14,19 @@ use crate::server::tree_connect::SMBTreeConnect;
 
 pub trait Open: Send + Sync {
     fn file_name(&self) -> &str;
+    fn init(underlying: Box<dyn ResourceHandle>) -> Self;
+    fn set_session_id(&mut self, session_id: u32);
+    fn set_global_id(&mut self, global_id: u32);
 }
 
-pub trait DebuggableHandle: ResourceHandle + Debug {}
-
 #[derive(Debug)]
-pub struct SMBOpen<C: Connection, S: Server> {
-    file_id: u32,
-    file_global_id: u32,
-    durable_file_id: u32,
-    session: Option<SMBSession<C, S>>,
-    tree_connect: Option<SMBTreeConnect<C, S>>,
-    connection: Option<C>,
+pub struct SMBOpen<S: Server, H: ResourceHandle> {
+    file_share_id: u32,
+    session_id: u32,
+    global_id: u32,
+    session: Option<SMBSession<S>>,
+    tree_connect: Option<SMBTreeConnect<S>>,
+    connection: Option<S::Connection>,
     granted_access: SMBAccessMask,
     oplock_level: SMBOplockLevel,
     oplock_state: SMBOplockState,
@@ -34,7 +35,7 @@ pub struct SMBOpen<C: Connection, S: Server> {
     durable_open_timeout: u64,
     durable_open_scavenger_timeout: u64,
     durable_owner: u64,
-    underlying: Box<dyn DebuggableHandle>,
+    underlying: H,
     current_ea_index: u32,
     current_quota_index: u32,
     lock_count: u32,
@@ -44,7 +45,7 @@ pub struct SMBOpen<C: Connection, S: Server> {
     create_options: SMBCreateOptions,
     file_attributes: FileAttributes,
     client_guid: Uuid,
-    lease: Option<SMBLease<C, S>>,
+    lease: Option<SMBLease<S>>,
     is_resilient: bool,
     resiliency_timeout: u32,
     resilient_open_timeout: u32,
@@ -59,10 +60,67 @@ pub struct SMBOpen<C: Connection, S: Server> {
     application_instance_version_high: u64,
     application_instance_version_low: u64,
 }
+//
+// impl<S: Server + Debug> Debug for SMBOpen<S> {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         f.fmt()
+//     }
+// }
 
-impl<C: Connection, S: Server> Open for SMBOpen<C, S> {
+impl<S: Server, H: ResourceHandle> Open for SMBOpen<S, H> {
     fn file_name(&self) -> &str {
         &self.file_name
+    }
+
+    fn init(underlying: Box<dyn ResourceHandle>) -> Self {
+        Self {
+            file_share_id: 0,
+            session_id: 0,
+            global_id: 0,
+            session: None,
+            tree_connect: None,
+            connection: None,
+            granted_access: SMBAccessMask::Directory(SMBDirectoryAccessMask::GENERIC_ALL),
+            oplock_level: SMBOplockLevel::None,
+            oplock_state: SMBOplockState::Held,
+            oplock_timeout: 0,
+            is_durable: false,
+            durable_open_timeout: 0,
+            durable_open_scavenger_timeout: 0,
+            durable_owner: 0,
+            underlying,
+            current_ea_index: 0,
+            current_quota_index: 0,
+            lock_count: 0,
+            path_name: "".to_string(),
+            resume_key: 0,
+            file_name: "".to_string(),
+            create_options: SMBCreateOptions::all(),
+            file_attributes: FileAttributes,
+            client_guid: Default::default(),
+            lease: None,
+            is_resilient: false,
+            resiliency_timeout: 0,
+            resilient_open_timeout: 0,
+            lock_sequence_array: vec![],
+            create_guid: 0,
+            app_instance_id: 0,
+            is_persistent: false,
+            channel_sequence: 0,
+            outstanding_request_count: 0,
+            outstanding_pre_request_count: 0,
+            is_shared_vhdx: false,
+            application_instance_version_high: 0,
+            application_instance_version_low: 0,
+        }
+    }
+
+    fn set_session_id(&mut self, session_id: u32) {
+        self.session_id = session_id;
+    }
+
+    fn set_global_id(&mut self, global_id: u32) {
+        self.global_id = global_id;
     }
 }
 // TODO: From MS-FSCC section 2.6

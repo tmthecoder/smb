@@ -15,15 +15,14 @@ pub struct SMBLeaseTable<L: Lease> {
     lease_list: HashMap<u64, L>
 }
 
-#[derive(Debug)]
-pub struct SMBLease<C: Connection, S: Server> {
+pub struct SMBLease<S: Server> {
     lease_key: u128,
     client_lease_id: u64,
     file_name: String,
     lease_state: SMBLeaseState,
     break_to_lease_state: SMBLeaseState,
     lease_break_timeout: u64,
-    lease_opens: Vec<SMBOpen<C, S>>,
+    lease_opens: Vec<SMBOpen<S>>,
     breaking: bool,
     held: bool,
     break_notification: SMBLeaseBreakNotification,
@@ -33,7 +32,7 @@ pub struct SMBLease<C: Connection, S: Server> {
     version: u8
 }
 
-impl<C: Connection, S: Server> Lease for SMBLease<C, S> {}
+impl<S: Server> Lease for SMBLease<S> {}
 
 #[derive(Debug)]
 pub struct SMBLeaseBreakNotification {

@@ -17,7 +17,7 @@ pub trait ResourceHandle: Send + Sync {
     fn is_directory(&self) -> bool;
 }
 
-pub trait SharedResource: Debug + Send + Sync {
+pub trait SharedResource: Send + Sync {
     type UserName: Send + Sync;
     fn name(&self) -> &str;
     fn resource_type(&self) -> ResourceType;

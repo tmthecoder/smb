@@ -79,7 +79,7 @@ pub trait Connection: Send + Sync {
     fn server_ref(&self) -> Weak<RwLock<Self::Server>>;
 }
 
-#[derive(Debug, Builder)]
+#[derive(Builder)]
 #[builder(name = "SMBConnectionUpdate", pattern = "owned")]
 #[builder(build_fn(skip))]
 pub struct SMBConnection<R: SMBReadStream, W: SMBWriteStream, S: Server> {

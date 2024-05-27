@@ -36,8 +36,8 @@ mod message_handler;
 mod safe_locked_getter;
 
 pub trait Server: Send + Sync {
-    type Connection: Connection;
-    type Session: Session<Self::Connection, Self::AuthProvider>;
+    type Connection: Connection<Server=Self>;
+    type Session: Session<Self::Connection, Self::AuthProvider, Self::Open>;
     type Share: SharedResource<UserName=<<Self::AuthProvider as AuthProvider>::Context as AuthContext>::UserName>;
     type Open: Open;
     type Lease: Lease;
@@ -76,9 +76,9 @@ pub trait StartSMBServer {
 type SMBConnectionType<Addr, L, A, S> = SMBConnection<<L as SMBSocket<Addr>>::ReadStream, <L as SMBSocket<Addr>>::WriteStream, SMBServer<Addr, L, A, S>>;
 
 type LockedWeakSMBConnection<Addr, L, A, S> = Weak<RwLock<SMBConnectionType<Addr, L, A, S>>>;
-type SMBSessionType<Addr, L, A, S> = SMBSession<SMBConnectionType<Addr, L, A, S>, SMBServer<Addr, L, A, S>>;
-type SMBOpenType<Addr, L, A, S> = SMBOpen<SMBConnectionType<Addr, L, A, S>, SMBServer<Addr, L, A, S>>;
-type SMBLeaseType<Addr, L, A, S> = SMBLease<SMBConnectionType<Addr, L, A, S>, SMBServer<Addr, L, A, S>>;
+type SMBSessionType<Addr, L, A, S> = SMBSession<SMBServer<Addr, L, A, S>>;
+type SMBOpenType<Addr, L, A, S> = SMBOpen<SMBServer<Addr, L, A, S>>;
+type SMBLeaseType<Addr, L, A, S> = SMBLease<SMBServer<Addr, L, A, S>>;
 type UserName<Auth> = <<Auth as AuthProvider>::Context as AuthContext>::UserName;
 type DefaultShare<Auth> = Box<dyn SharedResource<UserName=<<Auth as AuthProvider>::Context as AuthContext>::UserName>>;
 #[derive(Debug, Builder)]
