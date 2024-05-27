@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter, Pointer};
 
 use bitflags::bitflags;
 use uuid::Uuid;
@@ -30,6 +31,28 @@ pub struct SMBLease<S: Server> {
     epoch: u64,
     parent_lease_key: u128,
     version: u8
+}
+
+impl<S: Server> Debug for SMBLease<S> where S::Handle: Debug, S: Debug, S::Session: Debug, S::Share: Debug {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SMBLease")
+            .field("lease_key", &self.lease_key)
+            .field("client_lease_id", &self.client_lease_id)
+            .field("file_name", &self.file_name)
+            .field("lease_state", &self.lease_state)
+            .field("break_to_lease_state", &self.break_to_lease_state)
+            .field("lease_break_timeout", &self.lease_break_timeout)
+            .field("lease_opens", &self.lease_opens)
+            .field("breaking", &self.breaking)
+            .field("break_notification", &self.break_notification)
+            .field("file_delete_on_close", &self.file_delete_on_close)
+            .field("epoch", &self.epoch)
+            .field("parent_lease_key", &self.parent_lease_key)
+            .field("epoch", &self.epoch)
+            .field("parent_lease_key", &self.parent_lease_key)
+            .field("version", &self.version)
+            .finish()
+    }
 }
 
 impl<S: Server> Lease for SMBLease<S> {}

@@ -17,14 +17,25 @@ pub trait ResourceHandle: Send + Sync {
     fn is_directory(&self) -> bool;
 }
 
+impl<H: ?Sized + ResourceHandle> ResourceHandle for Box<H> {
+    fn close(self: Box<Self>) -> SMBResult<()> {
+        H::close(*self)
+    }
+
+    fn is_directory(&self) -> bool {
+        H::is_directory(self)
+    }
+}
+
 pub trait SharedResource: Send + Sync {
     type UserName: Send + Sync;
+    type Handle: ResourceHandle;
     fn name(&self) -> &str;
     fn resource_type(&self) -> ResourceType;
     fn flags(&self) -> SMBShareFlags;
-    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Box<dyn ResourceHandle>>;
-    fn close(&self, handle: Box<dyn ResourceHandle>) -> SMBResult<()> {
-        handle.close()
+    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Self::Handle>;
+    fn close(&self, handle: Self::Handle) -> SMBResult<()> {
+        Box::new(handle).close()
     }
     fn connect_allowed(&self, uid: &Self::UserName) -> bool;
 
@@ -33,6 +44,7 @@ pub trait SharedResource: Send + Sync {
 
 impl<T: ?Sized + SharedResource> SharedResource for Box<T> {
     type UserName = T::UserName;
+    type Handle = T::Handle;
 
     fn name(&self) -> &str {
         T::name(self)
@@ -46,11 +58,11 @@ impl<T: ?Sized + SharedResource> SharedResource for Box<T> {
         T::flags(self)
     }
 
-    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Box<dyn ResourceHandle>> {
+    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Self::Handle> {
         T::handle_create(self, path, disposition, directory)
     }
 
-    fn close(&self, handle: Box<dyn ResourceHandle>) -> SMBResult<()> {
+    fn close(&self, handle: Self::Handle) -> SMBResult<()> {
         T::close(self, handle)
     }
 

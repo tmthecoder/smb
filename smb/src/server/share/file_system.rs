@@ -16,6 +16,14 @@ pub enum SMBFileSystemHandle {
     Directory(ReadDir)
 }
 
+impl TryFrom<SMBFileSystemHandle> for Box<dyn ResourceHandle> {
+    type Error = SMBError;
+
+    fn try_from(value: SMBFileSystemHandle) -> Result<Self, Self::Error> {
+        Ok(Box::new(value))
+    }
+}
+
 impl ResourceHandle for SMBFileSystemHandle {
     fn close(self: Box<Self>) -> SMBResult<()> {
         Ok(())
@@ -63,7 +71,7 @@ impl SMBFileSystemHandle {
     }
 }
 
-pub struct SMBFileSystemShare<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePerms: Fn(&UserName) -> SMBAccessMask + Send> {
+pub struct SMBFileSystemShare<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePerms: Fn(&UserName) -> SMBAccessMask + Send, Handle: TryFrom<SMBFileSystemHandle>> {
     name: String,
     server_name: String,
     local_path: String,
@@ -86,10 +94,11 @@ pub struct SMBFileSystemShare<UserName: Send + Sync, ConnectAllowed: Fn(&UserNam
     encrypt_data: bool,
     supports_identity_remoting: bool,
     compress_data: bool,
-    user_name_type: PhantomData<UserName>
+    user_name_type: PhantomData<UserName>,
+    handle_phantom: PhantomData<Handle>,
 }
 
-impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePerms: Fn(&UserName) -> SMBAccessMask + Send> Debug for SMBFileSystemShare<UserName, ConnectAllowed, FilePerms> {
+impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePerms: Fn(&UserName) -> SMBAccessMask + Send, Handle: TryFrom<SMBFileSystemHandle>> Debug for SMBFileSystemShare<UserName, ConnectAllowed, FilePerms, Handle> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SMBServer")
             .field("name", &self.name)
@@ -116,8 +125,10 @@ impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePe
     }
 }
 
-impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send + Sync, FilePerms: Fn(&UserName) -> SMBAccessMask + Send + Sync> SharedResource for SMBFileSystemShare<UserName, ConnectAllowed, FilePerms> {
+// Todo rework this to have two handle types (local and server-global)
+impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send + Sync, FilePerms: Fn(&UserName) -> SMBAccessMask + Send + Sync, Handle: TryFrom<SMBFileSystemHandle> + ResourceHandle> SharedResource for SMBFileSystemShare<UserName, ConnectAllowed, FilePerms, Handle> {
     type UserName = UserName;
+    type Handle = Handle;
 
     fn name(&self) -> &str {
         &self.name
@@ -131,14 +142,14 @@ impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send + Sync,
         self.csc_flags
     }
 
-    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Box<dyn ResourceHandle>> {
+    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Handle> {
         let path = format!("{}/{}", self.local_path, path);
         let handle = match directory {
             true => SMBFileSystemHandle::directory(&path),
             false => SMBFileSystemHandle::file(&path, disposition)
         }?;
         println!("Created fs handle: {:?}", handle);
-        Ok(Box::new(handle))
+        Ok(handle.try_into().ok().unwrap())
     }
 
     fn connect_allowed(&self, uid: &Self::UserName) -> bool {
@@ -150,7 +161,7 @@ impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send + Sync,
     }
 }
 
-impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePerms: Fn(&UserName) -> SMBAccessMask + Send> SMBFileSystemShare<UserName, ConnectAllowed, FilePerms> {
+impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePerms: Fn(&UserName) -> SMBAccessMask + Send, Handle: TryFrom<SMBFileSystemHandle>> SMBFileSystemShare<UserName, ConnectAllowed, FilePerms, Handle> {
     pub fn root(name: String, connect_security: ConnectAllowed, file_security: FilePerms) -> Self {
         Self {
             name,
@@ -175,7 +186,8 @@ impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePe
             encrypt_data: true,
             supports_identity_remoting: true,
             compress_data: false,
-            user_name_type: PhantomData
+            user_name_type: PhantomData,
+            handle_phantom: PhantomData
         }
     }
 }

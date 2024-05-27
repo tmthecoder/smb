@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Pointer};
+use std::fmt::{Debug, Formatter, Pointer};
 
 use uuid::Uuid;
 
@@ -8,25 +8,22 @@ use crate::protocol::body::tree_connect::access_mask::{SMBAccessMask, SMBDirecto
 use crate::server::connection::Connection;
 use crate::server::lease::SMBLease;
 use crate::server::Server;
-use crate::server::session::SMBSession;
-use crate::server::share::ResourceHandle;
 use crate::server::tree_connect::SMBTreeConnect;
 
 pub trait Open: Send + Sync {
+    type Server: Server;
     fn file_name(&self) -> &str;
-    fn init(underlying: Box<dyn ResourceHandle>) -> Self;
+    fn init(underlying: <Self::Server as Server>::Handle) -> Self;
     fn set_session_id(&mut self, session_id: u32);
     fn set_global_id(&mut self, global_id: u32);
 }
 
-#[derive(Debug)]
-pub struct SMBOpen<S: Server, H: ResourceHandle> {
+pub struct SMBOpen<S: Server> {
     file_share_id: u32,
     session_id: u32,
     global_id: u32,
-    session: Option<SMBSession<S>>,
+    session: Option<S::Session>,
     tree_connect: Option<SMBTreeConnect<S>>,
-    connection: Option<S::Connection>,
     granted_access: SMBAccessMask,
     oplock_level: SMBOplockLevel,
     oplock_state: SMBOplockState,
@@ -35,7 +32,7 @@ pub struct SMBOpen<S: Server, H: ResourceHandle> {
     durable_open_timeout: u64,
     durable_open_scavenger_timeout: u64,
     durable_owner: u64,
-    underlying: H,
+    underlying: S::Handle,
     current_ea_index: u32,
     current_quota_index: u32,
     lock_count: u32,
@@ -60,26 +57,20 @@ pub struct SMBOpen<S: Server, H: ResourceHandle> {
     application_instance_version_high: u64,
     application_instance_version_low: u64,
 }
-//
-// impl<S: Server + Debug> Debug for SMBOpen<S> {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         f.fmt()
-//     }
-// }
 
-impl<S: Server, H: ResourceHandle> Open for SMBOpen<S, H> {
+impl<S: Server> Open for SMBOpen<S> {
+    type Server = S;
     fn file_name(&self) -> &str {
         &self.file_name
     }
 
-    fn init(underlying: Box<dyn ResourceHandle>) -> Self {
+    fn init(underlying: S::Handle) -> Self {
         Self {
             file_share_id: 0,
             session_id: 0,
             global_id: 0,
             session: None,
             tree_connect: None,
-            connection: None,
             granted_access: SMBAccessMask::Directory(SMBDirectoryAccessMask::GENERIC_ALL),
             oplock_level: SMBOplockLevel::None,
             oplock_state: SMBOplockState::Held,
@@ -138,4 +129,48 @@ pub enum SMBOplockState {
 pub struct LockSequence {
     sequence_number: u32,
     valid: bool,
+}
+
+impl<S: Server> Debug for SMBOpen<S> where S: Debug, S::Session: Debug, S::Handle: Debug, S::Share: Debug {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SMBOpen")
+            .field("file_share_id", &self.file_share_id)
+            .field("session_id", &self.session_id)
+            .field("global_id", &self.global_id)
+            .field("session", &self.session)
+            .field("tree_connect", &self.tree_connect)
+            .field("granted_access", &self.granted_access)
+            .field("oplock_level", &self.oplock_level)
+            .field("oplock_state", &self.oplock_state)
+            .field("oplock_timeout", &self.oplock_timeout)
+            .field("is_durable", &self.is_durable)
+            .field("durable_open_timeout", &self.durable_open_timeout)
+            .field("durable_open_scavenger_timeout", &self.durable_open_scavenger_timeout)
+            .field("durable_owner", &self.durable_owner)
+            .field("underlying", &self.underlying)
+            .field("current_ea_index", &self.current_ea_index)
+            .field("current_quota_index", &self.current_quota_index)
+            .field("lock_count", &self.lock_count)
+            .field("path_name", &self.path_name)
+            .field("resume_key", &self.resume_key)
+            .field("file_name", &self.file_name)
+            .field("create_options", &self.create_options)
+            .field("file_attributes", &self.file_attributes)
+            .field("client_guid", &self.client_guid)
+            .field("lease", &self.lease)
+            .field("is_resilient", &self.is_resilient)
+            .field("resiliency_timeout", &self.resiliency_timeout)
+            .field("resilient_open_timeout", &self.resilient_open_timeout)
+            .field("lock_sequence_array", &self.lock_sequence_array)
+            .field("create_guid", &self.create_guid)
+            .field("app_instance_id", &self.app_instance_id)
+            .field("is_persistent", &self.is_persistent)
+            .field("channel_sequence", &self.channel_sequence)
+            .field("outstanding_request_count", &self.outstanding_request_count)
+            .field("outstanding_pre_request_count", &self.outstanding_pre_request_count)
+            .field("is_shared_vhdx", &self.is_shared_vhdx)
+            .field("application_instance_version_high", &self.application_instance_version_high)
+            .field("application_instance_version_low", &self.application_instance_version_low)
+            .finish()
+    }
 }
