@@ -4,6 +4,7 @@ use std::future::Future;
 use std::sync::{Arc, Weak};
 
 use derive_builder::Builder;
+use tokio::net::TcpListener;
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio_stream::StreamExt;
 use uuid::Uuid;
@@ -18,9 +19,11 @@ use crate::server::connection::{Connection, SMBConnection};
 use crate::server::lease::{Lease, SMBLease, SMBLeaseTable};
 use crate::server::open::{Open, SMBOpen};
 use crate::server::session::{Session, SMBSession};
-use crate::server::share::{ResourceHandle, SharedResource};
+use crate::server::share::{ConnectAllowed, FilePerms, ResourceHandle, SharedResource};
+use crate::server::share::file_system::{SMBFileSystemHandle, SMBFileSystemShare};
 use crate::socket::listener::{SMBListener, SMBSocket};
 use crate::util::auth::{AuthContext, AuthProvider};
+use crate::util::auth::ntlm::NTLMAuthProvider;
 
 pub mod client;
 pub mod channel;
@@ -81,12 +84,12 @@ type SMBSessionType<Addr, L, A, S, H> = SMBSession<SMBServer<Addr, L, A, S, H>>;
 type SMBOpenType<Addr, L, A, S, H> = SMBOpen<SMBServer<Addr, L, A, S, H>>;
 type SMBLeaseType<Addr, L, A, S, H> = SMBLease<SMBServer<Addr, L, A, S, H>>;
 type UserName<Auth> = <<Auth as AuthProvider>::Context as AuthContext>::UserName;
-type DefaultShare<Auth> = Box<dyn SharedResource<UserName=<<Auth as AuthProvider>::Context as AuthContext>::UserName, Handle=DefaultHandle>>;
+pub type DefaultShare<Auth> = Box<dyn SharedResource<UserName=<<Auth as AuthProvider>::Context as AuthContext>::UserName, Handle=DefaultHandle>>;
 type DefaultHandle = Box<dyn ResourceHandle>;
 #[derive(Debug, Builder)]
 #[builder(pattern = "owned")]
 #[builder(build_fn(name = "build_inner", private))]
-pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: SharedResource<UserName=UserName<Auth>, Handle=Handle> = DefaultShare<Auth>, Handle: ResourceHandle = DefaultHandle> {
+pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListener, Auth: AuthProvider = NTLMAuthProvider, Share: SharedResource<UserName=UserName<Auth>, Handle=Handle> = DefaultShare<Auth>, Handle: ResourceHandle = DefaultHandle> {
     #[builder(default = "Default::default()")]
     statistics: Arc<RwLock<SMBServerDiagnostics>>,
     #[builder(default = "false")]
@@ -314,6 +317,19 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider + 'stati
 
     pub fn remove_share(&mut self, name: &str) {
         self.share_list.remove(name);
+    }
+}
+
+impl<
+    Addrs: Send + Sync,
+    Listener: SMBSocket<Addrs>,
+    Auth: AuthProvider + 'static,
+    Share: SharedResource<UserName=UserName<Auth>, Handle=Handle> + From<SMBFileSystemShare<UserName<Auth>, Handle>>,
+    Handle: ResourceHandle + 'static + From<SMBFileSystemHandle> + TryInto<SMBFileSystemHandle>
+> SMBServerBuilder<Addrs, Listener, Auth, Share, Handle> {
+    pub fn add_fs_share(mut self, name: String, path: String, connect_allowed: ConnectAllowed<UserName<Auth>>, file_perms: FilePerms<UserName<Auth>>) -> Self {
+        let share = SMBFileSystemShare::path(name.clone(), path, connect_allowed, file_perms);
+        self.add_share(name, share.into())
     }
 }
 

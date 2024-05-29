@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::fs::{File, OpenOptions, ReadDir};
 use std::marker::PhantomData;
@@ -8,7 +9,7 @@ use smb_core::SMBResult;
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
-use crate::server::share::{ResourceHandle, ResourceType, SharedResource};
+use crate::server::share::{ConnectAllowed, FilePerms, ResourceHandle, ResourceType, SharedResource};
 
 #[derive(Debug)]
 pub enum SMBFileSystemHandle {
@@ -16,15 +17,33 @@ pub enum SMBFileSystemHandle {
     Directory(ReadDir)
 }
 
-impl TryFrom<SMBFileSystemHandle> for Box<dyn ResourceHandle> {
+impl From<SMBFileSystemHandle> for Box<dyn ResourceHandle> {
+    fn from(value: SMBFileSystemHandle) -> Self {
+        Box::new(value)
+    }
+}
+
+impl TryFrom<Box<dyn ResourceHandle>> for SMBFileSystemHandle {
     type Error = SMBError;
 
-    fn try_from(value: SMBFileSystemHandle) -> Result<Self, Self::Error> {
-        Ok(Box::new(value))
+    fn try_from(value: Box<dyn ResourceHandle>) -> Result<Self, Self::Error> {
+        value.into_any().downcast::<Self>()
+            .ok().ok_or(SMBError::server_error("Invalid resource handle"))
+            .map(|val| *val)
+    }
+}
+
+impl<UserName: Send + Sync + 'static, Handle: From<SMBFileSystemHandle> + TryInto<SMBFileSystemHandle> + ResourceHandle + 'static> From<SMBFileSystemShare<UserName, Handle>> for Box<dyn SharedResource<UserName=UserName, Handle=Handle>> {
+    fn from(value: SMBFileSystemShare<UserName, Handle>) -> Self {
+        Box::new(value)
     }
 }
 
 impl ResourceHandle for SMBFileSystemHandle {
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+
     fn close(self: Box<Self>) -> SMBResult<()> {
         Ok(())
     }
@@ -71,12 +90,12 @@ impl SMBFileSystemHandle {
     }
 }
 
-pub struct SMBFileSystemShare<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePerms: Fn(&UserName) -> SMBAccessMask + Send, Handle: TryFrom<SMBFileSystemHandle>> {
+pub struct SMBFileSystemShare<UserName: Send + Sync, Handle: TryFrom<SMBFileSystemHandle>> {
     name: String,
     server_name: String,
     local_path: String,
-    connect_security: ConnectAllowed,
-    file_security: FilePerms,
+    connect_security: ConnectAllowed<UserName>,
+    file_security: FilePerms<UserName>,
     csc_flags: SMBShareFlags,
     dfs_enabled: bool,
     do_access_based_directory_enumeration: bool,
@@ -98,7 +117,76 @@ pub struct SMBFileSystemShare<UserName: Send + Sync, ConnectAllowed: Fn(&UserNam
     handle_phantom: PhantomData<Handle>,
 }
 
-impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePerms: Fn(&UserName) -> SMBAccessMask + Send, Handle: TryFrom<SMBFileSystemHandle>> Debug for SMBFileSystemShare<UserName, ConnectAllowed, FilePerms, Handle> {
+impl<UserName: Send + Sync, Handle: From<SMBFileSystemHandle> + ResourceHandle + TryInto<SMBFileSystemHandle>> SharedResource for SMBFileSystemShare<UserName, Handle> {
+    type UserName = UserName;
+    type Handle = Handle;
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn resource_type(&self) -> ResourceType {
+        ResourceType::DISK
+    }
+
+    fn flags(&self) -> SMBShareFlags {
+        self.csc_flags
+    }
+
+    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Handle> {
+        let path = format!("{}/{}", self.local_path, path);
+        let handle = match directory {
+            true => SMBFileSystemHandle::directory(&path),
+            false => SMBFileSystemHandle::file(&path, disposition)
+        }?;
+        println!("Created fs handle: {:?}", handle);
+        Ok(handle.into())
+    }
+
+    fn connect_allowed(&self, uid: &Self::UserName) -> bool {
+        (self.connect_security)(uid)
+    }
+
+    fn resource_perms(&self, uid: &Self::UserName) -> SMBAccessMask {
+        (self.file_security)(uid)
+    }
+}
+
+impl<UserName: Send + Sync, Handle: TryFrom<SMBFileSystemHandle>> SMBFileSystemShare<UserName, Handle> {
+    pub fn root(name: String, connect_security: ConnectAllowed<UserName>, file_security: FilePerms<UserName>) -> Self {
+        Self::path(name, "".into(), connect_security, file_security)
+    }
+    pub fn path(name: String, path: String, connect_security: ConnectAllowed<UserName>, file_security: FilePerms<UserName>) -> Self {
+        Self {
+            name,
+            server_name: "localhost".into(),
+            local_path: path,
+            connect_security,
+            file_security,
+            csc_flags: SMBShareFlags::default(),
+            dfs_enabled: false,
+            do_access_based_directory_enumeration: false,
+            allow_namespace_caching: false,
+            force_shared_delete: false,
+            restrict_exclusive_options: false,
+            remark: "some share comment".into(),
+            max_uses: 10,
+            current_uses: 0,
+            force_level_2_oplock: false,
+            hash_enabled: true,
+            snapshot_list: vec![],
+            ca_timeout: 1000,
+            continuously_available: true,
+            encrypt_data: true,
+            supports_identity_remoting: true,
+            compress_data: false,
+            user_name_type: PhantomData,
+            handle_phantom: PhantomData
+        }
+    }
+}
+
+impl<UserName: Send + Sync, Handle: TryFrom<SMBFileSystemHandle>> Debug for SMBFileSystemShare<UserName, Handle> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SMBServer")
             .field("name", &self.name)
@@ -122,72 +210,5 @@ impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePe
             .field("supports_identity_remoting", &self.supports_identity_remoting)
             .field("compress_data", &self.compress_data)
             .finish()
-    }
-}
-
-// Todo rework this to have two handle types (local and server-global)
-impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send + Sync, FilePerms: Fn(&UserName) -> SMBAccessMask + Send + Sync, Handle: TryFrom<SMBFileSystemHandle> + ResourceHandle> SharedResource for SMBFileSystemShare<UserName, ConnectAllowed, FilePerms, Handle> {
-    type UserName = UserName;
-    type Handle = Handle;
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn resource_type(&self) -> ResourceType {
-        ResourceType::DISK
-    }
-
-    fn flags(&self) -> SMBShareFlags {
-        self.csc_flags
-    }
-
-    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Handle> {
-        let path = format!("{}/{}", self.local_path, path);
-        let handle = match directory {
-            true => SMBFileSystemHandle::directory(&path),
-            false => SMBFileSystemHandle::file(&path, disposition)
-        }?;
-        println!("Created fs handle: {:?}", handle);
-        Ok(handle.try_into().ok().unwrap())
-    }
-
-    fn connect_allowed(&self, uid: &Self::UserName) -> bool {
-        (self.connect_security)(uid)
-    }
-
-    fn resource_perms(&self, uid: &Self::UserName) -> SMBAccessMask {
-        (self.file_security)(uid)
-    }
-}
-
-impl<UserName: Send + Sync, ConnectAllowed: Fn(&UserName) -> bool + Send, FilePerms: Fn(&UserName) -> SMBAccessMask + Send, Handle: TryFrom<SMBFileSystemHandle>> SMBFileSystemShare<UserName, ConnectAllowed, FilePerms, Handle> {
-    pub fn root(name: String, connect_security: ConnectAllowed, file_security: FilePerms) -> Self {
-        Self {
-            name,
-            server_name: "localhost".into(),
-            local_path: "".into(),
-            connect_security,
-            file_security,
-            csc_flags: SMBShareFlags::default(),
-            dfs_enabled: false,
-            do_access_based_directory_enumeration: false,
-            allow_namespace_caching: false,
-            force_shared_delete: false,
-            restrict_exclusive_options: false,
-            remark: "some share comment".into(),
-            max_uses: 10,
-            current_uses: 0,
-            force_level_2_oplock: false,
-            hash_enabled: true,
-            snapshot_list: vec![],
-            ca_timeout: 1000,
-            continuously_available: true,
-            encrypt_data: true,
-            supports_identity_remoting: true,
-            compress_data: false,
-            user_name_type: PhantomData,
-            handle_phantom: PhantomData
-        }
     }
 }

@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt::Debug;
 
 use bitflags::bitflags;
@@ -12,12 +13,20 @@ use crate::protocol::body::tree_connect::SMBShareType;
 
 pub mod file_system;
 
+pub type ConnectAllowed<UserName> = fn(&UserName) -> bool;
+pub type FilePerms<UserName> = fn(&UserName) -> SMBAccessMask;
+
 pub trait ResourceHandle: Send + Sync {
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
     fn close(self: Box<Self>) -> SMBResult<()>;
     fn is_directory(&self) -> bool;
 }
 
-impl<H: ?Sized + ResourceHandle> ResourceHandle for Box<H> {
+impl<H: ?Sized + ResourceHandle + 'static> ResourceHandle for Box<H> {
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+
     fn close(self: Box<Self>) -> SMBResult<()> {
         H::close(*self)
     }
