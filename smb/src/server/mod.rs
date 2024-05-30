@@ -18,6 +18,7 @@ use crate::server::client::SMBClient;
 use crate::server::connection::{Connection, SMBConnection};
 use crate::server::lease::{Lease, SMBLease, SMBLeaseTable};
 use crate::server::open::{Open, SMBOpen};
+use crate::server::safe_locked_getter::InnerGetter;
 use crate::server::session::{Session, SMBSession};
 use crate::server::share::{ConnectAllowed, FilePerms, ResourceHandle, SharedResource};
 use crate::server::share::file_system::{SMBFileSystemHandle, SMBFileSystemShare};
@@ -39,15 +40,16 @@ mod message_handler;
 mod safe_locked_getter;
 
 pub trait Server: Send + Sync {
-    type Connection: Connection<Server=Self>;
-    type Session: Session<Self::Connection, Self::AuthProvider, Self::Open>;
+    type Connection: Connection<Server=Self> + InnerGetter<Upper=Self>;
+    type Session: Session<Self::Connection, Self::AuthProvider, Self::Open> + InnerGetter<Upper=Self::Connection>;
     type Share: SharedResource<UserName=<<Self::AuthProvider as AuthProvider>::Context as AuthContext>::UserName, Handle=Self::Handle>;
     type Open: Open<Server=Self>;
     type Lease: Lease;
     type AuthProvider: AuthProvider;
     type Handle: ResourceHandle;
     fn shares(&self) -> &HashMap<String, Arc<Self::Share>>;
-    fn opens(&self) -> &HashMap<u32, Self::Open>;
+    fn opens(&self) -> &HashMap<u32, Arc<RwLock<Self::Open>>>;
+    fn add_open(&mut self, open: Arc<RwLock<Self::Open>>) -> impl Future<Output=u32>;
     fn sessions(&self) -> &HashMap<u64, Arc<RwLock<Self::Session>>>;
     fn sessions_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<Self::Session>>>;
     fn guid(&self) -> Uuid;
@@ -69,7 +71,6 @@ pub trait Server: Send + Sync {
     fn chained_compression_supported(&self) -> bool;
     fn rdma_transform_supported(&self) -> bool;
     fn disable_encryption_over_secure_transport(&self) -> bool;
-
     fn auth_provider(&self) -> &Arc<Self::AuthProvider>;
 }
 
@@ -96,8 +97,10 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
     enabled: bool,
     #[builder(field(type = "HashMap<String, Arc<Share>>"))]
     share_list: HashMap<String, Arc<Share>>,
-    #[builder(field(type = "HashMap<u32, SMBOpenType<Addrs, Listener, Auth, Share, Handle>>"))]
-    open_table: HashMap<u32, SMBOpenType<Addrs, Listener, Auth, Share, Handle>>,
+    #[builder(field(
+        type = "HashMap<u32, Arc<RwLock<SMBOpenType<Addrs, Listener, Auth, Share, Handle>>>>"
+    ))]
+    open_table: HashMap<u32, Arc<RwLock<SMBOpenType<Addrs, Listener, Auth, Share, Handle>>>>,
     #[builder(field(
         type = "HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth, Share, Handle>>>>"
     ))]
@@ -176,8 +179,21 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: 
         &self.share_list
     }
 
-    fn opens(&self) -> &HashMap<u32, Self::Open> {
+    fn opens(&self) -> &HashMap<u32, Arc<RwLock<Self::Open>>> {
         &self.open_table
+    }
+
+    async fn add_open(&mut self, open: Arc<RwLock<Self::Open>>) -> u32 {
+        for i in 0..u32::MAX {
+            if self.open_table.get(&i).is_none() {
+                let mut open_wr = open.write().await;
+                open_wr.set_global_id(i);
+                drop(open_wr);
+                self.open_table.insert(i, open);
+                return i;
+            }
+        }
+        0
     }
 
     fn sessions(&self) -> &HashMap<u64, Arc<RwLock<Self::Session>>> {

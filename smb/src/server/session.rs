@@ -241,6 +241,14 @@ impl<S: Server<Session=SMBSession<S>>> SMBLockedMessageHandlerBase for Arc<RwLoc
     }
 }
 
+impl<S: Server> InnerGetter for SMBSession<S> {
+    type Upper = S::Connection;
+
+    fn upper(&self) -> Option<Arc<RwLock<S::Connection>>> {
+        self.connection.upgrade()
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum SessionState {
     InProgress,

@@ -14,6 +14,7 @@ use crate::protocol::header::SMBSyncHeader;
 use crate::server::connection::Connection;
 use crate::server::message_handler::{SMBHandlerState, SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
 use crate::server::open::Open;
+use crate::server::safe_locked_getter::SafeLockedGetter;
 use crate::server::Server;
 use crate::server::session::Session;
 use crate::server::share::SharedResource;
@@ -57,10 +58,12 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
         let open = Arc::new(RwLock::new(S::Open::init(handle)));
         let session = self.session.upgrade()
             .ok_or(SMBError::server_error("No Session Found"))?;
-        session.write().await.add_open(open).await;
-        let c = session.read().await.connection().upgrade()
-            .ok_or(SMBError::server_error("No Connection Found"))?;
-        // let server = c.read().await.server_ref()
+        session.write().await.add_open(open.clone()).await;
+        let server = session.upper()
+            .await?
+            .upper()
+            .await?;
+        server.write().await.add_open(open).await;
         println!("In tree connect create");
         todo!("Need to create an open to finish create handler")
     }

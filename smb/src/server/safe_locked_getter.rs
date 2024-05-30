@@ -6,19 +6,21 @@ use tokio::sync::RwLock;
 use smb_core::error::SMBError;
 use smb_core::SMBResult;
 
-use crate::server::Server;
-
-pub trait SafeLockedGetter<S> {
-    fn server(&self) -> impl Future<Output=SMBResult<Arc<RwLock<S>>>>;
+pub trait SafeLockedGetter {
+    type Upper;
+    fn upper(&self) -> impl Future<Output=SMBResult<Arc<RwLock<Self::Upper>>>>;
 }
 
-pub trait InnerGetter<S> {
-    fn server(&self) -> Option<Arc<RwLock<S>>>;
+pub trait InnerGetter {
+    type Upper;
+    fn upper(&self) -> Option<Arc<RwLock<Self::Upper>>>;
 }
 
-impl<S: Server, Inner: InnerGetter<S>> SafeLockedGetter<S> for Arc<RwLock<Inner>> {
-    async fn server(&self) -> SMBResult<Arc<RwLock<S>>> {
-        self.read().await.server()
+impl<Inner: InnerGetter> SafeLockedGetter for Arc<RwLock<Inner>> {
+    type Upper = Inner::Upper;
+
+    async fn upper(&self) -> SMBResult<Arc<RwLock<Self::Upper>>> {
+        self.read().await.upper()
             .ok_or(SMBError::server_error("No server available"))
     }
 }

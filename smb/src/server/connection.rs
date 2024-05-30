@@ -356,8 +356,10 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
 
 type LockedSMBConnection<R, W, S> = Arc<RwLock<SMBConnection<R, W, S>>>;
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> InnerGetter<S> for SMBConnection<R, W, S> {
-    fn server(&self) -> Option<Arc<RwLock<S>>> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> InnerGetter for SMBConnection<R, W, S> {
+    type Upper = S;
+
+    fn upper(&self) -> Option<Arc<RwLock<S>>> {
         self.server.upgrade()
     }
 }
@@ -422,14 +424,14 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=SMBConnection<R, 
         }
     }
     async fn handle_negotiate(&mut self, header: &SMBSyncHeader, message: &SMBNegotiateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
-        let server = self.server().await?;
+        let server = self.upper().await?;
         let unlocked = server.read().await;
         let message = self.write().await.handle_negotiate::<S::AuthProvider>(&unlocked, header, message)?;
         Ok(SMBHandlerState::Finished(message))
     }
 
     async fn handle_session_setup(&mut self, header: &SMBSyncHeader, message: &SMBSessionSetupRequest) -> SMBResult<SMBHandlerState<Arc<RwLock<S::Session>>>> {
-        let server = self.server().await?;
+        let server = self.upper().await?;
         let unlocked = server.read().await;
         let cloned_arc = self.clone();
         let get_locked = || {
@@ -444,13 +446,14 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=SMBConnection<R, 
     }
 
     async fn handle_create(&mut self, header: &SMBSyncHeader, message: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
-        let server = self.server().await?;
+        let server = self.upper().await?;
         let server_rd = server.read().await;
         let conn = self.read().await;
         // TODO check that RECONNECT or RECONNECT_V2 aren't included
         if conn.dialect == SMBDialect::V3_1_1 || conn.dialect == SMBDialect::V3_0_0 {
-            for v in server_rd.opens().values() {
-                if v.file_name() == message.file_name() {
+            for locked_open in server_rd.opens().values() {
+                let open = locked_open.read().await;
+                if open.file_name() == message.file_name() {
                     return Err(SMBError::response_error(NTStatus::FileNotAvailable));
                 }
             }

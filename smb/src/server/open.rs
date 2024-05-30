@@ -5,7 +5,6 @@ use uuid::Uuid;
 use crate::protocol::body::create::oplock::SMBOplockLevel;
 use crate::protocol::body::create::options::SMBCreateOptions;
 use crate::protocol::body::tree_connect::access_mask::{SMBAccessMask, SMBDirectoryAccessMask};
-use crate::server::connection::Connection;
 use crate::server::lease::SMBLease;
 use crate::server::Server;
 use crate::server::tree_connect::SMBTreeConnect;
