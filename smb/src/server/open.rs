@@ -2,17 +2,20 @@ use std::fmt::{Debug, Formatter, Pointer};
 
 use uuid::Uuid;
 
+use crate::protocol::body::create::file_attributes::SMBFileAttributes;
 use crate::protocol::body::create::oplock::SMBOplockLevel;
 use crate::protocol::body::create::options::SMBCreateOptions;
-use crate::protocol::body::tree_connect::access_mask::{SMBAccessMask, SMBDirectoryAccessMask};
+use crate::protocol::body::create::SMBCreateRequest;
+use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::server::lease::SMBLease;
 use crate::server::Server;
+use crate::server::share::ResourceHandle;
 use crate::server::tree_connect::SMBTreeConnect;
 
 pub trait Open: Send + Sync {
     type Server: Server;
     fn file_name(&self) -> &str;
-    fn init(underlying: <Self::Server as Server>::Handle) -> Self;
+    fn init(underlying: <Self::Server as Server>::Handle, request: &SMBCreateRequest) -> Self;
     fn set_session_id(&mut self, session_id: u32);
     fn set_global_id(&mut self, global_id: u32);
 }
@@ -39,7 +42,7 @@ pub struct SMBOpen<S: Server> {
     resume_key: u32,
     file_name: String,
     create_options: SMBCreateOptions,
-    file_attributes: FileAttributes,
+    file_attributes: SMBFileAttributes,
     client_guid: Uuid,
     lease: Option<SMBLease<S>>,
     is_resilient: bool,
@@ -63,30 +66,31 @@ impl<S: Server> Open for SMBOpen<S> {
         &self.file_name
     }
 
-    fn init(underlying: S::Handle) -> Self {
+    fn init(underlying: S::Handle, request: &SMBCreateRequest) -> Self {
+        let path_name = underlying.path().into();
         Self {
             file_share_id: 0,
             session_id: 0,
             global_id: 0,
             session: None,
             tree_connect: None,
-            granted_access: SMBAccessMask::Directory(SMBDirectoryAccessMask::GENERIC_ALL),
+            granted_access: SMBAccessMask::from_desired_access(request.desired_access()),
             oplock_level: SMBOplockLevel::None,
-            oplock_state: SMBOplockState::Held,
+            oplock_state: SMBOplockState::None,
             oplock_timeout: 0,
             is_durable: false,
             durable_open_timeout: 0,
             durable_open_scavenger_timeout: 0,
             durable_owner: 0,
             underlying,
-            current_ea_index: 0,
-            current_quota_index: 0,
+            current_ea_index: 1,
+            current_quota_index: 1,
             lock_count: 0,
-            path_name: "".to_string(),
+            path_name,
             resume_key: 0,
-            file_name: "".to_string(),
-            create_options: SMBCreateOptions::all(),
-            file_attributes: FileAttributes,
+            file_name: request.file_name().into(),
+            create_options: request.options(),
+            file_attributes: request.attributes(),
             client_guid: Default::default(),
             lease: None,
             is_resilient: false,

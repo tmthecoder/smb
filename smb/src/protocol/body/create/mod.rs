@@ -79,6 +79,18 @@ impl SMBCreateRequest {
             self.create_disposition == SMBCreateDisposition::Create
     }
 
+    pub fn desired_access(&self) -> &SMBAccessMask {
+        &self.desired_access
+    }
+
+    pub fn options(&self) -> SMBCreateOptions {
+        self.create_options
+    }
+
+    pub fn attributes(&self) -> SMBFileAttributes {
+        self.attributes
+    }
+
     pub fn validate<R: SharedResource>(&self, resource: &R) -> SMBResult<(&str, SMBCreateDisposition, bool)> {
         if resource.resource_type() == ResourceType::PRINT_QUEUE && !self.validate_print() {
             return Err(SMBError::response_error(NTStatus::NotSupported))
@@ -117,6 +129,16 @@ pub struct SMBCreateResponse {
     reserved: PhantomData<Vec<u8>>,
     #[smb_direct(start(fixed = 60))]
     file_id: SMBFileId,
-    #[smb_vector(order = 0, align = 8, offset(inner(start = 64, num_type = "u32", subtract = 64)), count(inner(start = 68, num_type = "u32")), )]
+    #[smb_vector(
+        order = 0,
+        align = 8,
+        offset(inner(start = 64, num_type = "u32", subtract = 64)),
+        count(inner(start = 68, num_type = "u32"))
+    )]
     contexts: Vec<CreateResponseContext>,
+}
+
+impl SMBCreateResponse {
+    // pub fn for_open() -> SMBResult<Self> {
+    // }
 }

@@ -20,6 +20,7 @@ pub trait ResourceHandle: Send + Sync {
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
     fn close(self: Box<Self>) -> SMBResult<()>;
     fn is_directory(&self) -> bool;
+    fn path(&self) -> &str;
 }
 
 impl<H: ?Sized + ResourceHandle + 'static> ResourceHandle for Box<H> {
@@ -33,6 +34,10 @@ impl<H: ?Sized + ResourceHandle + 'static> ResourceHandle for Box<H> {
 
     fn is_directory(&self) -> bool {
         H::is_directory(self)
+    }
+
+    fn path(&self) -> &str {
+        H::path(self)
     }
 }
 

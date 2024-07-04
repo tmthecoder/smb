@@ -12,7 +12,13 @@ use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::server::share::{ConnectAllowed, FilePerms, ResourceHandle, ResourceType, SharedResource};
 
 #[derive(Debug)]
-pub enum SMBFileSystemHandle {
+pub struct SMBFileSystemHandle {
+    path: String,
+    resource: SMBFileSystemResourceHandle,
+}
+
+#[derive(Debug)]
+pub enum SMBFileSystemResourceHandle {
     File(File),
     Directory(ReadDir)
 }
@@ -49,14 +55,18 @@ impl ResourceHandle for SMBFileSystemHandle {
     }
 
     fn is_directory(&self) -> bool {
-        match &self {
-            SMBFileSystemHandle::File(_) => false,
-            SMBFileSystemHandle::Directory(_) => true
+        match &self.resource {
+            SMBFileSystemResourceHandle::File(_) => false,
+            SMBFileSystemResourceHandle::Directory(_) => true
         }
+    }
+
+    fn path(&self) -> &str {
+        &self.path
     }
 }
 
-impl SMBFileSystemHandle {
+impl SMBFileSystemResourceHandle {
     fn file(path: &str, disposition: SMBCreateDisposition) -> SMBResult<Self> {
         let mut options = OpenOptions::new();
         options.read(true)
@@ -135,10 +145,14 @@ impl<UserName: Send + Sync, Handle: From<SMBFileSystemHandle> + ResourceHandle +
 
     fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Handle> {
         let path = format!("{}/{}", self.local_path, path);
-        let handle = match directory {
-            true => SMBFileSystemHandle::directory(&path),
-            false => SMBFileSystemHandle::file(&path, disposition)
+        let resource = match directory {
+            true => SMBFileSystemResourceHandle::directory(&path),
+            false => SMBFileSystemResourceHandle::file(&path, disposition)
         }?;
+        let handle = SMBFileSystemHandle {
+            resource,
+            path: path.into(),
+        };
         println!("Created fs handle: {:?}", handle);
         Ok(handle.into())
     }

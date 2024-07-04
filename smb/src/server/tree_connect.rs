@@ -55,7 +55,7 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
     async fn handle_create(&mut self, header: &SMBSyncHeader, message: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let (path, disposition, directory) = message.validate(self.share.deref())?;
         let handle = self.share.handle_create(path, disposition, directory)?;
-        let open = Arc::new(RwLock::new(S::Open::init(handle)));
+        let open = Arc::new(RwLock::new(Open::init(handle, message)));
         let session = self.session.upgrade()
             .ok_or(SMBError::server_error("No Session Found"))?;
         session.write().await.add_open(open.clone()).await;
