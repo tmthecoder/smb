@@ -12,7 +12,7 @@ mod flags;
 mod completion_filter;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(32)]
+#[smb_byte_tag(value = 32)]
 pub struct SMBChangeNotifyRequest {
     #[smb_direct(start(fixed = 2))]
     flags: SMBChangeNotifyFlags,
@@ -27,7 +27,7 @@ pub struct SMBChangeNotifyRequest {
 }
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(17)]
+#[smb_byte_tag(value = 17)]
 pub struct SMBChangeNotifyResponse {
     #[smb_skip(start = 2, length = 6)]
     reserved: PhantomData<Vec<u8>>,

@@ -40,9 +40,7 @@ impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug> SMBFieldM
                     true => f.get_name(),
                     false => f.get_named_token(),
                 };
-                let size = f.get_smb_message_size(token.clone());
-                // println!("token: {}, size: {}", token, size);
-                size
+                f.get_smb_message_size(token.clone())
             }).collect(),
             SMBFieldMappingType::UnnamedStruct => self.fields.iter().enumerate().map(|(idx, f)| {
                 let token = match variant {
@@ -86,7 +84,7 @@ impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug> SMBFieldM
 }
 
 pub(crate) fn enum_repr_type(attrs: &[Attribute]) -> darling::Result<Repr> {
-    return Repr::from_attributes(attrs)
+    Repr::from_attributes(attrs)
 }
 
 pub(crate) fn get_num_enum_mapping(input: &DeriveInput, parent_attrs: Vec<SMBFieldType>, repr_type: Repr) -> Result<SMBFieldMapping<DeriveInput, DeriveInput>, SMBDeriveError<DeriveInput>> {

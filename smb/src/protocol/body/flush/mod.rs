@@ -8,7 +8,7 @@ use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::empty::SMBEmpty;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(24)]
+#[smb_byte_tag(value = 24)]
 pub struct SMBFlushRequest {
     #[smb_skip(start = 2, length = 2)]
     reserved_1: PhantomData<Vec<u8>>,

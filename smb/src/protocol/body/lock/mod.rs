@@ -10,7 +10,7 @@ mod info;
 mod flags;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(48)]
+#[smb_byte_tag(value = 48)]
 pub struct SMBLockRequest {
     #[smb_direct(start(fixed = 4))]
     lock_seqno_idx: u32,

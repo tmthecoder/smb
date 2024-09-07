@@ -182,7 +182,20 @@ impl AttributeInfo {
         match self {
             Self::CurrentPos | Self::NullTerminated(_) => 0,
             Self::Fixed(pos) => *pos,
-            Self::Inner(inner) => inner.min_val.saturating_sub(inner.subtract)
+            Self::Inner(inner) => inner.start
+        }
+    }
+
+    pub(crate) fn get_min_val(&self) -> usize {
+        match self {
+            Self::Inner(inner) => inner.min_val.saturating_sub(inner.subtract),
+            _ => 0,
+        }
+    }
+    pub(crate) fn get_type<S: Spanned>(&self, spanned: &S) -> Option<Type> {
+        match self {
+            Self::Inner(inner) => Some(inner.get_type(spanned)),
+            _ => None,
         }
     }
 }

@@ -137,7 +137,11 @@ pub struct SMBNegotiateResponse {
     system_time: FileTime,
     #[smb_direct(start(fixed = 48))]
     server_start_time: FileTime,
-    #[smb_buffer(offset(inner(start = 56, num_type = "u16", subtract = 64, min_val = 128)), length(inner(start = 58, num_type = "u16")), order = 1)]
+    #[smb_buffer(
+        offset(inner(start = 56, num_type = "u16", subtract = 64, min_val = 128)),
+        length(inner(start = 58, num_type = "u16")),
+        order = 1)
+    ]
     buffer: Vec<u8>,
     #[smb_vector(order = 2, align = 8, count(inner(start = 6, num_type = "u16")), offset(inner(start = 60, num_type = "u32", subtract = 64)))]
     negotiate_contexts: Vec<NegotiateContext>,

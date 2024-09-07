@@ -69,7 +69,7 @@ pub struct SMBSyncHeader {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize, SMBToBytes)]
-#[smb_byte_tag(0xFE)]
+#[smb_byte_tag(value = 0xFE)]
 #[smb_string_tag("SMB")]
 pub struct LegacySMBHeader {
     #[smb_direct(start(fixed = 4))]

@@ -4,14 +4,15 @@ use std::sync::{Arc, Weak};
 
 use tokio::sync::RwLock;
 
+use smb_core::{SMBByteSize, SMBResult};
 use smb_core::error::SMBError;
-use smb_core::SMBResult;
 
-use crate::protocol::body::create::SMBCreateRequest;
+use crate::protocol::body::create::{SMBCreateRequest, SMBCreateResponse};
 use crate::protocol::body::filetime::FileTime;
+use crate::protocol::body::SMBBody;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::header::SMBSyncHeader;
-use crate::server::connection::Connection;
+use crate::protocol::message::SMBMessage;
 use crate::server::message_handler::{SMBHandlerState, SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
 use crate::server::open::Open;
 use crate::server::safe_locked_getter::SafeLockedGetter;
@@ -55,17 +56,19 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
     async fn handle_create(&mut self, header: &SMBSyncHeader, message: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let (path, disposition, directory) = message.validate(self.share.deref())?;
         let handle = self.share.handle_create(path, disposition, directory)?;
-        let open = Arc::new(RwLock::new(Open::init(handle, message)));
+        let open_raw = Open::init(handle, message);
+        let response = SMBBody::CreateResponse(SMBCreateResponse::for_open::<S>(&open_raw)?);
+        let open = Arc::new(RwLock::new(open_raw));
         let session = self.session.upgrade()
             .ok_or(SMBError::server_error("No Session Found"))?;
         session.write().await.add_open(open.clone()).await;
-        let server = session.upper()
-            .await?
-            .upper()
-            .await?;
+        let server = session.upper().await?
+            .upper().await?;
         server.write().await.add_open(open).await;
         println!("In tree connect create");
-        todo!("Need to create an open to finish create handler")
+        let header = header.create_response_header(header.channel_sequence, header.session_id, header.tree_id);
+        println!("Creat resp bs: {}", response.smb_byte_size());
+        Ok(SMBHandlerState::Finished(SMBMessage::new(header, response)))
     }
 }
 

@@ -10,7 +10,7 @@ use crate::protocol::body::set_info::info_type::SMBInfoType;
 mod info_type;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(33)]
+#[smb_byte_tag(value = 33)]
 pub struct SMBSetInfoRequest {
     #[smb_direct(start(fixed = 3))]
     info_type: SMBInfoType,
@@ -25,7 +25,7 @@ pub struct SMBSetInfoRequest {
 }
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(2)]
+#[smb_byte_tag(value = 2)]
 pub struct SMBSetInfoResponse {
     #[smb_skip(start = 0, length = 1)]
     reserved: PhantomData<Vec<u8>>,

@@ -20,6 +20,8 @@ use crate::protocol::body::create::response_context::CreateResponseContext;
 use crate::protocol::body::create::share_access::SMBShareAccess;
 use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
+use crate::server::open::Open;
+use crate::server::Server;
 use crate::server::share::{ResourceType, SharedResource};
 
 pub mod options;
@@ -38,7 +40,7 @@ mod response_context;
 pub(crate) mod context_helper;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(57)]
+#[smb_byte_tag(value = 57)]
 pub struct SMBCreateRequest {
     #[smb_direct(start(fixed = 3))]
     oplock_level: SMBOplockLevel,
@@ -105,7 +107,7 @@ impl SMBCreateRequest {
 }
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(89)]
+#[smb_byte_tag(value = 89)]
 pub struct SMBCreateResponse {
     #[smb_direct(start(fixed = 2))]
     oplock_level: SMBOplockLevel,
@@ -125,20 +127,38 @@ pub struct SMBCreateResponse {
     allocation_size: u64,
     #[smb_direct(start(fixed = 48))]
     end_of_file: u64,
-    #[smb_skip(start = 56, length = 4)]
+    #[smb_direct(start(fixed = 56))]
+    attributes: SMBFileAttributes,
+    #[smb_skip(start = 60, length = 4)]
     reserved: PhantomData<Vec<u8>>,
-    #[smb_direct(start(fixed = 60))]
+    #[smb_direct(start(fixed = 64))]
     file_id: SMBFileId,
     #[smb_vector(
         order = 0,
         align = 8,
-        offset(inner(start = 64, num_type = "u32", subtract = 64)),
-        count(inner(start = 68, num_type = "u32"))
+        offset(inner(start = 80, num_type = "u32", subtract = 64)),
+        length(inner(start = 84, num_type = "u32"))
     )]
     contexts: Vec<CreateResponseContext>,
 }
 
 impl SMBCreateResponse {
-    // pub fn for_open() -> SMBResult<Self> {
-    // }
+    pub fn for_open<S: Server>(open: &S::Open) -> SMBResult<Self> {
+        let metadata = open.file_metadata()?;
+        Ok(Self {
+            oplock_level: open.oplock_level(),
+            flags: SMBCreateFlags::empty(),
+            action: SMBCreateAction::Created,
+            creation_time: metadata.creation_time,
+            last_access_time: metadata.last_access_time,
+            last_write_time: metadata.last_write_time,
+            change_time: metadata.last_modification_time,
+            allocation_size: metadata.allocated_size,
+            end_of_file: metadata.actual_size,
+            attributes: open.file_attributes(),
+            reserved: PhantomData,
+            file_id: open.file_id(),
+            contexts: vec![],
+        })
+    }
 }

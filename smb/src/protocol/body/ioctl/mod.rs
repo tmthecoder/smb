@@ -12,7 +12,7 @@ mod flags;
 mod method;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(57)]
+#[smb_byte_tag(value = 57)]
 pub struct SMBIoCtlRequest {
     #[smb_skip(start = 2, length = 2)]
     reserved: PhantomData<Vec<u8>>,
@@ -33,7 +33,7 @@ pub struct SMBIoCtlRequest {
 }
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(49)]
+#[smb_byte_tag(value = 49)]
 pub struct SMBIoCtlResponse {
     #[smb_skip(start = 2, length = 2)]
     reserved: PhantomData<Vec<u8>>,

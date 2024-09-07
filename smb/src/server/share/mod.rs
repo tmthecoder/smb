@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use smb_core::SMBResult;
 
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
+use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::protocol::body::tree_connect::SMBShareType;
@@ -21,6 +22,16 @@ pub trait ResourceHandle: Send + Sync {
     fn close(self: Box<Self>) -> SMBResult<()>;
     fn is_directory(&self) -> bool;
     fn path(&self) -> &str;
+    fn metadata(&self) -> SMBResult<SMBFileMetadata>;
+}
+
+pub struct SMBFileMetadata {
+    pub creation_time: FileTime,
+    pub last_access_time: FileTime,
+    pub last_write_time: FileTime,
+    pub last_modification_time: FileTime,
+    pub allocated_size: u64,
+    pub actual_size: u64,
 }
 
 impl<H: ?Sized + ResourceHandle + 'static> ResourceHandle for Box<H> {
@@ -38,6 +49,10 @@ impl<H: ?Sized + ResourceHandle + 'static> ResourceHandle for Box<H> {
 
     fn path(&self) -> &str {
         H::path(self)
+    }
+
+    fn metadata(&self) -> SMBResult<SMBFileMetadata> {
+        H::metadata(self)
     }
 }
 

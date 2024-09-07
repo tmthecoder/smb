@@ -1,15 +1,18 @@
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
+use std::fs;
 use std::fs::{File, OpenOptions, ReadDir};
 use std::marker::PhantomData;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use smb_core::error::SMBError;
 use smb_core::SMBResult;
 
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
+use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
-use crate::server::share::{ConnectAllowed, FilePerms, ResourceHandle, ResourceType, SharedResource};
+use crate::server::share::{ConnectAllowed, FilePerms, ResourceHandle, ResourceType, SharedResource, SMBFileMetadata};
 
 #[derive(Debug)]
 pub struct SMBFileSystemHandle {
@@ -63,6 +66,24 @@ impl ResourceHandle for SMBFileSystemHandle {
 
     fn path(&self) -> &str {
         &self.path
+    }
+
+    fn metadata(&self) -> SMBResult<SMBFileMetadata> {
+        let metadata = fs::metadata(&self.path())
+            .map_err(|err| SMBError::server_error(format!("Failed to get metadata for path: {}, error: {}", self.path(), err)))?;
+        let time_transform = |time: SystemTime| {
+            time.duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        };
+        Ok(SMBFileMetadata {
+            creation_time: FileTime::from_unix(metadata.created().map(time_transform).unwrap_or(0)),
+            last_access_time: FileTime::from_unix(metadata.accessed().map(time_transform).unwrap_or(0)),
+            last_write_time: FileTime::from_unix(metadata.modified().map(time_transform).unwrap_or(0)),
+            last_modification_time: FileTime::from_unix(metadata.modified().map(time_transform).unwrap_or(0)),
+            allocated_size: metadata.len(),
+            actual_size: metadata.len(),
+        })
     }
 }
 

@@ -12,7 +12,7 @@ mod information_class;
 mod flags;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(33)]
+#[smb_byte_tag(value = 33)]
 pub struct SMBQueryDirectoryRequest {
     #[smb_direct(start(fixed = 2))]
     information_class: SMBInformationClass,
@@ -29,7 +29,7 @@ pub struct SMBQueryDirectoryRequest {
 }
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(9)]
+#[smb_byte_tag(value = 9)]
 pub struct SMBQueryDirectoryResponse {
     #[smb_skip(start = 0, length = 8)]
     output_info: PhantomData<Vec<u8>>,

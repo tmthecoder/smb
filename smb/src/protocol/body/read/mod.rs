@@ -12,7 +12,7 @@ mod flags;
 pub mod channel;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(49)]
+#[smb_byte_tag(value = 49)]
 pub struct SMBReadRequest {
     #[smb_direct(start(fixed = 3))]
     flags: SMBReadRequestFlags,
@@ -33,7 +33,7 @@ pub struct SMBReadRequest {
 }
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(17)]
+#[smb_byte_tag(value = 17)]
 pub struct SMBReadResponse {
     #[smb_skip(start = 3, length = 1)]
     reserved: PhantomData<Vec<u8>>,

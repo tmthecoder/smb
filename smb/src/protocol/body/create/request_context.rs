@@ -336,7 +336,7 @@ pub struct DurableHandleReconnectV2 {
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
-#[smb_byte_tag(20)]
+#[smb_byte_tag(value = 20)]
 pub struct AppInstanceID {
     #[smb_skip(start = 0, length = 4)]
     reserved: PhantomData<Vec<u8>>,

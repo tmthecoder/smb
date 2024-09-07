@@ -2,14 +2,17 @@ use std::fmt::{Debug, Formatter, Pointer};
 
 use uuid::Uuid;
 
+use smb_core::SMBResult;
+
 use crate::protocol::body::create::file_attributes::SMBFileAttributes;
+use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::create::oplock::SMBOplockLevel;
 use crate::protocol::body::create::options::SMBCreateOptions;
 use crate::protocol::body::create::SMBCreateRequest;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::server::lease::SMBLease;
 use crate::server::Server;
-use crate::server::share::ResourceHandle;
+use crate::server::share::{ResourceHandle, SMBFileMetadata};
 use crate::server::tree_connect::SMBTreeConnect;
 
 pub trait Open: Send + Sync {
@@ -18,6 +21,10 @@ pub trait Open: Send + Sync {
     fn init(underlying: <Self::Server as Server>::Handle, request: &SMBCreateRequest) -> Self;
     fn set_session_id(&mut self, session_id: u32);
     fn set_global_id(&mut self, global_id: u32);
+    fn oplock_level(&self) -> SMBOplockLevel;
+    fn file_attributes(&self) -> SMBFileAttributes;
+    fn file_id(&self) -> SMBFileId;
+    fn file_metadata(&self) -> SMBResult<SMBFileMetadata>;
 }
 
 pub struct SMBOpen<S: Server> {
@@ -115,6 +122,25 @@ impl<S: Server> Open for SMBOpen<S> {
 
     fn set_global_id(&mut self, global_id: u32) {
         self.global_id = global_id;
+    }
+
+    fn oplock_level(&self) -> SMBOplockLevel {
+        self.oplock_level
+    }
+
+    fn file_attributes(&self) -> SMBFileAttributes {
+        self.file_attributes
+    }
+
+    fn file_id(&self) -> SMBFileId {
+        SMBFileId {
+            persistent: 0,
+            volatile: 0,
+        }
+    }
+
+    fn file_metadata(&self) -> SMBResult<SMBFileMetadata> {
+        return self.underlying.metadata()
     }
 }
 // TODO: From MS-FSCC section 2.6

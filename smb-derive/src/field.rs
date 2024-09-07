@@ -171,15 +171,40 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
             None
         };
 
-        let min_start = if let Some(start) = offset.map(|offset| offset.get_pos()) {
-            start
+        let length = if let SMBFieldType::Vector(vec) = ty {
+            Some(&vec.length)
+        } else if let SMBFieldType::Buffer(buf) = ty {
+            Some(&buf.length)
         } else {
-            0
+            None
         };
+        println!("Size tokens: {:?}, offset: {:?}, len: {:?}", size_tokens.to_string(), offset, length);
+
+        let (attr_start, attr_ty) = match (offset, length) {
+            (Some(o), Some(l)) => {
+                if o.get_pos() > l.get_pos() {
+                    (o.get_pos(), o.get_type(&self.spanned.span()))
+                } else {
+                    (l.get_pos(), l.get_type(&self.spanned.span()))
+                }
+            },
+            (Some(o), None) => (o.get_pos(), o.get_type(&self.spanned.span())),
+            (None, Some(l)) => (l.get_pos(), l.get_type(&self.spanned.span())),
+            _ => (0, None)
+        };
+
+        let buffer_min_pos = offset.map(AttributeInfo::get_min_val).unwrap_or(0);
+
+        let attr_start_ty = match attr_ty {
+            Some(ty) => quote! { ::std::cmp::max(#buffer_min_pos, #attr_start + std::mem::size_of::<#ty>())},
+            None => quote! { ::std::cmp::max(#attr_start, #buffer_min_pos) },
+        };
+
+        println!("Size tokens: {:?}, offset: {:?}", size_tokens.to_string(), attr_start_ty.to_string());
 
         if ty.weight_of_enum() == 2 {
             quote_spanned! {self.spanned.span()=>
-                let size = ::std::cmp::max(size, #min_start) + ::smb_core::SMBVecByteSize::smb_byte_size_vec(#size_tokens, #align, size);
+                let size = ::std::cmp::max(size, #attr_start_ty) + ::smb_core::SMBVecByteSize::smb_byte_size_vec(#size_tokens, #align, size);
             }
         } else {
             quote_spanned! {self.spanned.span()=>

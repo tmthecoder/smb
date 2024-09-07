@@ -14,7 +14,7 @@ mod info_type;
 mod security_information;
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(41)]
+#[smb_byte_tag(value = 41)]
 pub struct SMBQueryInfoRequest {
     #[smb_direct(start(fixed = 2))]
     info_type: SMBInfoType,
@@ -35,7 +35,7 @@ pub struct SMBQueryInfoRequest {
 }
 
 #[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
-#[smb_byte_tag(17)]
+#[smb_byte_tag(value = 17)]
 pub struct SMBQueryInfoResponse {
     #[smb_skip(start = 2, length = 6)]
     reserved: PhantomData<Vec<u8>>,
