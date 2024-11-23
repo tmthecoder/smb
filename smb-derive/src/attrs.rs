@@ -381,9 +381,9 @@ impl Vector {
                     current_pos
                 }
             };
+            #offset_info
             current_pos = get_aligned_pos(#align, current_pos);
             let start_pos = current_pos;
-            #offset_info
             for entry in #raw_token.iter() {
                 let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(entry);
                 // if (#align > 0) {
