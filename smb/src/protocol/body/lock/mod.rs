@@ -9,7 +9,17 @@ use crate::protocol::body::lock::info::SMBLockInfo;
 mod info;
 mod flags;
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 48)]
 pub struct SMBLockRequest {
     #[smb_direct(start(fixed = 4))]

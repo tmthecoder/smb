@@ -2,7 +2,7 @@ use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
 bitflags! {
-    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy)]
     pub struct SMBTreeConnectFlags: u16 {
         const EXTENSION_PRESENT    = 0b100;
         const REDIRECT_TO_OWNER    = 0b10;

@@ -11,7 +11,17 @@ use crate::protocol::body::read::flags::{SMBReadRequestFlags, SMBReadResponseFla
 mod flags;
 pub mod channel;
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 49)]
 pub struct SMBReadRequest {
     #[smb_direct(start(fixed = 3))]
@@ -32,7 +42,17 @@ pub struct SMBReadRequest {
     channel_information: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 17)]
 pub struct SMBReadResponse {
     #[smb_skip(start = 3, length = 1)]

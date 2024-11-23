@@ -64,7 +64,17 @@ pub trait Body<S: Header>: SMBEnumFromBytes + SMBToBytes {
     fn as_bytes(&self) -> Vec<u8>;
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBToBytes, SMBByteSize)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    SMBEnumFromBytes,
+    SMBToBytes,
+    SMBByteSize,
+    Clone
+)]
 pub enum SMBBody {
     #[smb_discriminator(value = 0x0)]
     #[smb_direct(start(fixed = 0))]
@@ -210,7 +220,7 @@ impl Body<SMBSyncHeader> for SMBBody {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 pub enum LegacySMBBody {
     None,
     Negotiate(Vec<String>),

@@ -58,7 +58,7 @@ macro_rules! ctx_smb_from_bytes_enumify {
     }};
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub enum NegotiateContext {
     PreAuthIntegrityCapabilities(PreAuthIntegrityCapabilities),
     EncryptionCapabilities(EncryptionCapabilities),

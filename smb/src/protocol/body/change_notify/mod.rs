@@ -11,7 +11,17 @@ use crate::protocol::body::create::file_id::SMBFileId;
 mod flags;
 mod completion_filter;
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 32)]
 pub struct SMBChangeNotifyRequest {
     #[smb_direct(start(fixed = 2))]
@@ -26,7 +36,17 @@ pub struct SMBChangeNotifyRequest {
     reserved: PhantomData<Vec<u8>>,
 }
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 17)]
 pub struct SMBChangeNotifyResponse {
     #[smb_skip(start = 2, length = 6)]

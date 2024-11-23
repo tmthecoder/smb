@@ -26,7 +26,17 @@ use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenInitBody};
 pub mod context;
 pub mod security_mode;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    SMBFromBytes,
+    SMBByteSize,
+    SMBToBytes,
+    Clone
+)]
 #[smb_byte_tag(value = 36)]
 pub struct SMBNegotiateRequest {
     #[smb_direct(start(fixed = 4))]
@@ -116,7 +126,17 @@ impl SMBNegotiateRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBToBytes, SMBByteSize, SMBFromBytes)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    SMBToBytes,
+    SMBByteSize,
+    SMBFromBytes,
+    Clone
+)]
 #[smb_byte_tag(value = 65)]
 pub struct SMBNegotiateResponse {
     #[smb_direct(start(fixed = 2))]

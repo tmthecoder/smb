@@ -25,7 +25,17 @@ use crate::util::auth::AuthProvider;
 pub mod security_mode;
 pub mod flags;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    SMBFromBytes,
+    SMBByteSize,
+    SMBToBytes,
+    Clone
+)]
 #[smb_byte_tag(value = 25)]
 pub struct SMBSessionSetupRequest {
     #[smb_direct(start(fixed = 2))]
@@ -41,6 +51,15 @@ pub struct SMBSessionSetupRequest {
 }
 
 impl SMBSessionSetupRequest {
+    pub fn new(flags: SMBSessionSetupFlags, security_mode: SessionSetupSecurityMode, capabilities: Capabilities, previous_session_id: u64, buffer: Vec<u8>) -> Self {
+        Self {
+            flags,
+            security_mode,
+            capabilities,
+            previous_session_id,
+            buffer,
+        }
+    }
     pub fn buffer(&self) -> &[u8] {
         &self.buffer
     }
@@ -89,7 +108,17 @@ impl SMBSessionSetupRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBToBytes, SMBFromBytes, SMBByteSize)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    SMBToBytes,
+    SMBFromBytes,
+    SMBByteSize,
+    Clone
+)]
 #[smb_byte_tag(value = 9)]
 pub struct SMBSessionSetupResponse {
     #[smb_direct(start(fixed = 2))]

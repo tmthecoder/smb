@@ -10,7 +10,17 @@ use crate::protocol::body::write::flags::SMBWriteFlags;
 
 mod flags;
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 49)]
 pub struct SMBWriteRequest {
     #[smb_direct(start(fixed = 4))]
@@ -31,7 +41,17 @@ pub struct SMBWriteRequest {
     data_to_write: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 17)]
 pub struct SMBWriteResponse {
     #[smb_skip(start = 2, length = 2)]

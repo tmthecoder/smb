@@ -6,7 +6,17 @@ use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBFromBytes, SMBToBytes};
 
 use crate::protocol::body::tree_connect::context::SMBTreeConnectContext;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    SMBEnumFromBytes,
+    SMBByteSize,
+    SMBToBytes,
+    Clone
+)]
 pub enum SMBTreeConnectBuffer {
     #[smb_discriminator(value = 0x0)]
     #[smb_string(order = 0, start(inner(start = 0, num_type = "u16", subtract = 68)), length(inner(start = 2, num_type = "u16")), underlying = "u16")]
@@ -32,7 +42,17 @@ impl SMBTreeConnectBuffer {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes, SMBToBytes)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    SMBByteSize,
+    SMBFromBytes,
+    SMBToBytes,
+    Clone
+)]
 pub struct SMBTreeConnectExtension {
     #[smb_skip(start = 12, length = 2)]
     reserved: PhantomData<Vec<u8>>,

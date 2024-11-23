@@ -41,7 +41,17 @@ pub trait Header: SMBFromBytes + SMBToBytes {
     fn sender(&self) -> SMBSender;
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBToBytes, SMBByteSize)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    SMBFromBytes,
+    SMBToBytes,
+    SMBByteSize,
+    Clone
+)]
 #[smb_byte_tag(value = 0xFE, order = 0)]
 #[smb_string_tag(value = "SMB", order = 1)]
 #[smb_byte_tag(value = 64, order = 2)]

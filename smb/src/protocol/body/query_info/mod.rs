@@ -13,7 +13,17 @@ mod flags;
 mod info_type;
 mod security_information;
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 41)]
 pub struct SMBQueryInfoRequest {
     #[smb_direct(start(fixed = 2))]
@@ -34,7 +44,17 @@ pub struct SMBQueryInfoRequest {
     buffer: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 17)]
 pub struct SMBQueryInfoResponse {
     #[smb_skip(start = 2, length = 6)]

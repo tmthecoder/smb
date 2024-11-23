@@ -11,7 +11,17 @@ use crate::protocol::body::ioctl::method::SMBIoCtlMethod;
 mod flags;
 mod method;
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 57)]
 pub struct SMBIoCtlRequest {
     #[smb_skip(start = 2, length = 2)]
@@ -32,7 +42,17 @@ pub struct SMBIoCtlRequest {
     input_method: SMBIoCtlMethod,
 }
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 49)]
 pub struct SMBIoCtlResponse {
     #[smb_skip(start = 2, length = 2)]

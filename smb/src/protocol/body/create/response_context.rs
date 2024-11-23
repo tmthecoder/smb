@@ -22,7 +22,7 @@ const RESPONSE_LEASE_TAG: &[u8] = REQUEST_LEASE_TAG;
 const DURABLE_HANDLE_RESPONSE_V2_TAG: &[u8] = DURABLE_HANDLE_REQUEST_V2_TAG;
 const SVHDX_OPEN_DEVICE_CONTEXT_RESPONSE_TAG: &[u8] = SVHDX_OPEN_DEVICE_CONTEXT_TAG;
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub enum CreateResponseContext {
     DurableHandleResponse(DurableHandleResponse),
     QueryMaximalAccessResponse(QueryMaximalAccessResponse),

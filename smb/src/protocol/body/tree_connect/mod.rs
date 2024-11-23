@@ -19,7 +19,17 @@ pub mod access_mask;
 pub mod flags;
 pub mod capabilities;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes, SMBToBytes)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    SMBByteSize,
+    SMBFromBytes,
+    SMBToBytes,
+    Clone
+)]
 #[smb_byte_tag(value = 09)]
 pub struct SMBTreeConnectRequest {
     #[smb_direct(start(fixed = 2))]
@@ -34,7 +44,17 @@ impl SMBTreeConnectRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes, SMBToBytes)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    SMBByteSize,
+    SMBFromBytes,
+    SMBToBytes,
+    Clone
+)]
 #[smb_byte_tag(value = 16)]
 pub struct SMBTreeConnectResponse {
     #[smb_direct(start(fixed = 2))]

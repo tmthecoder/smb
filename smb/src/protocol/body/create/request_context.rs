@@ -39,7 +39,7 @@ pub const RESERVED: &[u8] = &[
     0x93, 0xAD, 0x25, 0x50, 0x9C, 0xB4, 0x11, 0xE7, 0xB4, 0x23, 0x83, 0xDE, 0x96, 0x8B, 0xCD, 0x7C
 ];
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub enum CreateRequestContext {
     EABuffer(EABuffer),
     SDBuffer(SDBuffer),

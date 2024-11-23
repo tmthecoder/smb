@@ -39,7 +39,17 @@ mod response_context;
 #[macro_use]
 pub(crate) mod context_helper;
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 57)]
 pub struct SMBCreateRequest {
     #[smb_direct(start(fixed = 3))]
@@ -106,7 +116,17 @@ impl SMBCreateRequest {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    SMBByteSize,
+    SMBToBytes,
+    SMBFromBytes,
+    Serialize,
+    Deserialize,
+    Clone
+)]
 #[smb_byte_tag(value = 89)]
 pub struct SMBCreateResponse {
     #[smb_direct(start(fixed = 2))]
