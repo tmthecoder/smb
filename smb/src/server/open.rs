@@ -1,4 +1,6 @@
 use std::fmt::{Debug, Formatter, Pointer};
+use std::future::Future;
+use std::sync::Arc;
 
 use uuid::Uuid;
 
@@ -11,6 +13,7 @@ use crate::protocol::body::create::options::SMBCreateOptions;
 use crate::protocol::body::create::SMBCreateRequest;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::server::lease::SMBLease;
+use crate::server::message_handler::{SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
 use crate::server::Server;
 use crate::server::share::{ResourceHandle, SMBFileMetadata};
 use crate::server::tree_connect::SMBTreeConnect;
@@ -19,7 +22,7 @@ pub trait Open: Send + Sync {
     type Server: Server;
     fn file_name(&self) -> &str;
     fn init(underlying: <Self::Server as Server>::Handle, request: &SMBCreateRequest) -> Self;
-    fn set_session_id(&mut self, session_id: u32);
+    fn set_session_id(&mut self, session_id: u64);
     fn set_global_id(&mut self, global_id: u32);
     fn oplock_level(&self) -> SMBOplockLevel;
     fn file_attributes(&self) -> SMBFileAttributes;
@@ -29,7 +32,7 @@ pub trait Open: Send + Sync {
 
 pub struct SMBOpen<S: Server> {
     file_share_id: u32,
-    session_id: u32,
+    session_id: u64,
     global_id: u32,
     session: Option<S::Session>,
     tree_connect: Option<SMBTreeConnect<S>>,
@@ -116,7 +119,7 @@ impl<S: Server> Open for SMBOpen<S> {
         }
     }
 
-    fn set_session_id(&mut self, session_id: u32) {
+    fn set_session_id(&mut self, session_id: u64) {
         self.session_id = session_id;
     }
 
@@ -134,8 +137,8 @@ impl<S: Server> Open for SMBOpen<S> {
 
     fn file_id(&self) -> SMBFileId {
         SMBFileId {
-            persistent: 0,
-            volatile: 0,
+            persistent: self.session_id as u64,
+            volatile: self.session_id as u64,
         }
     }
 
@@ -203,3 +206,13 @@ impl<S: Server> Debug for SMBOpen<S> where S: Debug, S::Session: Debug, S::Handl
             .finish()
     }
 }
+
+impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBOpen<S>> {
+    type Inner = ();
+
+    async fn inner(&self, message: &SMBMessageType) -> Option<Self::Inner> {
+        todo!()
+    }
+}
+
+impl<S: Server> SMBLockedMessageHandler for Arc<SMBOpen<S>> {}

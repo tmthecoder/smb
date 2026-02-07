@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::io::Read;
-use std::ops::Deref;
+use std::ops::{AddAssign, Deref};
 use std::sync::{Arc, Weak};
 
 use derive_builder::Builder;
@@ -16,6 +16,7 @@ use tokio::sync::RwLock;
 use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
 use smb_core::SMBResult;
+use crate::protocol::body::create::file_id::SMBFileId;
 
 use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::negotiate::context::EncryptionCipher;
@@ -34,6 +35,7 @@ use crate::server::tree_connect::SMBTreeConnect;
 use crate::util::auth::{AuthContext, AuthProvider};
 use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenResponseBody};
 use crate::util::crypto::sp800_108::derive_key;
+use crate::util::num_limits::{MaxVal, MinVal, One, Zero};
 
 type SMBMessageType = SMBMessage<SMBSyncHeader, SMBBody>;
 
@@ -53,8 +55,9 @@ pub trait Session<C: Connection, A: AuthProvider, O: Open>: Send + Sync {
     fn security_context_mut(&mut self) -> &mut A::Context;
     fn provider(&self) -> &Arc<A>;
     fn encrypt_data(&self) -> bool;
-    fn open_table(&self) -> &HashMap<u32, Arc<RwLock<O>>>;
+    fn open_table(&self) -> &HashMap<u64, Arc<RwLock<O>>>;
     fn add_open(&mut self, open: Arc<RwLock<O>>) -> impl Future<Output=()>;
+    fn set_previous_file_id(&mut self, file_id: SMBFileId);
 }
 
 #[derive(Builder)]
@@ -69,7 +72,7 @@ pub struct SMBSession<S: Server> {
     is_guest: bool,
     session_key: [u8; 16],
     signing_required: bool,
-    open_table: HashMap<u32, Arc<RwLock<S::Open>>>,
+    open_table: HashMap<u64, Arc<RwLock<S::Open>>>,
     tree_connect_table: HashMap<u32, Arc<SMBTreeConnect<S>>>,
     expiration_time: u64,
     connection: Weak<RwLock<S::Connection>>,
@@ -84,7 +87,8 @@ pub struct SMBSession<S: Server> {
     signing_key: Vec<u8>,
     application_key: Vec<u8>,
     preauth_integrity_hash_value: Vec<u8>,
-    full_session_key: Vec<u8>
+    full_session_key: Vec<u8>,
+    prev_command_id: Option<SMBFileId>
 }
 
 // impl <S: Server> InnerGetter<S> for SMBSession<S> {
@@ -156,13 +160,16 @@ impl<S: Server> SMBSession<S> {
         self.application_key = generate_key(&self.session_key, application_key_label, application_key_context, key_length);
         println!("signing: {:?}, application: {:?}", self.signing_key, self.application_key);
     }
-    fn get_next_map_id<V>(map: &HashMap<u32, V>) -> u32 {
-        for i in 1..u32::MAX {
+    fn get_next_map_id<K: MaxVal + MinVal + One + Zero + Eq + PartialEq + AddAssign + PartialOrd + std::hash::Hash, V>(map: &HashMap<K, V>) -> K {
+        let mut i = K::min_val();
+        while i < K::max_val() {
             if map.get(&i).is_none() {
                 return i;
             }
+            
+            i += K::one();
         }
-        0
+        K::zero()
     }
 }
 
@@ -283,6 +290,7 @@ impl<S: Server<Session=Self>> Session<S::Connection, S::AuthProvider, S::Open> f
             application_key: vec![],
             preauth_integrity_hash_value,
             full_session_key: vec![],
+            prev_command_id: None,
         }
     }
 
@@ -327,7 +335,7 @@ impl<S: Server<Session=Self>> Session<S::Connection, S::AuthProvider, S::Open> f
         self.encrypt_data
     }
 
-    fn open_table(&self) -> &HashMap<u32, Arc<RwLock<S::Open>>> {
+    fn open_table(&self) -> &HashMap<u64, Arc<RwLock<S::Open>>> {
         &self.open_table
     }
 
@@ -337,5 +345,9 @@ impl<S: Server<Session=Self>> Session<S::Connection, S::AuthProvider, S::Open> f
         open_wr.set_session_id(id);
         drop(open_wr);
         self.open_table.insert(id, open);
+    }
+
+    fn set_previous_file_id(&mut self, file_id: SMBFileId) {
+       self.prev_command_id = Some(file_id); 
     }
 }

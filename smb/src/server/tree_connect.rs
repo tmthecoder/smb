@@ -8,13 +8,14 @@ use smb_core::{SMBByteSize, SMBResult};
 use smb_core::error::SMBError;
 
 use crate::protocol::body::create::{SMBCreateRequest, SMBCreateResponse};
+use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::SMBBody;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::header::SMBSyncHeader;
 use crate::protocol::message::SMBMessage;
 use crate::server::message_handler::{SMBHandlerState, SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
-use crate::server::open::Open;
+use crate::server::open::{Open, SMBOpen};
 use crate::server::safe_locked_getter::SafeLockedGetter;
 use crate::server::Server;
 use crate::server::session::Session;
@@ -29,7 +30,7 @@ pub struct SMBTreeConnect<S: Server> {
     // tree_global_id: u64,
     creation_time: FileTime,
     maximal_access: SMBAccessMask,
-    remoted_identity_security_context: Vec<u8> // TODO
+    remoted_identity_security_context: Vec<u8>, // TODO
 }
 
 impl<S: Server> SMBTreeConnect<S> {
@@ -47,10 +48,10 @@ impl<S: Server> SMBTreeConnect<S> {
 }
 
 impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
-    type Inner = ();
+    type Inner = Arc<SMBOpen<S>>;
 
     async fn inner(&self, message: &SMBMessageType) -> Option<Self::Inner> {
-        Some(())
+        None
     }
 
     async fn handle_create(&mut self, header: &SMBSyncHeader, message: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
@@ -64,7 +65,13 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
         session.write().await.add_open(open.clone()).await;
         let server = session.upper().await?
             .upper().await?;
-        server.write().await.add_open(open).await;
+        {
+            server.write().await.add_open(open.clone()).await;
+        }
+        {
+            let file_id = open.read().await.file_id();
+            session.write().await.set_previous_file_id(file_id);
+        }
         println!("In tree connect create");
         let header = header.create_response_header(header.channel_sequence, header.session_id, header.tree_id);
         println!("Creat resp bs: {}", response.smb_byte_size());
