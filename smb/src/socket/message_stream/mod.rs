@@ -2,11 +2,13 @@ use std::future::Future;
 
 use tokio_util::sync::ReusableBoxFuture;
 
-use smb_core::{SMBParseResult, SMBResult};
+use smb_core::{SMBFromBytes, SMBParseResult, SMBResult};
 use smb_core::error::SMBError;
+use smb_core::nt_status::NTStatus;
 
 use crate::protocol::body::{LegacySMBBody, SMBBody};
-use crate::protocol::header::{LegacySMBHeader, SMBSyncHeader};
+use crate::protocol::body::error::SMBErrorResponse;
+use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
 
 // use crate::socket::message_stream::stream_async::SMBMessageStream;
@@ -33,12 +35,26 @@ pub trait SMBReadStream: SMBStream {
             println!("found s at pos: {}", pos);
             if buffer[(pos)..].starts_with(b"SMB") {
                 println!("found smb");
-                let result = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[(pos - 1)..]);
-                return if result.is_err() {
-                    let (remaining, legacy_msg) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::parse(&buffer[(pos - 1)..])?;
-                    Ok((remaining, SMBMessage::<SMBSyncHeader, SMBBody>::from_legacy(legacy_msg).ok_or(SMBError::parse_error("Invalid legacy body"))?))
-                } else {
-                    result
+                let smb_start = pos - 1;
+                let result = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[smb_start..]);
+                return match result {
+                    Ok(r) => Ok(r),
+                    Err(_) => {
+                        // Try legacy parse first
+                        if let Ok((remaining, legacy_msg)) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::parse(&buffer[smb_start..]) {
+                            return Ok((remaining, SMBMessage::<SMBSyncHeader, SMBBody>::from_legacy(legacy_msg)
+                                .ok_or(SMBError::parse_error("Invalid legacy body"))?));
+                        }
+                        // Body parse failed — try header-only parse and return an ErrorResponse
+                        // so the connection handler can send a proper error back to the client
+                        if let Ok((remaining, header)) = SMBSyncHeader::smb_from_bytes(&buffer[smb_start..]) {
+                            println!("Header-only parse succeeded for command {:?}, returning ErrorResponse", header.command);
+                            let body = SMBBody::ErrorResponse(SMBErrorResponse::new(NTStatus::NotSupported));
+                            Ok((&buffer[buffer.len()..], SMBMessage::new(header, body)))
+                        } else {
+                            Err(SMBError::parse_error("Failed to parse header"))
+                        }
+                    }
                 };
             }
         }

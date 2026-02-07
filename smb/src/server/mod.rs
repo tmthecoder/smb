@@ -22,6 +22,7 @@ use crate::server::safe_locked_getter::InnerGetter;
 use crate::server::session::{Session, SMBSession};
 use crate::server::share::{ConnectAllowed, FilePerms, ResourceHandle, SharedResource};
 use crate::server::share::file_system::{SMBFileSystemHandle, SMBFileSystemShare};
+use crate::server::share::ipc::{SMBIPCHandle, SMBIPCShare};
 use crate::socket::listener::{SMBListener, SMBSocket};
 use crate::util::auth::{AuthContext, AuthProvider};
 use crate::util::auth::ntlm::NTLMAuthProvider;
@@ -346,6 +347,19 @@ impl<
     pub fn add_fs_share(mut self, name: String, path: String, connect_allowed: ConnectAllowed<UserName<Auth>>, file_perms: FilePerms<UserName<Auth>>) -> Self {
         let share = SMBFileSystemShare::path(name.clone(), path, connect_allowed, file_perms);
         self.add_share(name, share.into())
+    }
+}
+
+impl<
+    Addrs: Send + Sync,
+    Listener: SMBSocket<Addrs>,
+    Auth: AuthProvider + 'static,
+    Share: SharedResource<UserName=UserName<Auth>, Handle=Handle> + From<SMBIPCShare<UserName<Auth>, Handle>>,
+    Handle: ResourceHandle + 'static + From<SMBIPCHandle>
+> SMBServerBuilder<Addrs, Listener, Auth, Share, Handle> {
+    pub fn add_ipc_share(self) -> Self {
+        let share: SMBIPCShare<UserName<Auth>, Handle> = SMBIPCShare::new();
+        self.add_share("ipc$", share.into())
     }
 }
 

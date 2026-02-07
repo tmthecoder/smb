@@ -23,9 +23,10 @@ use crate::protocol::body::negotiate::context::{CompressionAlgorithm, Encryption
 use crate::protocol::body::negotiate::security_mode::NegotiateSecurityMode;
 use crate::protocol::body::session_setup::flags::SMBSessionSetupFlags;
 use crate::protocol::body::session_setup::SMBSessionSetupRequest;
+use crate::protocol::body::error::SMBErrorResponse;
 use crate::protocol::body::SMBBody;
 use crate::protocol::header::SMBSyncHeader;
-use crate::protocol::message::SMBMessage;
+use crate::protocol::message::{Message, SMBMessage};
 use crate::server::{Server, SMBServerDiagnosticsUpdate};
 use crate::server::message_handler::{NonEndingHandler, SMBHandlerState, SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
 use crate::server::open::Open;
@@ -222,31 +223,109 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
         let (read, write) = stream.streams();
         println!("Start message handler");
         let mut messages = read.messages();
-        while let Some(message) = messages.next().await {
-            println!("Got message: {:?}", message);
-            let message = connection.handle_message(&message).await;
-            // let message = match message.header.command_code() {
-            //     SMBCommandCode::LegacyNegotiate => connection.handle_legacy_negotiate(),
-            //     SMBCommandCode::Negotiate => connection.handle_negotiate(&message).await,
-            //     SMBCommandCode::SessionSetup => connection.handle_session_setup(&server, message).await,
-            //     SMBCommandCode::LogOff => {
-            //         println!("got logoff");
-            //         break;
-            //     }
-            //     _ => connection.generic_message_handler(message).await
-            // };
-            println!("After handler: {:?}", message);
-            if let Ok(message) = message {
-                println!("Writing message {:?}", message);
-                let sent = write.write_message(&message).await?;
+        while let Some(incoming) = messages.next().await {
+            println!("Got message: {:?}", incoming);
+            // If the body couldn't be parsed, the stream returns an ErrorResponse body.
+            // Send it back directly without dispatching to handle_message.
+            if matches!(&incoming.body, SMBBody::ErrorResponse(_)) {
+                println!("Incoming has ErrorResponse body (unparseable request), sending error reply");
+                let status = match &incoming.body {
+                    SMBBody::ErrorResponse(e) => e.status(),
+                    _ => NTStatus::NotSupported,
+                };
+                let mut response = Self::build_error_response(&incoming, status);
+                if response.header.session_id != 0 {
+                    let conn_rd = connection.read().await;
+                    let signing_key = {
+                        let session = conn_rd.session_table.get(&response.header.session_id);
+                        if let Some(session_lock) = session {
+                            let session_rd = session_lock.read().await;
+                            let key = session_rd.signing_key().to_vec();
+                            if !key.is_empty() { Some((key, conn_rd.dialect)) } else { None }
+                        } else {
+                            None
+                        }
+                    };
+                    drop(conn_rd);
+                    if let Some((key, dialect)) = signing_key {
+                        Self::sign_message(&mut response, &key, dialect);
+                    }
+                }
+                println!("Writing error response {:?}", response);
+                let sent = write.write_message(&response).await?;
                 let _ = update_channel.send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64)).await;
+                continue;
             }
-            // TODO handle error response (SMBError::ResponseError)
+            let result = connection.handle_message(&incoming).await;
+            println!("After handler: {:?}", result);
+            let mut response = match result {
+                Ok(msg) => msg,
+                Err(SMBError::ResponseError(ref resp_err)) => {
+                    let status = resp_err.status();
+                    Self::build_error_response(&incoming, status)
+                }
+                Err(e) => {
+                    println!("Non-response error: {:?}, sending NOT_SUPPORTED", e);
+                    Self::build_error_response(&incoming, NTStatus::NotSupported)
+                }
+            };
+            // Sign the response if the session has a signing key
+            if response.header.session_id != 0 {
+                let conn_rd = connection.read().await;
+                let signing_key = {
+                    let session = conn_rd.session_table.get(&response.header.session_id);
+                    if let Some(session_lock) = session {
+                        let session_rd = session_lock.read().await;
+                        let key = session_rd.signing_key().to_vec();
+                        if !key.is_empty() { Some((key, conn_rd.dialect)) } else { None }
+                    } else {
+                        None
+                    }
+                };
+                drop(conn_rd);
+                if let Some((key, dialect)) = signing_key {
+                    Self::sign_message(&mut response, &key, dialect);
+                }
+            }
+            println!("Writing message {:?}", response);
+            let sent = write.write_message(&response).await?;
+            let _ = update_channel.send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64)).await;
         }
 
         // Close streams on message parse finish (logoff)
         let _ = write.close_stream().await;
         Ok(())
+    }
+
+    fn build_error_response(request: &SMBMessageType, status: NTStatus) -> SMBMessageType {
+        let mut header = request.header.create_response_header(
+            status as u32,
+            request.header.session_id,
+            request.header.tree_id,
+        );
+        header.channel_sequence = status as u32;
+        // SMB2 ERROR Response body: StructureSize(2) + ErrorContextCount(1) + Reserved(1) + ByteCount(4) + ErrorData(1 padding)
+        let error_body = SMBBody::ErrorResponse(SMBErrorResponse::new(status));
+        SMBMessage::new(header, error_body)
+    }
+
+    fn sign_message(message: &mut SMBMessageType, signing_key: &[u8], dialect: SMBDialect) {
+        // Serialize with zeroed signature, compute MAC, then set signature
+        message.header.signature = [0u8; 16];
+        message.header.flags |= crate::protocol::header::flags::SMBFlags::SIGNED;
+        let bytes = message.as_bytes();
+        // The SMB2 message starts at offset 4 (after the 4-byte NetBIOS header)
+        let smb2_offset = 4;
+        let smb2_len = bytes.len() - smb2_offset;
+        println!("Signing: dialect={:?}, key={:02x?}, smb2_len={}, header_bytes={:02x?}",
+            dialect, signing_key, smb2_len, &bytes[smb2_offset..std::cmp::min(smb2_offset+64, bytes.len())]);
+        if let Ok(sig) = crate::util::crypto::smb2::calculate_signature(
+            signing_key, dialect, &bytes, smb2_offset, smb2_len
+        ) {
+            println!("Computed signature: {:02x?}", &sig[..std::cmp::min(16, sig.len())]);
+            let len = std::cmp::min(16, sig.len());
+            message.header.signature[..len].copy_from_slice(&sig[..len]);
+        }
     }
 }
 

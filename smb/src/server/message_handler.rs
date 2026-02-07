@@ -70,6 +70,10 @@ pub trait SMBLockedMessageHandlerBase {
                 SMBBody::QueryInfoRequest(req) => self.handle_query_info(&message.header, req).await,
                 SMBBody::SetInfoRequest(req) => self.handle_set_info(&message.header, req).await,
                 SMBBody::OplockBreakAcknowledgement(req) => self.handle_oplock_break(&message.header, req).await,
+                SMBBody::ErrorResponse(ref err_resp) => {
+                    let status = err_resp.status();
+                    return Err(SMBError::response_error(status));
+                },
                 _ => Err(SMBError::server_error("Command not implemented")),
             }
         }

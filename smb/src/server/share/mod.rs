@@ -13,6 +13,7 @@ use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::protocol::body::tree_connect::SMBShareType;
 
 pub mod file_system;
+pub mod ipc;
 
 pub type ConnectAllowed<UserName> = fn(&UserName) -> bool;
 pub type FilePerms<UserName> = fn(&UserName) -> SMBAccessMask;

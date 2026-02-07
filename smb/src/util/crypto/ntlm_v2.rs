@@ -30,8 +30,11 @@ pub fn authenticate_v2(domain: &str, account: &str, password: &str, server_chall
 
     if resp {
         let response_key_nt = ntowf_v2(password, account, domain)?;
+        // Always use the client's actual NtProofStr (first 16 bytes of nt_response)
+        // for session_base_key, since our reconstructed nt_proof may differ
+        let client_nt_proof = &nt_response[0..16];
         let session_base_key = new_hmac_from_slice(&response_key_nt)?
-            .chain_update(nt_proof).finalize().into_bytes().as_slice().into();
+            .chain_update(client_nt_proof).finalize().into_bytes().as_slice().into();
         Ok((resp, session_base_key))
     } else {
         Ok((resp, Vec::new()))

@@ -10,6 +10,7 @@ use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBToBytes};
 
 use crate::protocol::body::cancel::SMBCancelRequest;
+use crate::protocol::body::error::SMBErrorResponse;
 use crate::protocol::body::change_notify::{SMBChangeNotifyRequest, SMBChangeNotifyResponse};
 use crate::protocol::body::close::{SMBCloseRequest, SMBCloseResponse};
 use crate::protocol::body::create::{SMBCreateRequest, SMBCreateResponse};
@@ -44,7 +45,7 @@ pub mod tree_connect;
 pub mod tree_disconnect;
 pub mod empty;
 pub mod create;
-mod error;
+pub mod error;
 pub mod close;
 pub mod flush;
 pub mod read;
@@ -205,6 +206,10 @@ pub enum SMBBody {
     #[smb_discriminator(flag = 0x10000)]
     #[smb_direct(start(fixed = 0))]
     OplockBreakAcknowledgement(SMBOplockBreakAcknowledgement),
+    #[smb_discriminator(value = 0x998)]
+    #[smb_discriminator(flag = 0x10000)]
+    #[smb_direct(start(fixed = 0))]
+    ErrorResponse(SMBErrorResponse),
     #[smb_discriminator(value = 0x999)]
     #[smb_enum(start(fixed = 0), discriminator(inner(start = 0, num_type = "u8")))]
     LegacyCommand(LegacySMBBody),
