@@ -24,7 +24,7 @@ fn free_port() -> u16 {
 }
 
 /// Spawn the SMB server on the given port and return the child process.
-/// Waits briefly for the server to start listening.
+/// Polls the port until the server is accepting connections (up to 5 s).
 fn spawn_server(port: u16) -> Child {
     let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
     let child = Command::new(server_bin)
@@ -34,9 +34,15 @@ fn spawn_server(port: u16) -> Child {
         .spawn()
         .expect("Failed to spawn SMB server binary");
 
-    // Give the server time to bind
-    std::thread::sleep(Duration::from_millis(500));
-    child
+    // Wait until the server is accepting TCP connections
+    let addr = format!("127.0.0.1:{}", port);
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            return child;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    panic!("Server did not start listening on {} within 5 seconds", addr);
 }
 
 /// Run an smbclient command and return (exit_status, stdout, stderr).
@@ -66,8 +72,10 @@ fn negotiate_completes() {
     let port = free_port();
     let mut server = spawn_server(port);
 
+    let port_str = port.to_string();
     let (_success, _stdout, stderr) = run_smbclient(&[
-        &format!("//127.0.0.1:{}/share", port),
+        "//127.0.0.1/share",
+        "-p", &port_str,
         "-N",  // no password
         "-m", "SMB2",
         "-c", "exit",
@@ -95,8 +103,10 @@ fn server_does_not_crash_on_smb1_only() {
     let mut server = spawn_server(port);
 
     // Force SMB1 only — server should handle gracefully
+    let port_str = port.to_string();
     let (_success, _stdout, _stderr) = run_smbclient(&[
-        &format!("//127.0.0.1:{}/share", port),
+        "//127.0.0.1/share",
+        "-p", &port_str,
         "-N",
         "-m", "NT1",
         "-c", "exit",
@@ -129,8 +139,10 @@ fn session_setup_with_credentials() {
     let port = free_port();
     let mut server = spawn_server(port);
 
+    let port_str = port.to_string();
     let (_success, _stdout, stderr) = run_smbclient(&[
-        &format!("//127.0.0.1:{}/share", port),
+        "//127.0.0.1/share",
+        "-p", &port_str,
         "-U", "testuser%testpass",
         "-m", "SMB2",
         "-c", "exit",
@@ -155,8 +167,10 @@ fn session_setup_anonymous() {
     let port = free_port();
     let mut server = spawn_server(port);
 
+    let port_str = port.to_string();
     let (_success, _stdout, stderr) = run_smbclient(&[
-        &format!("//127.0.0.1:{}/share", port),
+        "//127.0.0.1/share",
+        "-p", &port_str,
         "-N",
         "-m", "SMB2",
         "-c", "exit",
@@ -189,8 +203,10 @@ fn tree_connect_to_share() {
     let port = free_port();
     let mut server = spawn_server(port);
 
+    let port_str = port.to_string();
     let (_success, _stdout, stderr) = run_smbclient(&[
-        &format!("//127.0.0.1:{}/share", port),
+        "//127.0.0.1/share",
+        "-p", &port_str,
         "-U", "testuser%testpass",
         "-m", "SMB2",
         "-c", "ls",
@@ -215,8 +231,10 @@ fn tree_connect_nonexistent_share() {
     let port = free_port();
     let mut server = spawn_server(port);
 
+    let port_str = port.to_string();
     let (success, _stdout, stderr) = run_smbclient(&[
-        &format!("//127.0.0.1:{}/nonexistent_share_xyz", port),
+        "//127.0.0.1/nonexistent_share_xyz",
+        "-p", &port_str,
         "-U", "testuser%testpass",
         "-m", "SMB2",
         "-c", "ls",
@@ -248,8 +266,10 @@ fn server_survives_multiple_connections() {
 
     // Make several connections in sequence
     for _ in 0..3 {
+        let port_str = port.to_string();
         let (_success, _stdout, _stderr) = run_smbclient(&[
-            &format!("//127.0.0.1:{}/share", port),
+            "//127.0.0.1/share",
+            "-p", &port_str,
             "-N",
             "-m", "SMB2",
             "-c", "exit",
