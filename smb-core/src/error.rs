@@ -183,7 +183,7 @@ impl<T: Into<Box<dyn Error + Send + Sync>>> From<T> for SMBServerError {
 
 impl Display for SMBServerError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Parse failed with error: {}", self.error)
+        write!(f, "Server operation failed with error: {}", self.error)
     }
 }
 
@@ -202,3 +202,45 @@ impl Display for SMBError {
 }
 
 impl std::error::Error for SMBError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_error_display_says_server() {
+        let err = SMBError::server_error("something broke");
+        let msg = format!("{}", err);
+        assert!(msg.contains("Server operation failed"), "ServerError Display should say 'Server operation failed', got: {}", msg);
+        assert!(msg.contains("something broke"));
+    }
+
+    #[test]
+    fn parse_error_display_says_parse() {
+        let err = SMBError::parse_error("bad bytes");
+        let msg = format!("{}", err);
+        assert!(msg.contains("Parse failed"), "ParseError Display should say 'Parse failed', got: {}", msg);
+    }
+
+    #[test]
+    fn crypto_error_display_says_crypto() {
+        let err = SMBError::crypto_error("bad key");
+        let msg = format!("{}", err);
+        assert!(msg.contains("Crypto operation failed"), "CryptoError Display should say 'Crypto operation failed', got: {}", msg);
+    }
+
+    #[test]
+    fn payload_too_small_display() {
+        let err = SMBError::payload_too_small(64usize, 32usize);
+        let msg = format!("{}", err);
+        assert!(msg.contains("64"), "should mention expected size");
+        assert!(msg.contains("32"), "should mention actual size");
+    }
+
+    #[test]
+    fn response_error_display() {
+        let err = SMBError::response_error(NTStatus::AccessDenied);
+        let msg = format!("{}", err);
+        assert!(msg.contains("AccessDenied"), "should mention the NTStatus variant");
+    }
+}

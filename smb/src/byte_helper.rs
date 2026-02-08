@@ -30,7 +30,7 @@ pub(crate) fn bytes_to_u64(bytes: &[u8]) -> u64 {
     ((bytes[4] as u64) << 32) |
     ((bytes[5] as u64) << 40) |
     ((bytes[6] as u64) << 48) |
-    ((bytes[7] as u64) << 54)
+    ((bytes[7] as u64) << 56)
 }
 
 pub(crate) fn u64_to_bytes(num: u64) -> [u8; 8] {
@@ -42,7 +42,7 @@ pub(crate) fn u64_to_bytes(num: u64) -> [u8; 8] {
         ((num >> 32) & 0xFF) as u8,
         ((num >> 40) & 0xFF) as u8,
         ((num >> 48) & 0xFF) as u8,
-        ((num >> 54) & 0xFF) as u8,
+        ((num >> 56) & 0xFF) as u8,
     ]
 }
 
