@@ -7,6 +7,11 @@ use syn::spanned::Spanned;
 use crate::{CreatorFn, SMBDeriveError};
 use crate::field_mapping::{smb_from_bytes, SMBFieldMapping};
 
+/// Code-generation backend for [`SMBFromBytes`].
+///
+/// Produces an `impl smb_core::SMBFromBytes for #name` that parses a `&[u8]`
+/// into the target struct or numeric enum by delegating to
+/// [`smb_from_bytes`](crate::field_mapping::smb_from_bytes).
 pub(crate) struct FromBytesCreator {}
 
 impl CreatorFn for FromBytesCreator {

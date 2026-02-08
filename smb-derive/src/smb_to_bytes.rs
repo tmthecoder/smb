@@ -7,6 +7,11 @@ use syn::spanned::Spanned;
 use crate::{CreatorFn, SMBDeriveError};
 use crate::field_mapping::{smb_to_bytes, SMBFieldMapping};
 
+/// Code-generation backend for [`SMBToBytes`].
+///
+/// Produces an `impl smb_core::SMBToBytes for #name` that serializes the
+/// struct or enum into a `Vec<u8>` by delegating to
+/// [`smb_to_bytes`](crate::field_mapping::smb_to_bytes).
 pub(crate) struct ToBytesCreator {}
 
 impl CreatorFn for ToBytesCreator {

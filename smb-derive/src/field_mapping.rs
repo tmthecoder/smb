@@ -12,6 +12,12 @@ use crate::attrs::{AttributeInfo, Direct, Discriminator, Repr};
 use crate::field::{SMBField, SMBFieldType};
 use crate::SMBDeriveError;
 
+/// Maps a single struct or enum variant to its parent-level attributes and
+/// ordered child fields.
+///
+/// For a plain struct there is one `SMBFieldMapping`. For a discriminated enum
+/// there is one per variant. The `mapping_type` distinguishes named structs,
+/// tuple structs, numeric enums, discriminated enums, and unit types.
 #[derive(Debug, PartialEq, Eq)]
 pub struct SMBFieldMapping<'a, T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq> {
     parent: SMBField<'a, T>,
@@ -21,6 +27,9 @@ pub struct SMBFieldMapping<'a, T: Spanned + PartialEq + Eq, U: Spanned + Partial
     variant_ident: Option<Ident>
 }
 
+/// Classifies the shape of the type being derived so that code generation can
+/// emit the correct constructor syntax (`Self { .. }` vs `Self(..)` vs
+/// `Self::Variant(..)` etc.).
 #[derive(Debug, PartialEq, Eq)]
 pub enum SMBFieldMappingType {
     NamedStruct,
@@ -83,10 +92,17 @@ impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug> SMBFieldM
     }
 }
 
+/// Attempt to extract a `#[repr(uN)]` from the given attributes.
+///
+/// Returns `Ok(Repr)` for numeric enums, `Err` for discriminated enums.
 pub(crate) fn enum_repr_type(attrs: &[Attribute]) -> darling::Result<Repr> {
     Repr::from_attributes(attrs)
 }
 
+/// Build the field mapping for a `#[repr(uN)]` numeric enum.
+///
+/// The entire enum is treated as a single `Direct` field at offset 0 with the
+/// repr type. Parsing reads the raw integer and converts via `TryFrom`.
 pub(crate) fn get_num_enum_mapping(input: &DeriveInput, parent_attrs: Vec<SMBFieldType>, repr_type: Repr) -> Result<SMBFieldMapping<DeriveInput, DeriveInput>, SMBDeriveError<DeriveInput>> {
     let identity = &repr_type.ident;
     let ty = Type::Path(TypePath {
@@ -112,6 +128,10 @@ pub(crate) fn get_num_enum_mapping(input: &DeriveInput, parent_attrs: Vec<SMBFie
     })
 }
 
+/// Build field mappings for a discriminated enum (one mapping per variant).
+///
+/// Each variant must carry `#[smb_discriminator(value = …)]` and exactly one
+/// `smb_*` field attribute describing how to parse its payload.
 pub(crate) fn get_desc_enum_mapping(info: &DataEnum) -> Result<Vec<SMBFieldMapping<Fields, Field>>, SMBDeriveError<Field>> {
     info.variants.iter().map(|variant| {
         // println!("attrs: {:?}", variant.attrs);
@@ -123,6 +143,12 @@ pub(crate) fn get_desc_enum_mapping(info: &DataEnum) -> Result<Vec<SMBFieldMappi
     }).collect()
 }
 
+/// Build the field mapping for a struct (or a single enum variant's fields).
+///
+/// Single-field structs are special-cased: if no field-level attributes are
+/// present, the field is treated as `Direct` at offset 0. Multi-field structs
+/// require each field to carry its own `smb_*` attribute; fields are sorted by
+/// `(weight, start_offset)` to ensure correct parse/serialize ordering.
 pub(crate) fn get_struct_field_mapping(struct_fields: &Fields, parent_attrs: Vec<SMBFieldType>, discriminators: Vec<u64>, variant_ident: Option<Ident>) -> Result<SMBFieldMapping<Fields, Field>, SMBDeriveError<Field>> {
     if struct_fields.len() == 1 {
         let field = struct_fields.iter().next()
@@ -228,6 +254,11 @@ pub(crate) fn get_struct_field_mapping(struct_fields: &Fields, parent_attrs: Vec
 }
 
 
+/// Generate the body of `SMBFromBytes::smb_from_bytes` for a single mapping.
+///
+/// Emits code that initializes `current_pos = 0`, processes parent attributes
+/// (tags), then parses each field in order and constructs the final
+/// `Ok((remaining, Self { … }))` return value.
 pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T, U>) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
     let recurse = vector.iter().map(SMBField::smb_from_bytes);
@@ -280,6 +311,11 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq
     }
 }
 
+/// Generate match arms for `SMBEnumFromBytes::smb_enum_from_bytes` for one
+/// variant.
+///
+/// Each discriminator value maps to a block that parses the variant's fields
+/// and returns `Ok((remaining, Self::Variant(…)))`.
 pub(crate) fn smb_enum_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T, U>) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
     let recurse = vector.iter().map(SMBField::smb_from_bytes);
@@ -304,7 +340,7 @@ pub(crate) fn smb_enum_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + Part
         SMBFieldMappingType::NamedStruct => {
             quote! {
                 #(#recurse)*
-                Ok((remaining, Self::variant_ident{
+                Ok((remaining, Self::#variant_ident{
                     #(#names,)*
                 }))
             }
@@ -330,6 +366,10 @@ pub(crate) fn smb_enum_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + Part
     }
 }
 
+/// Generate a match arm for `SMBToBytes::smb_to_bytes` for one mapping.
+///
+/// Allocates a zeroed `Vec<u8>` of the correct size, writes parent attributes
+/// (tags), then serializes each field into its wire position.
 pub(crate) fn smb_to_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T, U>) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
     let variant = mapping.variant_ident.is_some();

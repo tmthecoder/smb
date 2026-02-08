@@ -1,12 +1,12 @@
 [package]
 name = "smb_reader"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [[bin]]
 name = "spin_server_up"
-edition = "2021"
+edition = "2024"
 path = "src/main.rs"
 required-features = ["anyhow"]
 

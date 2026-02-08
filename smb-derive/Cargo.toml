@@ -15,3 +15,7 @@ darling = "0.20.1"
 quote = "1.0.32"
 proc-macro2 = "1.0.66"
 num_enum = "0.5.7"
+
+[dev-dependencies]
+smb-core = { path = "../smb-core" }
+num_enum = "0.5.7"

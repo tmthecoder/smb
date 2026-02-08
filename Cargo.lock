@@ -742,6 +742,7 @@ dependencies = [
  "num_enum",
  "proc-macro2",
  "quote",
+ "smb-core",
  "syn 2.0.98",
 ]
 

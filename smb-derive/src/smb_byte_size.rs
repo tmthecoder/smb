@@ -7,6 +7,10 @@ use syn::spanned::Spanned;
 use crate::{CreatorFn, SMBDeriveError};
 use crate::field_mapping::SMBFieldMapping;
 
+/// Code-generation backend for [`SMBByteSize`].
+///
+/// Produces an `impl smb_core::SMBByteSize for #name` that computes the
+/// on-wire byte size of the struct or enum.
 pub(crate) struct ByteSizeCreator {}
 
 impl CreatorFn for ByteSizeCreator {
