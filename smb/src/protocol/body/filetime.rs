@@ -40,7 +40,7 @@ impl FileTime {
 
     pub fn to_unix(&self) -> u64 {
         let bytes = self.as_bytes();
-        bytes_to_u64(&bytes)
+        bytes_to_u64(&bytes) - TIME_SINCE_1601_AND_EPOCH
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
