@@ -63,6 +63,7 @@ pub trait Session<C: Connection, A: AuthProvider, O: Open>: Send + Sync {
     fn provider(&self) -> &Arc<A>;
     fn encrypt_data(&self) -> bool;
     fn open_table(&self) -> &HashMap<u64, Arc<RwLock<O>>>;
+    fn open_table_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<O>>>;
     fn add_open(&mut self, open: Arc<RwLock<O>>) -> impl Future<Output = ()>;
     fn set_previous_file_id(&mut self, file_id: SMBFileId);
     fn signing_key(&self) -> &[u8];
@@ -395,6 +396,10 @@ impl<S: Server<Session = Self>> Session<S::Connection, S::AuthProvider, S::Open>
 
     fn open_table(&self) -> &HashMap<u64, Arc<RwLock<S::Open>>> {
         &self.open_table
+    }
+
+    fn open_table_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<S::Open>>> {
+        &mut self.open_table
     }
 
     async fn add_open(&mut self, open: Arc<RwLock<S::Open>>) {
