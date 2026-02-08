@@ -58,7 +58,6 @@ impl DirectInner {
                     return Err(::smb_core::error::SMBError::payload_too_small(#start as usize, input.len()));
                 }
                 let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBFromBytes::smb_from_bytes(&input[#start..])?;
-                // println!("value of item: {:?}", #name);
             }
         } else {
             quote! { let #name = current_pos; }
@@ -375,7 +374,6 @@ impl Vector {
         } else {
             self.count.smb_from_bytes(spanned, "item_count")
         };
-        // println!("Count: {}", vec_count_or_len);
         let align = self.align;
         let offset = self.offset.smb_from_bytes(spanned, "item_offset");
         let parser = if self.count == AttributeInfo::default() {
@@ -389,7 +387,6 @@ impl Vector {
         };
         let _name_str = name.to_string();
         quote_spanned! { spanned.span() =>
-            // println!("cnt/len parse for {:?}", #_name_str);
             #vec_count_or_len
             if #align > 0 && current_pos % #align != 0 {
                 current_pos += #align - (current_pos % #align);
@@ -437,14 +434,8 @@ impl Vector {
             let start_pos = current_pos;
             for entry in #raw_token.iter() {
                 let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(entry);
-                // if (#align > 0) {
-                //     println!("item with align {} initial starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
-                // }
                 current_pos = get_aligned_pos(#align, current_pos);
                 item[current_pos..(current_pos + item_bytes.len())].copy_from_slice(&item_bytes);
-                // if (#align > 0) {
-                //     println!("adding item with align {} at starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
-                // }
                 current_pos += item_bytes.len();
             }
             let byte_size = current_pos - start_pos;
@@ -543,14 +534,8 @@ impl SMBString {
             #string_to_bytes
             for entry in token_vec {
                 let item_bytes = ::smb_core::SMBToBytes::smb_to_bytes(&entry);
-                // if (#align > 0) {
-                //     println!("item with align {} initial starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
-                // }
                 // current_pos = get_aligned_pos(#align, current_pos);
                 item[current_pos..(current_pos + item_bytes.len())].copy_from_slice(&item_bytes);
-                // if (#align > 0) {
-                //     println!("adding item with align {} at starting pos {}, item bytes: {:?}", #align, current_pos, item_bytes);
-                // }
                 current_pos += item_bytes.len();
             }
         }

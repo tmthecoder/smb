@@ -20,6 +20,7 @@ use sha2::Sha256;
 
 use smb_core::{SMBFromBytes, SMBParseResult, SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
+use smb_core::logging::trace;
 
 use crate::byte_helper::u16_to_bytes;
 use crate::protocol::body::{Body, LegacySMBBody, SMBBody};
@@ -94,8 +95,7 @@ impl<S: Header + Debug, T: Body<S>> Message for SMBMessage<S, T> {
 
     fn parse(bytes: &[u8]) -> SMBParseResult<&[u8], Self> {
         let (remaining, header) = S::smb_from_bytes(bytes)?;
-        println!("header: {:?}", header);
-        println!("remaining: {:?}", remaining);
+        trace!(?header, remaining_len = remaining.len(), "parsed message header");
         let discriminator_code = (header.command_code().into()) | ((header.sender() as u64) << 16);
         let (remaining, body) = T::smb_enum_from_bytes(remaining, discriminator_code)?;
         Ok((remaining, Self { header, body }))

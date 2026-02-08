@@ -14,6 +14,7 @@ use sha2::Sha256;
 use tokio::sync::RwLock;
 
 use smb_core::error::SMBError;
+use smb_core::logging::{trace, debug, info, warn};
 use smb_core::nt_status::NTStatus;
 use smb_core::SMBResult;
 use crate::protocol::body::create::file_id::SMBFileId;
@@ -130,7 +131,7 @@ impl<S: Server> SMBSession<S> {
         }
     }
     fn generate_keys(&mut self, dialect: SMBDialect, cipher_id: EncryptionCipher) {
-        println!("in keygen");
+        debug!(?dialect, ?cipher_id, "generating session keys");
         let key_length = match cipher_id {
             EncryptionCipher::AES256GCM | AES256CCM => 32,
             _ => 16
@@ -152,14 +153,14 @@ impl<S: Server> SMBSession<S> {
             _ => self.session_key.clone().to_vec(),
         };
 
-        println!("skey: {:02x?}, signing key: {:02x?}", self.session_key, self.signing_key);
+        trace!(session_key = ?self.session_key, signing_key = ?self.signing_key, "derived signing key");
 
         let (application_key_label, application_key_context): (&str, &[u8]) = match dialect {
             SMBDialect::V3_1_1 => ("SMBAppKey", &self.preauth_integrity_hash_value),
             _ => ("SMB2APP", "SmbRpc".as_bytes())
         };
         self.application_key = generate_key(&self.session_key, application_key_label, application_key_context, key_length);
-        println!("signing: {:?}, application: {:?}", self.signing_key, self.application_key);
+        trace!(signing_key_len = self.signing_key.len(), application_key_len = self.application_key.len(), "key generation complete");
     }
     fn get_next_map_id<K: MaxVal + MinVal + One + Zero + Eq + PartialEq + AddAssign + PartialOrd + std::hash::Hash, V>(map: &HashMap<K, V>) -> K {
         let mut i = K::min_val();
@@ -175,7 +176,7 @@ impl<S: Server> SMBSession<S> {
 }
 
 fn generate_key(secure_key: &[u8], label: &str, context: &[u8], output_len: usize) -> Vec<u8> {
-    println!("key len: {:?}, label: {:02x?}, ctx: {:02x?}", secure_key.len(), label, context);
+    trace!(key_len = secure_key.len(), label, context_len = context.len(), output_len, "deriving key via KDF");
     let mac = <Hmac<Sha256>>::new_from_slice(secure_key)
         .map_err(|_| SMBError::crypto_error("Invalid Key Length")).unwrap();
     let label_bytes = [
@@ -191,7 +192,7 @@ impl<S: Server<Session=SMBSession<S>>> SMBLockedMessageHandlerBase for Arc<RwLoc
     type Inner = Arc<SMBTreeConnect<S>>;
     async fn inner(&self, message: &SMBMessageType) -> Option<Self::Inner> {
         let write = self.write().await;
-        println!("Getting tree connect for message: {:?}", message);
+        debug!(tid = message.header.tree_id, command = ?message.header.command, "looking up tree connect");
         write.tree_connect_table.get(&message.header.tree_id)
             .map(Arc::clone)
     }
@@ -206,7 +207,8 @@ impl<S: Server<Session=SMBSession<S>>> SMBLockedMessageHandlerBase for Arc<RwLoc
         if status == NTStatus::StatusSuccess {
             let session_key = ctx.session_key().to_vec();
             session_write.handle_successful_setup(session_key).await?;
-            println!("session key: {:02x?}", session_write.session_key);
+            info!(sid = session_write.session_id, "session setup complete");
+            trace!(session_key = ?session_write.session_key, "session key established");
         }
         drop(session_write);
         let response = SPNEGOTokenResponseBody::<S::AuthProvider>::new(status, msg);

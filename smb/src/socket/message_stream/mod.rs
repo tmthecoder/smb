@@ -4,13 +4,12 @@ use tokio_util::sync::ReusableBoxFuture;
 
 use smb_core::{SMBFromBytes, SMBParseResult, SMBResult};
 use smb_core::error::SMBError;
+use smb_core::logging::{trace, warn};
 
 use crate::protocol::body::{LegacySMBBody, SMBBody};
 use crate::protocol::body::error::SMBErrorResponse;
 use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
-
-// use crate::socket::message_stream::stream_async::SMBMessageStream;
 
 #[cfg(not(feature = "async"))]
 mod stream_sync;
@@ -29,11 +28,10 @@ pub trait SMBReadStream: SMBStream {
     #[cfg(feature = "async")]
     fn messages(&mut self) -> SMBMessageStream<Self> where Self: Sized;
     fn read_message_inner(buffer: &[u8]) -> SMBParseResult<&[u8], SMBMessage<SMBSyncHeader, SMBBody>> {
-        println!("in inner read");
+        trace!(buf_len = buffer.len(), "parsing message from buffer");
         if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
-            println!("found s at pos: {}", pos);
             if buffer[(pos)..].starts_with(b"SMB") {
-                println!("found smb");
+                trace!(smb_offset = pos - 1, "found SMB header");
                 let smb_start = pos - 1;
                 let result = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[smb_start..]);
                 return match result {
@@ -47,7 +45,7 @@ pub trait SMBReadStream: SMBStream {
                         // Body parse failed — try header-only parse and return an ErrorResponse
                         // so the connection handler can send a proper error back to the client
                         if let Ok((remaining, mut header)) = SMBSyncHeader::smb_from_bytes(&buffer[smb_start..]) {
-                            println!("Header-only parse succeeded for command {:?}, returning ErrorResponse", header.command);
+                            warn!(command = ?header.command, "body parse failed, returning ErrorResponse");
                             header.channel_sequence = smb_core::nt_status::NTStatus::NotSupported as u32;
                             let body = SMBBody::ErrorResponse(SMBErrorResponse::new());
                             Ok((&buffer[buffer.len()..], SMBMessage::new(header, body)))

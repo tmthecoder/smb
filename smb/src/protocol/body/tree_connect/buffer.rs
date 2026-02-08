@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
 
+use smb_core::logging::trace;
 use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBFromBytes, SMBToBytes};
 
 use crate::protocol::body::tree_connect::context::SMBTreeConnectContext;
@@ -33,7 +34,7 @@ impl SMBTreeConnectBuffer {
             SMBTreeConnectBuffer::Extension(x) => &x.path_name
         };
         let idx = path_str.rfind('\\');
-        println!("Idx: {:?}", idx);
+        trace!(?idx, "parsing share name from path");
         if let Some(idx) = idx {
             &path_str[(idx + 1)..]
         } else {

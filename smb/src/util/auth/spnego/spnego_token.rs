@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use smb_core::{SMBParseResult, SMBResult};
 use smb_core::error::SMBError;
+use smb_core::logging::trace;
 use smb_core::nt_status::NTStatus;
 
 use crate::util::auth::{AuthMessage, AuthProvider};
@@ -44,7 +45,7 @@ impl<A: AuthProvider> SPNEGOToken<A> {
         Self::parse_inner(bytes).map_err(|e| SMBError::parse_error(e.to_owned()))
     }
     fn parse_inner(bytes: &[u8]) -> IResult<&[u8], Self> {
-        println!("bytes: {:?},", bytes);
+        trace!(buf_len = bytes.len(), "parsing SPNEGO token");
         let (remaining, tag) = le_u8(bytes)?;
         match tag {
             APPLICATION_TAG => {
@@ -59,7 +60,7 @@ impl<A: AuthProvider> SPNEGOToken<A> {
                             return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)));
                         }
                         let (remaining, tag) = le_u8(remaining)?;
-                        println!("TAG: {}", tag);
+                        trace!(tag, "SPNEGO inner tag");
                         match tag {
                             NEG_TOKEN_INIT_TAG => {
                                 let (remaining, body) = SPNEGOTokenInitBody::parse(remaining)?;

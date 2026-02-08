@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use smb_core::{SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
+use smb_core::logging::{trace, debug, info, warn, error};
 use smb_core::nt_status::NTStatus;
 
 use crate::protocol::body::capabilities::Capabilities;
@@ -221,14 +222,15 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
     where Arc<RwLock<S::Session>>: SMBLockedMessageHandler {
     pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, mut connection: Arc<RwLock<SMBConnection<R, W, S>>>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
         let (read, write) = stream.streams();
-        println!("Start message handler");
+        info!("starting message handler");
         let mut messages = read.messages();
         while let Some(incoming) = messages.next().await {
-            println!("Got message: {:?}", incoming);
+            debug!(command = ?incoming.header.command, mid = incoming.header.message_id, "received message");
+            trace!(?incoming, "full incoming message");
             // If the body couldn't be parsed, the stream returns an ErrorResponse body.
             // Send it back directly without dispatching to handle_message.
             if matches!(&incoming.body, SMBBody::ErrorResponse(_)) {
-                println!("Incoming has ErrorResponse body (unparseable request), sending error reply");
+                warn!(command = ?incoming.header.command, "unparseable request body, sending error reply");
                 let status = NTStatus::try_from(incoming.header.channel_sequence)
                     .unwrap_or(NTStatus::NotSupported);
                 let mut response = Self::build_error_response(&incoming, status);
@@ -249,21 +251,23 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
                         Self::sign_message(&mut response, &key, dialect);
                     }
                 }
-                println!("Writing error response {:?}", response);
+                debug!(command = ?response.header.command, status = ?status, "sending error response");
+                trace!(?response, "full error response");
                 let sent = write.write_message(&response).await?;
                 let _ = update_channel.send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64)).await;
                 continue;
             }
             let result = connection.handle_message(&incoming).await;
-            println!("After handler: {:?}", result);
+            debug!(ok = result.is_ok(), "handler completed");
             let mut response = match result {
                 Ok(msg) => msg,
                 Err(SMBError::ResponseError(ref resp_err)) => {
                     let status = resp_err.status();
+                    debug!(?status, "handler returned response error");
                     Self::build_error_response(&incoming, status)
                 }
                 Err(e) => {
-                    println!("Non-response error: {:?}, sending NOT_SUPPORTED", e);
+                    error!(?e, "non-response error, sending NOT_SUPPORTED");
                     Self::build_error_response(&incoming, NTStatus::NotSupported)
                 }
             };
@@ -285,7 +289,8 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
                     Self::sign_message(&mut response, &key, dialect);
                 }
             }
-            println!("Writing message {:?}", response);
+            debug!(command = ?response.header.command, mid = response.header.message_id, "sending response");
+            trace!(?response, "full outgoing response");
             let sent = write.write_message(&response).await?;
             let _ = update_channel.send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64)).await;
         }
@@ -315,12 +320,11 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
         // The SMB2 message starts at offset 4 (after the 4-byte NetBIOS header)
         let smb2_offset = 4;
         let smb2_len = bytes.len() - smb2_offset;
-        println!("Signing: dialect={:?}, key={:02x?}, smb2_len={}, header_bytes={:02x?}",
-            dialect, signing_key, smb2_len, &bytes[smb2_offset..std::cmp::min(smb2_offset+64, bytes.len())]);
+        trace!(?dialect, key_len = signing_key.len(), smb2_len, "signing message");
         if let Ok(sig) = crate::util::crypto::smb2::calculate_signature(
             signing_key, dialect, &bytes, smb2_offset, smb2_len
         ) {
-            println!("Computed signature: {:02x?}", &sig[..std::cmp::min(16, sig.len())]);
+            trace!(signature = ?&sig[..std::cmp::min(16, sig.len())], "computed signature");
             let len = std::cmp::min(16, sig.len());
             message.header.signature[..len].copy_from_slice(&sig[..len]);
         }
@@ -485,11 +489,11 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=SMBConnection<R, 
     type Inner = Arc<RwLock<S::Session>>;
 
     async fn inner(&self, message: &SMBMessageType) -> Option<Arc<RwLock<S::Session>>> {
-        println!("Getting inner for message {:?}", message);
+        debug!(command = ?message.header.command, sid = message.header.session_id, "resolving inner handler");
         let read = self.read().await;
         let server = read.server.upgrade()?;
         let server_rd = server.read().await;
-        println!("Getting session");
+        trace!(sid = message.header.session_id, "looking up session");
         // TODO
         if let SMBBody::SessionSetupRequest(req) = &message.body {
             read.get_session(&server_rd, &message.header, req.flags())

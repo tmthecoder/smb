@@ -6,6 +6,8 @@ use nom::IResult;
 use nom::multi::fold_many_m_n;
 use nom::number::complete::le_u8;
 
+use smb_core::logging::trace;
+
 pub const NEG_TOKEN_INIT_TAG: u8 = 0xA0;
 pub const NEG_TOKEN_RESP_TAG: u8 = 0xA1;
 
@@ -58,7 +60,7 @@ pub fn parse_length(buffer: &[u8]) -> IResult<&[u8], usize> {
 
 pub fn parse_field_with_len(buffer: &[u8]) -> IResult<&[u8], &[u8]> {
     parse_length(buffer).and_then(|(remaining, len)| {
-        println!("len: {len}");
+        trace!(len, "parsed DER field length");
         take(len)(remaining)
     })
 }

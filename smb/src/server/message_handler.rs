@@ -1,6 +1,7 @@
 use std::future::Future;
 
 use smb_core::error::SMBError;
+use smb_core::logging::{trace, debug, warn};
 use smb_core::nt_status::NTStatus;
 use smb_core::SMBResult;
 
@@ -49,7 +50,7 @@ pub trait SMBLockedMessageHandlerBase {
 
     fn inner(&self, message: &SMBMessageType) -> impl Future<Output=Option<Self::Inner>>;
     fn handle_message_inner(&mut self, message: &SMBMessageType) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
-        println!("in inner handler for msg: {:?}", message);
+        debug!(command = ?message.header.command, mid = message.header.message_id, "dispatching to handler");
         async {
             match &message.body {
                 SMBBody::NegotiateRequest(req) => self.handle_negotiate(&message.header, req).await,
@@ -102,7 +103,7 @@ pub trait SMBLockedMessageHandlerBase {
     }
 
     fn handle_create(&mut self, header: &SMBSyncHeader, message: &SMBCreateRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
-        println!("passing msg to next handler");
+        debug!("create request, passing to next handler");
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
@@ -170,18 +171,25 @@ pub trait SMBLockedMessageHandler: SMBLockedMessageHandlerBase {
 
 impl<H: SMBLockedMessageHandlerBase + NonEndingHandler> SMBLockedMessageHandler for H where H::Inner: SMBLockedMessageHandler {
     async fn handle_message(&mut self, message: &SMBMessageType) -> SMBResult<SMBMessageType> {
-        println!("Got message in handler: {:?}", message);
+        debug!(command = ?message.header.command, mid = message.header.message_id, "handling message in chain");
         let state = self.handle_message_inner(message).await?;
 
         match state {
-            SMBHandlerState::Finished(msg) => Ok(msg),
-            SMBHandlerState::Next(Some(mut handler)) => handler
-                .handle_message(message)
-                .await,
-            SMBHandlerState::Next(None) => self.inner(message).await
-                .ok_or(SMBError::server_error("Invalid handler defined"))?
-                .handle_message(message)
-                .await,
+            SMBHandlerState::Finished(msg) => {
+                trace!("handler produced final response");
+                Ok(msg)
+            },
+            SMBHandlerState::Next(Some(mut handler)) => {
+                trace!("delegating to explicit next handler");
+                handler.handle_message(message).await
+            },
+            SMBHandlerState::Next(None) => {
+                trace!("delegating to inner handler");
+                self.inner(message).await
+                    .ok_or(SMBError::server_error("Invalid handler defined"))?
+                    .handle_message(message)
+                    .await
+            },
         }
     }
 }
