@@ -49,3 +49,40 @@ impl FileTime {
         [low_bytes, high_bytes].concat()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zero_filetime() {
+        let ft = FileTime::zero();
+        let bytes = ft.as_bytes();
+        assert_eq!(bytes, [0, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn now_is_nonzero() {
+        let ft = FileTime::now();
+        let bytes = ft.as_bytes();
+        assert_ne!(bytes, [0, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn filetime_is_8_bytes() {
+        let ft = FileTime::now();
+        assert_eq!(ft.as_bytes().len(), 8);
+    }
+
+    #[test]
+    fn unix_round_trip() {
+        let unix_ts: u64 = 1700000000;
+        let ft = FileTime::from_unix(unix_ts);
+        let back = ft.to_unix();
+        assert!(
+            (back as i64 - unix_ts as i64).abs() < 2,
+            "Unix timestamp should round-trip: got {} expected {}",
+            back, unix_ts
+        );
+    }
+}

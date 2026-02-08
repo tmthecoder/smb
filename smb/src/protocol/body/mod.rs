@@ -1,3 +1,12 @@
+//! SMB2 message body types for all command request/response pairs.
+//!
+//! Each SMB2 command (Negotiate, Session Setup, Tree Connect, Create, etc.) has
+//! a corresponding request and response body structure. The [`SMBBody`] enum
+//! dispatches parsing and serialization based on the command code from the header.
+//!
+//! See [\[MS-SMB2\] Section 2.2](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb2/5606ad47-5ee0-437a-817e-70c366052962)
+//! for the full list of message structures.
+
 use std::str;
 
 use nom::bytes::complete::{take, take_till};

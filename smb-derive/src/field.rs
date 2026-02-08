@@ -10,6 +10,12 @@ use syn::spanned::Spanned;
 use crate::attrs::{AttributeInfo, Buffer, ByteTag, Direct, Skip, SMBEnum, SMBString, StringTag, Vector};
 use crate::SMBDeriveError;
 
+/// A single field within an SMB struct or enum variant, together with its
+/// parsed attribute metadata.
+///
+/// `SMBField` pairs the syn [`Field`] (or [`DeriveInput`]) span information
+/// with the field's name, Rust type, and the ordered list of [`SMBFieldType`]
+/// annotations that control how it is serialized/deserialized.
 #[derive(Debug, PartialEq, Eq)]
 pub struct SMBField<'a, T: Spanned> {
     spanned: &'a T,
@@ -18,6 +24,15 @@ pub struct SMBField<'a, T: Spanned> {
     val_type: Vec<SMBFieldType>,
 }
 
+/// The kind of SMB wire-format annotation on a field.
+///
+/// Each variant wraps the parsed attribute struct from [`crate::attrs`] and
+/// provides a uniform interface for code generation (parsing, serialization,
+/// byte-size computation).
+///
+/// Fields are sorted by `(weight_of_enum(), find_start_val())` so that tags
+/// come first (weight 0), then fixed/skip/enum fields (weight 1), then
+/// variable-length buffer/vector/string fields (weight 2).
 #[derive(Debug, PartialEq, Eq)]
 pub enum SMBFieldType {
     Direct(Direct),
@@ -142,8 +157,11 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
     pub(crate) fn get_smb_message_size(&self, size_tokens: TokenStream) -> TokenStream {
         let tmp = SMBFieldType::Skip(Skip::new(0, 0));
         let (start_val, ty) = self.val_type.iter().fold((0, &tmp), |prev, val| {
-            if let SMBFieldType::Skip(skip) = val && skip.length + skip.start > prev.0 {
-                (skip.length + skip.start, val)
+            if let SMBFieldType::Skip(skip) = val {
+                if skip.length + skip.start > prev.0 {
+                    return (skip.length + skip.start, val);
+                }
+                prev
             } else if val.weight_of_enum() == 2 || val.find_start_val() > prev.0 {
                 (val.find_start_val(), val)
             } else {
@@ -178,8 +196,6 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
         } else {
             None
         };
-        println!("Size tokens: {:?}, offset: {:?}, len: {:?}", size_tokens.to_string(), offset, length);
-
         let (attr_start, attr_ty) = match (offset, length) {
             (Some(o), Some(l)) => {
                 if o.get_pos() > l.get_pos() {
@@ -199,8 +215,6 @@ impl<'a, T: Spanned + Debug> SMBField<'a, T> {
             Some(ty) => quote! { ::std::cmp::max(#buffer_min_pos, #attr_start + std::mem::size_of::<#ty>())},
             None => quote! { ::std::cmp::max(#attr_start, #buffer_min_pos) },
         };
-
-        println!("Size tokens: {:?}, offset: {:?}", size_tokens.to_string(), attr_start_ty.to_string());
 
         if ty.weight_of_enum() == 2 {
             quote_spanned! {self.spanned.span()=>

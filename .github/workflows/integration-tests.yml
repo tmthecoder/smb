@@ -1,0 +1,29 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run message integration tests
+        run: cargo test --test message --features server
+
+      - name: Install smbclient
+        run: sudo apt-get update && sudo apt-get install -y smbclient
+
+      - name: Run smbclient integration tests
+        run: cargo test --test smbclient --features server -- --ignored
+        continue-on-error: true
