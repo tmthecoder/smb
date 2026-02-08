@@ -251,6 +251,194 @@ fn tree_connect_nonexistent_share() {
 }
 
 // ---------------------------------------------------------------------------
+// File Read Tests
+// ---------------------------------------------------------------------------
+
+/// Verify that smbclient can read a file from the share.
+///
+/// Expected: The server handles Create, Read, QueryInfo, and Close
+/// without crashing. smbclient should be able to retrieve file contents.
+#[test]
+#[ignore]
+fn file_read_does_not_crash_server() {
+    use std::io::Write;
+
+    let port = free_port();
+
+    // Create a temp file in the server's working directory for the share to serve
+    let tmp_dir = std::env::temp_dir().join(format!("smb_test_{}", port));
+    std::fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+    let test_file = tmp_dir.join("testfile.txt");
+    {
+        let mut f = std::fs::File::create(&test_file).expect("Failed to create test file");
+        f.write_all(b"hello from smb server").expect("Failed to write test file");
+    }
+
+    // Start server with the temp dir as working directory
+    let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
+    let mut server = std::process::Command::new(server_bin)
+        .env("SMB_PORT", port.to_string())
+        .current_dir(&tmp_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn SMB server binary");
+
+    // Wait for server to start
+    let addr = format!("127.0.0.1:{}", port);
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let download_path = tmp_dir.join("downloaded.txt");
+    let port_str = port.to_string();
+    let download_str = download_path.to_str().unwrap().to_string();
+    let get_cmd = format!("get testfile.txt {}", download_str);
+    let (success, _stdout, stderr) = run_smbclient(&[
+        &format!("//127.0.0.1/test"),
+        "-p", &port_str,
+        "-U", "tejasmehta%password",
+        "-m", "SMB2",
+        "-c", &get_cmd,
+    ]);
+
+    // Server should not crash
+    std::thread::sleep(Duration::from_millis(200));
+    let status = server.try_wait().expect("Failed to check server status");
+    assert!(
+        status.is_none(),
+        "Server should still be running after file read. stderr: {}",
+        stderr
+    );
+
+    // Verify the file was downloaded and contents match
+    assert!(success, "smbclient get should succeed. stderr: {}", stderr);
+    let downloaded = std::fs::read(&download_path)
+        .expect("Downloaded file should exist");
+    assert_eq!(
+        downloaded,
+        b"hello from smb server",
+        "Downloaded file contents should match the original"
+    );
+
+    server.kill().ok();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+/// Verify that smbclient can list files (which triggers QueryInfo).
+#[test]
+#[ignore]
+fn directory_listing_does_not_crash_server() {
+    use std::io::Write;
+
+    let port = free_port();
+
+    let tmp_dir = std::env::temp_dir().join(format!("smb_test_ls_{}", port));
+    std::fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+    let test_file = tmp_dir.join("listing_test.txt");
+    {
+        let mut f = std::fs::File::create(&test_file).expect("Failed to create test file");
+        f.write_all(b"test content").expect("Failed to write test file");
+    }
+
+    let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
+    let mut server = std::process::Command::new(server_bin)
+        .env("SMB_PORT", port.to_string())
+        .current_dir(&tmp_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn SMB server binary");
+
+    let addr = format!("127.0.0.1:{}", port);
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let port_str = port.to_string();
+    let (_success, _stdout, stderr) = run_smbclient(&[
+        &format!("//127.0.0.1/test"),
+        "-p", &port_str,
+        "-U", "tejasmehta%password",
+        "-m", "SMB2",
+        "-c", "ls",
+    ]);
+
+    // Server should not crash
+    std::thread::sleep(Duration::from_millis(200));
+    let status = server.try_wait().expect("Failed to check server status");
+    assert!(
+        status.is_none(),
+        "Server should still be running after directory listing. stderr: {}",
+        stderr
+    );
+
+    server.kill().ok();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+/// Verify that reading a nonexistent file returns an error without crashing.
+#[test]
+#[ignore]
+fn read_nonexistent_file_returns_error() {
+    let port = free_port();
+
+    let tmp_dir = std::env::temp_dir().join(format!("smb_test_nofile_{}", port));
+    std::fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+
+    let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
+    let mut server = std::process::Command::new(server_bin)
+        .env("SMB_PORT", port.to_string())
+        .current_dir(&tmp_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn SMB server binary");
+
+    let addr = format!("127.0.0.1:{}", port);
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let port_str = port.to_string();
+    let (success, _stdout, stderr) = run_smbclient(&[
+        &format!("//127.0.0.1/test"),
+        "-p", &port_str,
+        "-U", "tejasmehta%password",
+        "-m", "SMB2",
+        "-c", "get nonexistent_file.txt /dev/null",
+    ]);
+
+    // Should fail (file doesn't exist)
+    assert!(
+        !success || stderr.contains("NT_STATUS_"),
+        "Reading nonexistent file should fail. stderr: {}",
+        stderr
+    );
+
+    // Server should not crash
+    std::thread::sleep(Duration::from_millis(200));
+    let status = server.try_wait().expect("Failed to check server status");
+    assert!(
+        status.is_none(),
+        "Server should still be running after failed file read. stderr: {}",
+        stderr
+    );
+
+    server.kill().ok();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+// ---------------------------------------------------------------------------
 // Echo Tests
 // ---------------------------------------------------------------------------
 
