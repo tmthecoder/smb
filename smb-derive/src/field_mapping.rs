@@ -135,11 +135,8 @@ pub(crate) fn get_num_enum_mapping(input: &DeriveInput, parent_attrs: Vec<SMBFie
 /// `smb_*` field attribute describing how to parse its payload.
 pub(crate) fn get_desc_enum_mapping(info: &DataEnum) -> Result<Vec<SMBFieldMapping<'_, Fields, Field>>, SMBDeriveError<Field>> {
     info.variants.iter().map(|variant| {
-        // println!("attrs: {:?}", variant.attrs);
         let discriminators = Discriminator::from_attributes(&variant.attrs).map(|d| d.values.iter().map(|val| val | d.flag).collect())
             .map_err(|_e| SMBDeriveError::MissingField)?;
-
-        // println!("Discs: {:?}", discriminators);
         get_struct_field_mapping(&variant.fields, vec![SMBFieldType::from_attributes(&variant.attrs).unwrap()], discriminators, Some(variant.ident.clone()))
     }).collect()
 }
@@ -270,7 +267,6 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq
         SMBFieldMappingType::NamedStruct => {
             quote! {
                 #(#recurse)*
-                // println!("Size: {}", current_pos);
                 Ok((remaining, Self {
                     #(#names,)*
                 }))
@@ -288,9 +284,7 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq
             quote! {
                 #(#recurse)*
                 let vals = #(#names)*;
-                // println!("raw {:02x?}", vals);
                 let value = Self::try_from(vals).map_err(|_e| ::smb_core::error::SMBError::parse_error("Invalid primitive value"))?;
-                // println!("parsed {:?}", value);
                 Ok((remaining, value))
             }
         },

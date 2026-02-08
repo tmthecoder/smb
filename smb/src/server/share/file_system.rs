@@ -6,6 +6,7 @@ use std::marker::PhantomData;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use smb_core::error::SMBError;
+use smb_core::logging::debug;
 use smb_core::SMBResult;
 
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
@@ -174,7 +175,7 @@ impl<UserName: Send + Sync, Handle: From<SMBFileSystemHandle> + ResourceHandle +
             resource,
             path: path.into(),
         };
-        println!("Created fs handle: {:?}", handle);
+        debug!(?handle, "created filesystem handle");
         Ok(handle.into())
     }
 

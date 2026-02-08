@@ -33,7 +33,7 @@ impl SMBTreeConnectBuffer {
             SMBTreeConnectBuffer::Extension(x) => &x.path_name
         };
         let idx = path_str.rfind('\\');
-        println!("Idx: {:?}", idx);
+        smb_core::logging::trace!(?idx, "parsing share name from path");
         if let Some(idx) = idx {
             &path_str[(idx + 1)..]
         } else {

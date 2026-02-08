@@ -6,6 +6,7 @@ use tokio::sync::RwLock;
 
 use smb_core::{SMBByteSize, SMBResult};
 use smb_core::error::SMBError;
+use smb_core::logging::{debug, trace};
 
 use crate::protocol::body::create::{SMBCreateRequest, SMBCreateResponse};
 use crate::protocol::body::create::file_id::SMBFileId;
@@ -72,9 +73,9 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
             let file_id = open.read().await.file_id();
             session.write().await.set_previous_file_id(file_id);
         }
-        println!("In tree connect create");
+        debug!("tree connect create handled");
         let header = header.create_response_header(header.channel_sequence, header.session_id, header.tree_id);
-        println!("Creat resp bs: {}", response.smb_byte_size());
+        trace!(response_size = response.smb_byte_size(), "create response built");
         Ok(SMBHandlerState::Finished(SMBMessage::new(header, response)))
     }
 }

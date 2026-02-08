@@ -5,6 +5,7 @@ use uuid::Uuid;
 use error::SMBError;
 
 pub mod error;
+pub mod logging;
 
 pub mod nt_status;
 
@@ -31,18 +32,12 @@ impl<T: SMBByteSize> SMBVecByteSize for Vec<T> {
     fn smb_byte_size_vec(&self, align: usize, start: usize) -> usize {
         let align = std::cmp::max(align, 1);
         self.iter().fold(start, |prev, x| {
-            if align > 1 {
-                // println!("Start position for item at {prev} with align {align}");
-            }
             let size = x.smb_byte_size();
             let aligned_start = if prev % align == 0 {
                 prev
             } else {
                 prev + (align - prev % align)
             };
-            if align > 1 {
-                // println!("adj Start position for item at {aligned_start} with align {align} and size {size}");
-            }
             aligned_start + size
         }) - start
     }
@@ -96,7 +91,6 @@ pub trait SMBEnumFromBytes {
 
 impl<T: SMBFromBytes> SMBVecFromBytesCnt for Vec<T> {
     fn smb_from_bytes_vec_cnt(input: &[u8], align: usize, count: usize) -> SMBParseResult<&[u8], Self> where Self: Sized {
-        // println!("attempting to parse {:?}", count);
         let mut remaining = input;
         let mut done_cnt = 0;
         let mut msg_vec = Vec::<T>::new();

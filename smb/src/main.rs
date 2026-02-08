@@ -5,6 +5,7 @@ use std::net::TcpListener;
 use tokio::net::TcpListener;
 
 use smb_core::SMBResult;
+use smb_core::logging::info;
 use smb_reader::protocol::body::tree_connect::access_mask::{SMBAccessMask, SMBDirectoryAccessMask};
 use smb_reader::server::{DefaultShare, SMBServerBuilder, StartSMBServer};
 use smb_reader::util::auth::ntlm::NTLMAuthProvider;
@@ -18,6 +19,16 @@ const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
 #[cfg(feature = "async")]
 #[tokio::main]
 async fn main() -> SMBResult<()> {
+    #[cfg(feature = "tracing")]
+    {
+        use tracing_subscriber::EnvFilter;
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| EnvFilter::new("info")),
+            )
+            .init();
+    }
     // let share = SMBFileSystemShare::<_, _, _, Box<dyn ResourceHandle>>::root("TEST".into(), file_allowed, get_file_perms);
     let port: u16 = std::env::var("SMB_PORT")
         .ok()
@@ -37,7 +48,7 @@ async fn main() -> SMBResult<()> {
         ], false))
         .listener_address(addr).await?;
     let server = builder.build()?;
-    println!("here");
+    info!(port, "SMB server starting");
     server.start().await
 }
 
@@ -50,7 +61,7 @@ fn main() -> anyhow::Result<()> {
         .add_share("test", share)
         .listener_address("127.0.0.1:50122")?;
     let mut server = builder.build()?;
-    println!("here");
+    info!("SMB server starting");
     server.start()
 }
 

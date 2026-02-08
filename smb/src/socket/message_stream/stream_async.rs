@@ -8,6 +8,7 @@ use tokio_util::sync::ReusableBoxFuture;
 
 use smb_core::{SMBParseResult, SMBResult};
 use smb_core::error::SMBError;
+use smb_core::logging::{trace, debug, warn};
 
 use crate::protocol::body::SMBBody;
 use crate::protocol::header::SMBSyncHeader;
@@ -19,10 +20,10 @@ async fn make_future<T: SMBReadStream>(mut iterator: SMBMessageIterator<'_, T>) 
         match iterator.reader.read_message(&mut iterator.buffer).await {
             Ok(msg) => break Ok(msg),
             Err(SMBError::PayloadTooSmall(x)) => {
-                println!("Buffer too small: {:?}", iterator.buffer);
+                trace!(buf_len = iterator.buffer.len(), "buffer too small, reading more data");
             }
             Err(e) => {
-                println!("Other error: {:?}, buf: {:02x?}", e, iterator.buffer);
+                warn!(?e, "message read error");
                 break Err(e);
             }
         }
@@ -33,7 +34,8 @@ async fn make_future<T: SMBReadStream>(mut iterator: SMBMessageIterator<'_, T>) 
     } else {
         Err(res.err().unwrap())
     };
-    println!("got msg: {:?}. bytes remaining: {:02x?}", msg_res, iterator.buffer);
+    debug!(ok = msg_res.is_ok(), remaining = iterator.buffer.len(), "message read complete");
+    trace!(?msg_res, "parsed message result");
     (msg_res, iterator)
 }
 
@@ -57,7 +59,7 @@ impl<Writer> SMBWriteStream for Writer where Writer: AsyncWriteExt + Unpin + Sen
 
 impl<Reader> SMBReadStream for Reader where Reader: AsyncReadExt + Unpin + Send + Sync + SMBStream {
     async fn read_message<'a>(&'a mut self, existing: &'a mut Vec<u8>) -> SMBParseResult<&'a [u8], SMBMessage<SMBSyncHeader, SMBBody>> {
-        println!("read called w/ existing buffer: {:02x?}", existing);
+        trace!(buf_len = existing.len(), "read_message called");
         if let Ok((remaining, res)) = Self::read_message_inner(existing) {
             return Ok((&existing[(existing.len() - remaining.len())..], res));
         }

@@ -10,6 +10,7 @@ use tokio_stream::StreamExt;
 use uuid::Uuid;
 
 use smb_core::error::SMBError;
+use smb_core::logging::{info, debug, warn};
 use smb_core::SMBResult;
 
 use crate::protocol::body::dialect::SMBDialect;
@@ -377,19 +378,24 @@ impl<Addrs: Send + Sync + 'static, Listener: SMBSocket<Addrs> + 'static, Auth: A
         let listener = {
             self.read().await.local_listener.clone()
         };
+        info!("SMB server accepting connections");
         while let Some(connection) = listener.lock().await.connections().next().await {
-            println!("got connection");
             let smb_connection = SMBConnection::try_from((connection, Arc::downgrade(self)))?;
             let name = smb_connection.client_name().to_string();
+            info!(client = %name, "accepted new connection");
             let socket = smb_connection.underlying_socket();
             let wrapped_connection = Arc::new(RwLock::new(smb_connection));
             {
-                self.write().await.connection_list.insert(name, Arc::downgrade(&wrapped_connection));
+                self.write().await.connection_list.insert(name.clone(), Arc::downgrade(&wrapped_connection));
             }
             let update_channel = rx.clone();
             tokio::spawn(async move {
+                debug!(client = %name, "starting message handler");
                 let mut stream = socket.lock().await;
-                let _ = SMBConnection::start_message_handler::<Auth>(&mut stream, wrapped_connection, update_channel).await;
+                match SMBConnection::start_message_handler::<Auth>(&mut stream, wrapped_connection, update_channel).await {
+                    Ok(()) => debug!("message handler completed"),
+                    Err(ref e) => warn!(?e, "message handler exited with error"),
+                }
             });
         }
 

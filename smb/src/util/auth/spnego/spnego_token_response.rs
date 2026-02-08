@@ -94,7 +94,7 @@ impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
         let mut mech_list_mic = None;
 
         while !sequence.is_empty() {
-            println!("SEQ: {:?}", sequence);
+            smb_core::logging::trace!(remaining_len = sequence.len(), "parsing SPNEGO response sequence field");
             (sequence, tag) = le_u8(sequence)?;
             match tag {
                 NEG_STATE_TAG => {

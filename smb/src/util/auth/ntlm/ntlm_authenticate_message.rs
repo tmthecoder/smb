@@ -115,7 +115,7 @@ impl NTLMAuthenticateMessageBody {
         context.work_station = Some(self.work_station.clone());
 
         context.version = Some("6.1.7200".into()); // TODO FIX
-        println!("flags: {:?}, item: {:?}", self.negotiate_flags, &self);
+        smb_core::logging::trace!(?self.negotiate_flags, "NTLM authenticate message");
         if self.negotiate_flags.contains(NTLMNegotiateFlags::ANONYMOUS) {
             return if guest_supported {
                 context.guest = Some(true);

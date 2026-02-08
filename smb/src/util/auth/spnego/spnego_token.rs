@@ -44,7 +44,7 @@ impl<A: AuthProvider> SPNEGOToken<A> {
         Self::parse_inner(bytes).map_err(|e| SMBError::parse_error(e.to_owned()))
     }
     fn parse_inner(bytes: &[u8]) -> IResult<&[u8], Self> {
-        println!("bytes: {:?},", bytes);
+        smb_core::logging::trace!(buf_len = bytes.len(), "parsing SPNEGO token");
         let (remaining, tag) = le_u8(bytes)?;
         match tag {
             APPLICATION_TAG => {
@@ -59,7 +59,7 @@ impl<A: AuthProvider> SPNEGOToken<A> {
                             return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)));
                         }
                         let (remaining, tag) = le_u8(remaining)?;
-                        println!("TAG: {}", tag);
+                        smb_core::logging::trace!(tag, "SPNEGO inner tag");
                         match tag {
                             NEG_TOKEN_INIT_TAG => {
                                 let (remaining, body) = SPNEGOTokenInitBody::parse(remaining)?;

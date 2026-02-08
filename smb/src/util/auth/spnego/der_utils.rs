@@ -58,7 +58,7 @@ pub fn parse_length(buffer: &[u8]) -> IResult<&[u8], usize> {
 
 pub fn parse_field_with_len(buffer: &[u8]) -> IResult<&[u8], &[u8]> {
     parse_length(buffer).and_then(|(remaining, len)| {
-        println!("len: {len}");
+        smb_core::logging::trace!(len, "parsed DER field length");
         take(len)(remaining)
     })
 }
