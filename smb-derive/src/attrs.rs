@@ -387,9 +387,9 @@ impl Vector {
                 let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytesCnt::smb_from_bytes_vec_cnt(&input[item_offset..], #align as usize, item_count as usize)?;
             }
         };
-        let name_str = name.to_string();
+        let _name_str = name.to_string();
         quote_spanned! { spanned.span() =>
-            // println!("cnt/len parse for {:?}", #name_str);
+            // println!("cnt/len parse for {:?}", #_name_str);
             #vec_count_or_len
             if #align > 0 && current_pos % #align != 0 {
                 current_pos += #align - (current_pos % #align);

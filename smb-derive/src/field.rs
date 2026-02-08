@@ -63,10 +63,10 @@ impl<'a, T: Spanned> SMBField<'a, T> {
         let name = &self.name;
         let field = self.spanned;
         let ty = &self.ty;
-        let name_str = name.to_string();
+        let _name_str = name.to_string();
         let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_from_bytes(name, field, ty));
         quote! {
-            // println!("parse for {:?}", #name_str);
+            // println!("parse for {:?}", #_name_str);
             #(#all_bytes)*
             // println!("end parse for {:?}", #name_str);
         }
@@ -85,7 +85,7 @@ impl<'a, T: Spanned> SMBField<'a, T> {
             false => quote! { &#name_token },
         };
         let field = self.spanned;
-        let ty = &self.ty;
+        let _ty = &self.ty;
         let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_to_bytes(&name_token_adj, &raw_token, field));
         quote! {
             #(#all_bytes)*
@@ -126,7 +126,7 @@ impl<'a, T: Spanned> SMBField<'a, T> {
     }
 }
 
-impl<'a, T: Spanned + Debug> SMBField<'a, T> {
+impl<T: Spanned + Debug> SMBField<'_, T> {
     fn error(spanned: &T) -> TokenStream {
         quote_spanned! {spanned.span()=>
             ::std::compile_error!("Error generating byte size for field")
@@ -289,11 +289,11 @@ impl PartialOrd for SMBFieldType {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
-impl<'a, T: Spanned + PartialEq + Eq> PartialOrd for SMBField<'a, T> {
+impl<T: Spanned + PartialEq + Eq> PartialOrd for SMBField<'_, T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
-impl<'a, T: Spanned + PartialEq + Eq> Ord for SMBField<'a, T> {
+impl<T: Spanned + PartialEq + Eq> Ord for SMBField<'_, T> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.val_type.cmp(&other.val_type)
     }

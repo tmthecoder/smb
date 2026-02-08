@@ -35,6 +35,7 @@ pub enum SMBFieldMappingType {
     NamedStruct,
     UnnamedStruct,
     NumEnum,
+    #[allow(dead_code)]
     DiscriminatedEnum,
     Unit,
 }
