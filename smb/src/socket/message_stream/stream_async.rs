@@ -68,7 +68,7 @@ impl<Reader> SMBReadStream for Reader where Reader: AsyncReadExt + Unpin + Send 
         Self::read_message_inner(existing)
     }
 
-    fn messages(&mut self) -> SMBMessageStream<Self> where Self: Sized {
+    fn messages(&mut self) -> SMBMessageStream<'_, Self> where Self: Sized {
         SMBMessageStream::new(self)
     }
 }

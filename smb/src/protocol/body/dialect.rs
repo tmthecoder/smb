@@ -5,6 +5,7 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 #[repr(u16)]
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd, SMBFromBytes, SMBByteSize, SMBToBytes, Default)]
+#[allow(non_camel_case_types)]
 pub enum SMBDialect {
     V2_0_2 = 0x202,
     V2_1_0 = 0x210,

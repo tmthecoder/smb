@@ -157,9 +157,12 @@ impl<T: Spanned + Debug> SMBField<'_, T> {
     pub(crate) fn get_smb_message_size(&self, size_tokens: TokenStream) -> TokenStream {
         let tmp = SMBFieldType::Skip(Skip::new(0, 0));
         let (start_val, ty) = self.val_type.iter().fold((0, &tmp), |prev, val| {
-            if let SMBFieldType::Skip(skip) = val && skip.length + skip.start > prev.0 {
-                (skip.length + skip.start, val)
-            } else if val.weight_of_enum() == 2 || val.find_start_val() > prev.0 {
+            if let SMBFieldType::Skip(skip) = val {
+                if skip.length + skip.start > prev.0 {
+                    return (skip.length + skip.start, val);
+                }
+            }
+            if val.weight_of_enum() == 2 || val.find_start_val() > prev.0 {
                 (val.find_start_val(), val)
             } else {
                 prev

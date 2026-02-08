@@ -9,7 +9,7 @@
 //! SMB2/3 messages are packed binary structures with fields at fixed byte offsets,
 //! variable-length buffers located via offset/length pairs, vectors with count or
 //! length descriptors, UTF-16LE strings, and discriminated unions. These macros
-//! generate implementations of the [`smb_core`] traits:
+//! generate implementations of the `smb_core` traits:
 //!
 //! | Derive macro | Trait implemented | Purpose |
 //! |---|---|---|
@@ -61,7 +61,6 @@
 //! }
 //! ```
 
-#![feature(let_chains)]
 extern crate proc_macro;
 
 use proc_macro::TokenStream;

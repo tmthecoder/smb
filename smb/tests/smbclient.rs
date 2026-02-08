@@ -13,7 +13,6 @@
 //! without the server binary. Use `cargo test --test smbclient --features server -- --ignored`
 //! to run them explicitly.
 
-use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -67,7 +66,7 @@ fn negotiate_completes() {
     let port = free_port();
     let mut server = spawn_server(port);
 
-    let (success, stdout, stderr) = run_smbclient(&[
+    let (_success, _stdout, stderr) = run_smbclient(&[
         &format!("//127.0.0.1:{}/share", port),
         "-N",  // no password
         "-m", "SMB2",

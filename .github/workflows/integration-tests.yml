@@ -16,10 +16,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run message integration tests
-        run: cargo test --test message --features server
+        run: cargo test --test message --features server,anyhow
 
       - name: Install smbclient
         run: sudo apt-get update && sudo apt-get install -y smbclient
 
       - name: Run smbclient integration tests
-        run: cargo test --test smbclient --features server -- --ignored
+        run: cargo test --test smbclient --features server,anyhow -- --ignored
