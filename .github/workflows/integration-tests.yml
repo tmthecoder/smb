@@ -26,4 +26,3 @@ jobs:
 
       - name: Run smbclient integration tests
         run: cargo test --test smbclient --features server -- --ignored
-        continue-on-error: true
