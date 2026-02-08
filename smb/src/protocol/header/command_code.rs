@@ -115,3 +115,32 @@ impl Into<u64> for LegacySMBCommandCode {
         self as u8 as u64
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// MS-SMB2 2.2.1: All command codes should have the correct numeric values.
+    #[test]
+    fn command_codes_match_spec() {
+        assert_eq!(SMBCommandCode::Negotiate as u16, 0x0000);
+        assert_eq!(SMBCommandCode::SessionSetup as u16, 0x0001);
+        assert_eq!(SMBCommandCode::LogOff as u16, 0x0002);
+        assert_eq!(SMBCommandCode::TreeConnect as u16, 0x0003);
+        assert_eq!(SMBCommandCode::TreeDisconnect as u16, 0x0004);
+        assert_eq!(SMBCommandCode::Create as u16, 0x0005);
+        assert_eq!(SMBCommandCode::Close as u16, 0x0006);
+        assert_eq!(SMBCommandCode::Flush as u16, 0x0007);
+        assert_eq!(SMBCommandCode::Read as u16, 0x0008);
+        assert_eq!(SMBCommandCode::Write as u16, 0x0009);
+        assert_eq!(SMBCommandCode::Lock as u16, 0x000A);
+        assert_eq!(SMBCommandCode::IOCTL as u16, 0x000B);
+        assert_eq!(SMBCommandCode::Cancel as u16, 0x000C);
+        assert_eq!(SMBCommandCode::Echo as u16, 0x000D);
+        assert_eq!(SMBCommandCode::QueryDirectory as u16, 0x000E);
+        assert_eq!(SMBCommandCode::ChangeNotify as u16, 0x000F);
+        assert_eq!(SMBCommandCode::QueryInfo as u16, 0x0010);
+        assert_eq!(SMBCommandCode::SetInfo as u16, 0x0011);
+        assert_eq!(SMBCommandCode::OplockBreak as u16, 0x0012);
+    }
+}

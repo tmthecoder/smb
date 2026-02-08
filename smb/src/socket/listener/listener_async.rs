@@ -92,7 +92,7 @@ impl<Addrs: Send + Sync, Socket: SMBSocket<Addrs>> SMBListener<Addrs, Socket> {
 }
 
 impl<Addrs: Send + Sync, Socket: SMBSocket<Addrs>> SMBListener<Addrs, Socket> {
-    pub fn connections(&self) -> SMBConnectionStream<Addrs, Socket> {
+    pub fn connections(&self) -> SMBConnectionStream<'_, Addrs, Socket> {
         SMBConnectionStream::new(self)
     }
 }

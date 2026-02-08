@@ -39,3 +39,61 @@ impl Default for LegacySMBFlags {
 impl_smb_byte_size_for_bitflag! { SMBFlags LegacySMBFlags }
 impl_smb_from_bytes_for_bitflag! { SMBFlags LegacySMBFlags }
 impl_smb_to_bytes_for_bitflag! { SMBFlags LegacySMBFlags }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use smb_core::{SMBFromBytes, SMBToBytes};
+
+    /// MS-SMB2 2.2.1: SMB2_FLAGS_SERVER_TO_REDIR = 0x00000001
+    #[test]
+    fn server_to_redir_value() {
+        assert_eq!(SMBFlags::SERVER_TO_REDIR.bits(), 0x00000001);
+    }
+
+    /// MS-SMB2 2.2.1: SMB2_FLAGS_ASYNC_COMMAND = 0x00000002
+    #[test]
+    fn async_command_value() {
+        assert_eq!(SMBFlags::ASYNC_COMMAND.bits(), 0x00000002);
+    }
+
+    /// MS-SMB2 2.2.1: SMB2_FLAGS_RELATED_OPERATIONS = 0x00000004
+    #[test]
+    fn related_operations_value() {
+        assert_eq!(SMBFlags::RELATED_OPERATIONS.bits(), 0x00000004);
+    }
+
+    /// MS-SMB2 2.2.1: SMB2_FLAGS_SIGNED = 0x00000008
+    #[test]
+    fn signed_value() {
+        assert_eq!(SMBFlags::SIGNED.bits(), 0x00000008);
+    }
+
+    /// MS-SMB2 2.2.1: SMB2_FLAGS_DFS_OPERATIONS = 0x10000000
+    #[test]
+    fn dfs_operations_value() {
+        assert_eq!(SMBFlags::DFS_OPERATIONS.bits(), 0x10000000);
+    }
+
+    /// MS-SMB2 2.2.1: SMB2_FLAGS_REPLAY_OPERATION = 0x20000000
+    #[test]
+    fn replay_operation_value() {
+        assert_eq!(SMBFlags::REPLAY_OPERATION.bits(), 0x20000000);
+    }
+
+    #[test]
+    fn flags_serialization_is_4_bytes_le() {
+        let flags = SMBFlags::SERVER_TO_REDIR | SMBFlags::SIGNED;
+        let bytes = flags.smb_to_bytes();
+        assert_eq!(bytes.len(), 4);
+        assert_eq!(bytes, [0x09, 0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn flags_round_trip() {
+        let flags = SMBFlags::SERVER_TO_REDIR | SMBFlags::ASYNC_COMMAND | SMBFlags::DFS_OPERATIONS;
+        let bytes = flags.smb_to_bytes();
+        let (_, parsed) = SMBFlags::smb_from_bytes(&bytes).unwrap();
+        assert_eq!(parsed, flags);
+    }
+}

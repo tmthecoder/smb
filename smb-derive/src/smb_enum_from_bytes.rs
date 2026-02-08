@@ -7,6 +7,10 @@ use syn::spanned::Spanned;
 use crate::{CreatorFn, SMBDeriveError};
 use crate::field_mapping::{smb_enum_from_bytes, SMBFieldMapping};
 
+/// Code-generation backend for [`SMBEnumFromBytes`].
+///
+/// Produces an `impl smb_core::SMBEnumFromBytes for #name` that dispatches
+/// on a `u64` discriminator value to parse the correct enum variant.
 pub(crate) struct EnumFromBytesCreator {}
 
 impl CreatorFn for EnumFromBytesCreator {
@@ -22,7 +26,6 @@ fn enum_from_bytes_parser_impl<T: Spanned + PartialEq + Eq, U: Spanned + Partial
         impl ::smb_core::SMBEnumFromBytes for #name {
             #[allow(unused_variables, unused_assignments, clippy::unnecessary_cast)]
             fn smb_enum_from_bytes(input: &[u8], discriminator: u64) -> ::smb_core::SMBParseResult<&[u8], Self, ::smb_core::error::SMBError> {
-                println!("disc: {:?}, input: {:02x?}", discriminator, input);
                 match discriminator {
                     #(#parser)*
                     _ => Err(::smb_core::error::SMBError::parse_error("Invalid discriminator"))

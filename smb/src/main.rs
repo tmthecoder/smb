@@ -19,6 +19,11 @@ const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
 #[tokio::main]
 async fn main() -> SMBResult<()> {
     // let share = SMBFileSystemShare::<_, _, _, Box<dyn ResourceHandle>>::root("TEST".into(), file_allowed, get_file_perms);
+    let port: u16 = std::env::var("SMB_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(50122);
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let builder = SMBServerBuilder::<_, TcpListener, NTLMAuthProvider, DefaultShare<NTLMAuthProvider>, _>::default()
         .anonymous_access(true)
         .unencrypted_access(true)
@@ -30,7 +35,7 @@ async fn main() -> SMBResult<()> {
             User::new("tejasmehta", "password"),
             User::new("tejas2", "password"),
         ], false))
-        .listener_address("127.0.0.1:50122").await?;
+        .listener_address(addr).await?;
     let server = builder.build()?;
     println!("here");
     server.start().await

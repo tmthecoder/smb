@@ -78,7 +78,7 @@ impl SMBVecFromBytesCnt for String {
 
 impl SMBVecByteSize for String {
     fn smb_byte_size_vec(&self, align: usize, _: usize) -> usize {
-        self.as_bytes().len() * align
+        self.len() * align
     }
 }
 

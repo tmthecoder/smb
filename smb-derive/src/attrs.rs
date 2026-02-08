@@ -8,6 +8,8 @@ use syn::{Attribute, DeriveInput, Expr, Lit, Meta, Path, Token, Type, TypePath};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 
+/// Construct a [`syn::Type`] from a primitive type name string (e.g. `"u16"`,
+/// `"usize"`), using the span of `spanned` for error reporting.
 fn get_type<T: Spanned>(underlying: &str, spanned: &T) -> Type {
     Type::Path(TypePath {
         qself: None,
@@ -15,6 +17,13 @@ fn get_type<T: Spanned>(underlying: &str, spanned: &T) -> Type {
     })
 }
 
+/// Describes a value that is read from the wire at a fixed byte offset
+/// (`start`) as a specific numeric type (`num_type`), then optionally adjusted
+/// by subtracting `subtract` (commonly the 64-byte SMB2 header size) and
+/// clamped to a minimum of `min_val`.
+///
+/// This is the `inner(start = N, num_type = "u16", subtract = M, min_val = V)`
+/// variant of [`AttributeInfo`].
 #[derive(Debug, PartialEq, Eq, FromMeta)]
 pub struct DirectInner {
     pub start: usize,
@@ -35,6 +44,9 @@ impl DirectInner {
         }
     }
 
+    /// Generate a token stream that reads a numeric value from `input[start..]`,
+    /// converts it to the configured type, and subtracts the `subtract` offset.
+    /// When `num_type == "direct"`, the value is taken from `current_pos` instead.
     fn smb_from_bytes<T: Spanned>(&self, name: &str, spanned: &T) -> TokenStream {
         let start = self.start;
         let subtract = self.subtract;
@@ -57,6 +69,9 @@ impl DirectInner {
         }
     }
 
+    /// Generate a token stream that serializes a value back into the output
+    /// buffer at `start`, adding back the `subtract` offset and clamping to
+    /// `min_val`.
     fn smb_to_bytes<T: Spanned>(&self, name: &str, spanned: &T, name_val: Option<TokenStream>) -> TokenStream {
         let start = self.start;
         let subtract = self.subtract;
@@ -100,6 +115,17 @@ impl DirectInner {
     }
 }
 
+/// Describes how to locate a byte offset, length, or count value for an SMB
+/// field. This is the central "offset specifier" type used by all field
+/// attributes.
+///
+/// # Variants
+///
+/// - **`Fixed(N)`** — compile-time constant offset.
+/// - **`Inner(DirectInner)`** — read from the wire at a given position.
+/// - **`CurrentPos`** — use the current parse cursor (`current_pos`).
+/// - **`NullTerminated(type_name)`** — scan forward for a null terminator of
+///   the given numeric width (e.g. `"u8"` or `"u16"`).
 #[derive(Debug, Default, PartialEq, Eq)]
 pub enum AttributeInfo {
     Fixed(usize),
@@ -210,6 +236,14 @@ impl From<isize> for AttributeInfo {
     }
 }
 
+/// `#[smb_direct(start(…))]` — a fixed-size field at a known byte offset.
+///
+/// Used for primitive types (`u8`, `u16`, `u32`, `u64`, `u128`), fixed-size
+/// arrays (`[u8; N]`), and any type implementing `SMBFromBytes` / `SMBToBytes`.
+///
+/// The `start` specifier tells the macro where in the input slice the field
+/// begins. An optional `order` controls serialization ordering when multiple
+/// fields share the same logical position.
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, Default, PartialEq, Eq)]
 #[darling(attributes(smb_direct))]
 pub struct Direct {
@@ -245,6 +279,14 @@ impl Direct {
     pub(crate) fn attr_byte_size(&self) -> usize { 0 }
 }
 
+/// `#[smb_buffer(offset(…), length(…))]` — a variable-length byte buffer.
+///
+/// Maps to `Vec<u8>`. The `offset` specifier locates the buffer start and the
+/// `length` specifier gives the byte count. Both are typically `inner(…)`
+/// references that read offset/length values from the wire.
+///
+/// This corresponds to the common SMB2 pattern of
+/// `BufferOffset (2 bytes) + BufferLength (2 bytes)` descriptor pairs.
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, PartialEq, Eq)]
 #[darling(attributes(smb_buffer))]
 pub struct Buffer {
@@ -293,6 +335,15 @@ impl Buffer {
     pub(crate) fn attr_byte_size(&self) -> usize { 0 }
 }
 
+/// `#[smb_vector(count(…) | length(…), offset(…), align = N)]` — a vector of
+/// typed elements.
+///
+/// Maps to `Vec<T>` where `T: SMBFromBytes`. Exactly one of `count` (element
+/// count) or `length` (total byte length) must be specified. An optional
+/// `offset` locates the start of the vector data, and `align` specifies
+/// per-element alignment padding (e.g. 8 for 8-byte aligned create contexts).
+///
+/// Validation ensures that exactly one of `count`/`length` is provided.
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, PartialEq, Eq)]
 #[darling(attributes(smb_vector))]
 #[darling(and_then = "Vector::validate_attrs")]
@@ -336,9 +387,9 @@ impl Vector {
                 let (remaining, #name): (&[u8], #ty) = ::smb_core::SMBVecFromBytesCnt::smb_from_bytes_vec_cnt(&input[item_offset..], #align as usize, item_count as usize)?;
             }
         };
-        let name_str = name.to_string();
+        let _name_str = name.to_string();
         quote_spanned! { spanned.span() =>
-            // println!("cnt/len parse for {:?}", #name_str);
+            // println!("cnt/len parse for {:?}", #_name_str);
             #vec_count_or_len
             if #align > 0 && current_pos % #align != 0 {
                 current_pos += #align - (current_pos % #align);
@@ -376,7 +427,7 @@ impl Vector {
             #count_info
             let get_aligned_pos = |align: usize, current_pos: usize| {
                 if align > 0 && current_pos % align != 0 {
-                    current_pos + (8 - current_pos % align)
+                    current_pos + (align - current_pos % align)
                 } else {
                     current_pos
                 }
@@ -404,6 +455,16 @@ impl Vector {
     pub(crate) fn attr_byte_size(&self) -> usize { 0 }
 }
 
+/// `#[smb_string(length(…), underlying = "u16", …)]` — a UTF-8 or UTF-16LE
+/// string field.
+///
+/// Maps to `String`. The `underlying` parameter specifies the character
+/// encoding width: `"u8"` for UTF-8, `"u16"` for UTF-16LE (the SMB2 default).
+/// The `length` specifier gives the byte length of the encoded string on the
+/// wire. An optional `start`/offset locates the string data.
+///
+/// For UTF-16LE strings, the byte length is divided by 2 to get the element
+/// count before parsing.
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, Eq, PartialEq)]
 #[darling(attributes(smb_string))]
 #[darling(and_then = "SMBString::match_attr_info")]
@@ -463,21 +524,19 @@ impl SMBString {
     }
 
     pub(crate) fn smb_to_bytes<T: Spanned>(&self, spanned: &T, raw_token: &TokenStream) -> TokenStream {
-        let count_info = self.length.smb_to_bytes(spanned, "item_count", Some(quote! {
-          #raw_token.len()
-        }));
-        let offset_info = self.start.smb_to_bytes(spanned, "item_offset", None);
-
-        // TODO make this work to convert back to u8 & u16 vecs
-        let string_to_bytes = match self.underlying.as_str() {
-            "u8" => quote! {
-                let token_vec = #raw_token.as_bytes().to_vec();
-            },
-            "u16" => quote! {
-                let token_vec = #raw_token.encode_utf16();
-            },
-            _ => quote! {}
+        let (count_expr, string_to_bytes) = match self.underlying.as_str() {
+            "u8" => (
+                quote! { #raw_token.len() },
+                quote! { let token_vec = #raw_token.as_bytes().to_vec(); },
+            ),
+            "u16" => (
+                quote! { #raw_token.encode_utf16().count() * 2 },
+                quote! { let token_vec: Vec<u16> = #raw_token.encode_utf16().collect(); },
+            ),
+            _ => (quote! { 0 }, quote! {}),
         };
+        let count_info = self.length.smb_to_bytes(spanned, "item_count", Some(count_expr));
+        let offset_info = self.start.smb_to_bytes(spanned, "item_offset", None);
         quote_spanned! { spanned.span()=>
             #count_info
             #offset_info
@@ -500,6 +559,12 @@ impl SMBString {
     pub(crate) fn attr_byte_size(&self) -> usize { 0 }
 }
 
+/// `#[smb_discriminator(value = 0x…)]` — marks a discriminated enum variant
+/// with one or more discriminator values.
+///
+/// Used on variants of enums deriving [`SMBEnumFromBytes`]. Multiple `value`
+/// entries are OR'd with the optional `flag` to produce the final set of
+/// discriminator values that select this variant.
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, Eq, PartialEq)]
 #[darling(attributes(smb_discriminator))]
 pub struct Discriminator {
@@ -509,6 +574,11 @@ pub struct Discriminator {
     pub flag: u64,
 }
 
+/// Bitwise/shift modifiers applied to a discriminator value before matching.
+///
+/// Used in `#[smb_enum(… modifier(and = 0x10), modifier(right_shift = 4))]`
+/// to extract sub-fields from a packed discriminator (e.g. extracting the
+/// access mask type from a combined flags field).
 #[derive(Debug, Default, PartialEq, Eq, FromMeta)]
 pub enum SMBAttributeModifier {
     #[default] None,
@@ -538,6 +608,15 @@ impl SMBAttributeModifier {
     }
 }
 
+/// `#[smb_enum(discriminator(…), start(…))]` — a nested discriminated enum
+/// field.
+///
+/// The `discriminator` specifier tells the macro where to read the
+/// discriminator value from the wire, and `start` tells it where the enum
+/// payload begins. Optional `modifier` entries apply bitwise operations to the
+/// discriminator before dispatch.
+///
+/// The field type must implement `SMBEnumFromBytes`.
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, Eq, PartialEq)]
 #[darling(attributes(smb_enum))]
 pub struct SMBEnum {
@@ -570,7 +649,6 @@ impl SMBEnum {
         let modifier_info = quote_spanned! {spanned.span()=>
             #(#all_modifier_ops)*
         };
-        println!("modifier_info: {:?}", modifier_info.to_string());
         quote! {
             #start_info
             #discriminator_info
@@ -601,6 +679,14 @@ impl SMBEnum {
     pub(crate) fn attr_byte_size(&self) -> usize { 0 }
 }
 
+/// `#[smb_byte_tag(value = 0xNN)]` — a single-byte sentinel/tag.
+///
+/// Applied at the struct level. During parsing, the macro scans forward from
+/// `current_pos` until it finds a byte matching `value`. During serialization,
+/// the byte is written at `current_pos`.
+///
+/// Commonly used for the SMB2 StructureSize field (e.g. `value = 64` for the
+/// header, `value = 25` for Session Setup Request).
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, Default, Eq, PartialEq)]
 #[darling(attributes(smb_byte_tag))]
 pub struct ByteTag {
@@ -613,8 +699,11 @@ impl ByteTag {
     pub(crate) fn smb_from_bytes<T: Spanned>(&self, spanned: &T) -> TokenStream {
         let start_byte = self.value;
         quote_spanned! {spanned.span()=>
-            while input[current_pos] != #start_byte {
+            while current_pos < input.len() && input[current_pos] != #start_byte {
                 current_pos += 1;
+            }
+            if current_pos >= input.len() {
+                return Err(::smb_core::error::SMBError::parse_error("byte tag not found in input"));
             }
             let remaining = &input[current_pos..];
         }
@@ -630,6 +719,14 @@ impl ByteTag {
     pub(crate) fn attr_byte_size(&self) -> usize { 1 }
 }
 
+/// `#[smb_string_tag(value = "SMB")]` — a multi-byte string sentinel/tag.
+///
+/// Applied at the struct level. During parsing, scans forward for the first
+/// occurrence of the byte sequence. During serialization, writes the string
+/// bytes at `current_pos`.
+///
+/// Used for the `"SMB"` magic bytes in the SMB2 header (bytes 1-3 after the
+/// `0xFE` protocol byte).
 #[derive(FromDeriveInput, FromField, FromAttributes, Default, Debug, Eq, PartialEq)]
 #[darling(attributes(smb_string_tag))]
 pub struct StringTag {
@@ -645,13 +742,14 @@ impl StringTag {
              let mut tagged = false;
              let mut next_pos = current_pos;
              while let Some(pos) = input[current_pos..].iter().position(|x| *x == #start_val.as_bytes()[0]) {
-                if input[(pos)..].starts_with(#start_val.as_bytes()) {
-                    current_pos = pos;
+                let abs_pos = current_pos + pos;
+                if input[abs_pos..].starts_with(#start_val.as_bytes()) {
+                    current_pos = abs_pos;
                     tagged = true;
-                    next_pos = pos;
+                    next_pos = abs_pos;
                     break;
                 }
-                current_pos += 1;
+                current_pos = abs_pos + 1;
             }
             if (!tagged) {
                 return Err(::smb_core::error::SMBError::parse_error("struct did not have the valid starting tag"));
@@ -671,11 +769,21 @@ impl StringTag {
     pub(crate) fn attr_byte_size(&self) -> usize { self.value.len() }
 }
 
+/// Extracts the `#[repr(uN)]` type from an enum's attributes.
+///
+/// Used to distinguish numeric enums (which have a `repr`) from discriminated
+/// enums (which do not).
 #[derive(Debug)]
 pub struct Repr {
     pub ident: Ident,
 }
 
+/// `#[smb_skip(start = N, length = M)]` — reserved/padding bytes.
+///
+/// Advances the parse cursor past `length` bytes starting at offset `start`.
+/// The field type should be `PhantomData<…>`. An optional `value` provides
+/// fixed bytes to write during serialization (e.g. `[0xFF, 0xFE, 0, 0]` for
+/// the SMB2 header Reserved field).
 #[derive(Debug, FromDeriveInput, FromAttributes, FromField, PartialEq, Eq)]
 #[darling(attributes(smb_skip))]
 pub struct Skip {
