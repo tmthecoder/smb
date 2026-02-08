@@ -25,6 +25,7 @@ async fn main() -> SMBResult<()> {
         .require_message_signing(false)
         .encrypt_data(false)
         .add_fs_share("test".into(), "".into(), file_allowed, get_file_perms)
+        .add_ipc_share()
         .auth_provider(NTLMAuthProvider::new(vec![
             User::new("tejasmehta", "password"),
             User::new("tejas2", "password"),

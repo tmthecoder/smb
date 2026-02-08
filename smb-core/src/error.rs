@@ -127,6 +127,12 @@ pub struct SMBResponseError {
     status: NTStatus,
 }
 
+impl SMBResponseError {
+    pub fn status(&self) -> NTStatus {
+        self.status
+    }
+}
+
 impl<T: Into<NTStatus>> From<T> for SMBResponseError {
     fn from(value: T) -> Self {
         Self {
