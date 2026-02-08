@@ -1,5 +1,4 @@
-use std::fmt::{Debug, Formatter, Pointer};
-use std::future::Future;
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use uuid::Uuid;
@@ -28,6 +27,7 @@ pub trait Open: Send + Sync {
     fn file_attributes(&self) -> SMBFileAttributes;
     fn file_id(&self) -> SMBFileId;
     fn file_metadata(&self) -> SMBResult<SMBFileMetadata>;
+    fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>>;
 }
 
 pub struct SMBOpen<S: Server> {
@@ -143,7 +143,11 @@ impl<S: Server> Open for SMBOpen<S> {
     }
 
     fn file_metadata(&self) -> SMBResult<SMBFileMetadata> {
-        return self.underlying.metadata()
+        self.underlying.metadata()
+    }
+
+    fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>> {
+        self.underlying.read_data(offset, length)
     }
 }
 // TODO: From MS-FSCC section 2.6
@@ -210,8 +214,8 @@ impl<S: Server> Debug for SMBOpen<S> where S: Debug, S::Session: Debug, S::Handl
 impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBOpen<S>> {
     type Inner = ();
 
-    async fn inner(&self, message: &SMBMessageType) -> Option<Self::Inner> {
-        todo!()
+    async fn inner(&self, _message: &SMBMessageType) -> Option<Self::Inner> {
+        None
     }
 }
 

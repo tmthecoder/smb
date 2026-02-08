@@ -2,6 +2,7 @@ use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::fs;
 use std::fs::{File, OpenOptions, ReadDir};
+use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -85,6 +86,21 @@ impl ResourceHandle for SMBFileSystemHandle {
             allocated_size: metadata.len(),
             actual_size: metadata.len(),
         })
+    }
+
+    fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>> {
+        match &mut self.resource {
+            SMBFileSystemResourceHandle::File(file) => {
+                file.seek(SeekFrom::Start(offset)).map_err(SMBError::io_error)?;
+                let mut buf = vec![0u8; length as usize];
+                let bytes_read = file.read(&mut buf).map_err(SMBError::io_error)?;
+                buf.truncate(bytes_read);
+                Ok(buf)
+            }
+            SMBFileSystemResourceHandle::Directory(_) => {
+                Err(SMBError::response_error(smb_core::nt_status::NTStatus::InvalidDeviceRequest))
+            }
+        }
     }
 }
 

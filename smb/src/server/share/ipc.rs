@@ -44,6 +44,10 @@ impl ResourceHandle for SMBIPCHandle {
             actual_size: 0,
         })
     }
+
+    fn read_data(&mut self, _offset: u64, _length: u32) -> SMBResult<Vec<u8>> {
+        Err(SMBError::response_error(smb_core::nt_status::NTStatus::InvalidDeviceRequest))
+    }
 }
 
 impl From<SMBIPCHandle> for Box<dyn ResourceHandle> {
