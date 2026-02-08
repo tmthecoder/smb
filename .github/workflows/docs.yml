@@ -1,13 +1,7 @@
 name: Documentation
 
 on:
-  push:
-    branches: [main, "feat/**"]
-  pull_request:
-    branches: [main]
-
-env:
-  CARGO_TERM_COLOR: always
+  push
 
 jobs:
   doc:
