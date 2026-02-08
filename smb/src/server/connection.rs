@@ -229,10 +229,8 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
             // Send it back directly without dispatching to handle_message.
             if matches!(&incoming.body, SMBBody::ErrorResponse(_)) {
                 println!("Incoming has ErrorResponse body (unparseable request), sending error reply");
-                let status = match &incoming.body {
-                    SMBBody::ErrorResponse(e) => e.status(),
-                    _ => NTStatus::NotSupported,
-                };
+                let status = NTStatus::try_from(incoming.header.channel_sequence)
+                    .unwrap_or(NTStatus::NotSupported);
                 let mut response = Self::build_error_response(&incoming, status);
                 if response.header.session_id != 0 {
                     let conn_rd = connection.read().await;
@@ -305,7 +303,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
         );
         header.channel_sequence = status as u32;
         // SMB2 ERROR Response body: StructureSize(2) + ErrorContextCount(1) + Reserved(1) + ByteCount(4) + ErrorData(1 padding)
-        let error_body = SMBBody::ErrorResponse(SMBErrorResponse::new(status));
+        let error_body = SMBBody::ErrorResponse(SMBErrorResponse::new());
         SMBMessage::new(header, error_body)
     }
 

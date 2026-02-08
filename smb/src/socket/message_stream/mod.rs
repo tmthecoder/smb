@@ -4,7 +4,6 @@ use tokio_util::sync::ReusableBoxFuture;
 
 use smb_core::{SMBFromBytes, SMBParseResult, SMBResult};
 use smb_core::error::SMBError;
-use smb_core::nt_status::NTStatus;
 
 use crate::protocol::body::{LegacySMBBody, SMBBody};
 use crate::protocol::body::error::SMBErrorResponse;
@@ -47,9 +46,10 @@ pub trait SMBReadStream: SMBStream {
                         }
                         // Body parse failed — try header-only parse and return an ErrorResponse
                         // so the connection handler can send a proper error back to the client
-                        if let Ok((remaining, header)) = SMBSyncHeader::smb_from_bytes(&buffer[smb_start..]) {
+                        if let Ok((remaining, mut header)) = SMBSyncHeader::smb_from_bytes(&buffer[smb_start..]) {
                             println!("Header-only parse succeeded for command {:?}, returning ErrorResponse", header.command);
-                            let body = SMBBody::ErrorResponse(SMBErrorResponse::new(NTStatus::NotSupported));
+                            header.channel_sequence = smb_core::nt_status::NTStatus::NotSupported as u32;
+                            let body = SMBBody::ErrorResponse(SMBErrorResponse::new());
                             Ok((&buffer[buffer.len()..], SMBMessage::new(header, body)))
                         } else {
                             Err(SMBError::parse_error("Failed to parse header"))
