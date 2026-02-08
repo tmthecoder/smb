@@ -166,8 +166,8 @@ pub(crate) fn get_struct_field_mapping(struct_fields: &Fields, parent_attrs: Vec
         };
     }
     let mut mapped_fields: Vec<SMBField<Field>> = match struct_fields {
-        Fields::Named(ref fields) => SMBField::from_iter(fields.named.iter())?,
-        Fields::Unnamed(ref fields) => SMBField::from_iter(fields.unnamed.iter())?,
+        Fields::Named(fields) => SMBField::from_iter(fields.named.iter())?,
+        Fields::Unnamed(fields) => SMBField::from_iter(fields.unnamed.iter())?,
         Fields::Unit => vec![],
     };
 

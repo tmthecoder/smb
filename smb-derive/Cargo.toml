@@ -4,7 +4,7 @@ version = "0.0.1"
 authors = ["Tejas Mehta <tmthecoder@gmail.com>"]
 description = "A `cargo generate` template for quick-starting a procedural macro crate"
 keywords = ["template", "proc_macro", "procmacro"]
-edition = "2021"
+edition = "2024"
 
 [lib]
 proc-macro = true
