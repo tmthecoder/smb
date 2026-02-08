@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
+use smb_core::logging::trace;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::protocol::body::create::context_helper::{create_ctx_smb_byte_size, create_ctx_smb_from_bytes, create_ctx_smb_to_bytes, CreateContextWrapper, impl_tag_for_ctx};
@@ -82,9 +83,9 @@ impl SMBByteSize for CreateRequestContext {
 
 impl SMBFromBytes for CreateRequestContext {
     fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
-        smb_core::logging::trace!("parsing create request context wrapper");
+        trace!("parsing create request context wrapper");
         let (remaining, wrapper) = CreateContextWrapper::smb_from_bytes(input)?;
-        smb_core::logging::trace!(?wrapper, "parsed create request context wrapper");
+        trace!(?wrapper, "parsed create request context wrapper");
 
         let context = match wrapper.name.as_slice() {
             EA_BUFFER_TAG => create_ctx_smb_from_bytes!(

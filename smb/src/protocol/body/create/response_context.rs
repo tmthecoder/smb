@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
+use smb_core::logging::trace;
 use smb_core::nt_status::NTStatus;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
@@ -49,10 +50,10 @@ impl SMBByteSize for CreateResponseContext {
 
 impl SMBFromBytes for CreateResponseContext {
     fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
-        smb_core::logging::trace!("parsing create response context wrapper");
+        trace!("parsing create response context wrapper");
         let (remaining, wrapper) = CreateContextWrapper::smb_from_bytes(input)?;
 
-        smb_core::logging::trace!(?wrapper, "parsed create response context wrapper");
+        trace!(?wrapper, "parsed create response context wrapper");
         let context = match wrapper.name.as_slice() {
             DURABLE_HANDLE_RESPONSE_TAG => create_ctx_smb_from_bytes!(
                 Self::DurableHandleResponse,

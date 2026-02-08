@@ -8,6 +8,8 @@ use rc4::{Key, Rc4, StreamCipher};
 use rc4::consts::U16;
 use serde::{Deserialize, Serialize};
 
+use smb_core::logging::trace;
+
 use crate::util::auth::ntlm::ntlm_auth_provider::NTLMAuthContext;
 use crate::util::auth::ntlm::ntlm_message::{NTLMNegotiateFlags, parse_ntlm_buffer_fields};
 use crate::util::auth::user::User;
@@ -115,7 +117,7 @@ impl NTLMAuthenticateMessageBody {
         context.work_station = Some(self.work_station.clone());
 
         context.version = Some("6.1.7200".into()); // TODO FIX
-        smb_core::logging::trace!(?self.negotiate_flags, "NTLM authenticate message");
+        trace!(?self.negotiate_flags, "NTLM authenticate message");
         if self.negotiate_flags.contains(NTLMNegotiateFlags::ANONYMOUS) {
             return if guest_supported {
                 context.guest = Some(true);

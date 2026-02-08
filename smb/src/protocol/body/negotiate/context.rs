@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
+use smb_core::logging::trace;
 use smb_core::nt_status::NTStatus;
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
@@ -91,7 +92,7 @@ impl SMBFromBytes for NegotiateContext {
         let (remaining, ctx_type) = u16::smb_from_bytes(input)?;
         let (_, ctx_len) = u16::smb_from_bytes(remaining)?;
 
-        smb_core::logging::trace!(ctx_type, ctx_len, "parsing negotiate context");
+        trace!(ctx_type, ctx_len, "parsing negotiate context");
         
         match ctx_type {
             PRE_AUTH_INTEGRITY_CAPABILITIES_TAG => ctx_smb_from_bytes_enumify!(

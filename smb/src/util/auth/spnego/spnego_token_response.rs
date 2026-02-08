@@ -6,6 +6,7 @@ use nom::number::complete::le_u8;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 
+use smb_core::logging::trace;
 use smb_core::nt_status::NTStatus;
 
 use crate::util::auth::{AuthMessage, AuthProvider};
@@ -94,7 +95,7 @@ impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
         let mut mech_list_mic = None;
 
         while !sequence.is_empty() {
-            smb_core::logging::trace!(remaining_len = sequence.len(), "parsing SPNEGO response sequence field");
+            trace!(remaining_len = sequence.len(), "parsing SPNEGO response sequence field");
             (sequence, tag) = le_u8(sequence)?;
             match tag {
                 NEG_STATE_TAG => {
