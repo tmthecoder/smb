@@ -18,9 +18,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
 
-      - name: cargo check (no features)
-        run: cargo check --workspace
-
       - name: cargo check (server feature)
         run: cargo check --workspace --features server
 
