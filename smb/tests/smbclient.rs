@@ -299,11 +299,11 @@ fn file_read_does_not_crash_server() {
             .expect("Failed to write test file");
     }
 
-    // Start server with the temp dir as working directory
+    // Start server with the share path pointing to our temp dir
     let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
     let mut server = std::process::Command::new(server_bin)
         .env("SMB_PORT", port.to_string())
-        .current_dir(&tmp_dir)
+        .env("SMB_SHARE_PATH", tmp_dir.to_str().unwrap())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -322,7 +322,7 @@ fn file_read_does_not_crash_server() {
     let port_str = port.to_string();
     let download_str = download_path.to_str().unwrap().to_string();
     let get_cmd = format!("get testfile.txt {}", download_str);
-    let (success, _stdout, stderr) = run_smbclient(&[
+    let (success, stdout, stderr) = run_smbclient(&[
         &format!("//127.0.0.1/test"),
         "-p",
         &port_str,
@@ -339,12 +339,17 @@ fn file_read_does_not_crash_server() {
     let status = server.try_wait().expect("Failed to check server status");
     assert!(
         status.is_none(),
-        "Server should still be running after file read. stderr: {}",
+        "Server should still be running after file read. stdout: {} stderr: {}",
+        stdout,
         stderr
     );
 
     // Verify the file was downloaded and contents match
-    assert!(success, "smbclient get should succeed. stderr: {}", stderr);
+    assert!(
+        success,
+        "smbclient get should succeed. stdout: {} stderr: {}",
+        stdout, stderr
+    );
     let downloaded = std::fs::read(&download_path).expect("Downloaded file should exist");
     assert_eq!(
         downloaded, b"hello from smb server",
@@ -375,7 +380,7 @@ fn directory_listing_does_not_crash_server() {
     let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
     let mut server = std::process::Command::new(server_bin)
         .env("SMB_PORT", port.to_string())
-        .current_dir(&tmp_dir)
+        .env("SMB_SHARE_PATH", tmp_dir.to_str().unwrap())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -427,7 +432,7 @@ fn read_nonexistent_file_returns_error() {
     let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
     let mut server = std::process::Command::new(server_bin)
         .env("SMB_PORT", port.to_string())
-        .current_dir(&tmp_dir)
+        .env("SMB_SHARE_PATH", tmp_dir.to_str().unwrap())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -442,7 +447,7 @@ fn read_nonexistent_file_returns_error() {
     }
 
     let port_str = port.to_string();
-    let (success, _stdout, stderr) = run_smbclient(&[
+    let (success, stdout, stderr) = run_smbclient(&[
         &format!("//127.0.0.1/test"),
         "-p",
         &port_str,
@@ -456,8 +461,9 @@ fn read_nonexistent_file_returns_error() {
 
     // Should fail (file doesn't exist)
     assert!(
-        !success || stderr.contains("NT_STATUS_"),
-        "Reading nonexistent file should fail. stderr: {}",
+        !success || stdout.contains("NT_STATUS_") || stderr.contains("NT_STATUS_"),
+        "Reading nonexistent file should fail. stdout: {} stderr: {}",
+        stdout,
         stderr
     );
 

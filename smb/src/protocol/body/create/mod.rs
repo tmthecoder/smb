@@ -65,7 +65,7 @@ pub struct SMBCreateRequest {
     create_options: SMBCreateOptions,
     #[smb_string(
         order = 0,
-        start(inner(start = 44, num_type = "u16", subtract = 68)),
+        start(inner(start = 44, num_type = "u16", subtract = 64)),
         length(inner(start = 46, num_type = "u16")),
         underlying = "u16"
     )]

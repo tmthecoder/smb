@@ -20,8 +20,8 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
     Deserialize,
 )]
 pub enum SMBInfoType {
-    File,
-    Filesystem,
-    Security,
-    Quota,
+    File = 1,
+    Filesystem = 2,
+    Security = 3,
+    Quota = 4,
 }
