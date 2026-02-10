@@ -68,6 +68,7 @@ pub mod query_info;
 pub mod ioctl;
 pub mod set_info;
 pub mod oplock_break;
+pub mod file_info;
 
 pub trait Body<S: Header>: SMBEnumFromBytes + SMBToBytes {
     fn parse_with_cc(bytes: &[u8], command_code: S::CommandCode) -> SMBParseResult<&[u8], Self> where Self: Sized;
