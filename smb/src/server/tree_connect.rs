@@ -4,14 +4,21 @@ use std::sync::{Arc, Weak};
 
 use tokio::sync::RwLock;
 
-use smb_core::{SMBByteSize, SMBResult};
+use smb_core::{SMBByteSize, SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_core::logging::{debug, trace};
 use smb_core::nt_status::NTStatus;
 
 use crate::protocol::body::close::{SMBCloseRequest, SMBCloseResponse};
 use crate::protocol::body::create::{SMBCreateRequest, SMBCreateResponse};
+use crate::protocol::body::create::file_attributes::SMBFileAttributes;
 use crate::protocol::body::create::file_id::SMBFileId;
+use crate::protocol::body::file_info::{
+    FileBasicInformation, FileStandardInformation, FileNetworkOpenInformation,
+    FileAllInformation, FileInternalInformation, FileEaInformation,
+    FileAccessInformation, FilePositionInformation, FileModeInformation,
+    FileAlignmentInformation, FileNameInformation,
+};
 use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::query_info::{SMBQueryInfoRequest, SMBQueryInfoResponse};
 use crate::protocol::body::query_info::info_type::SMBInfoType;
@@ -68,86 +75,62 @@ impl<S: Server> SMBTreeConnect<S> {
             .ok_or(SMBError::response_error(NTStatus::FileClosed))
     }
 
-    /// Build a FILE_BASIC_INFORMATION buffer (MS-FSCC 2.4.7) from open metadata.
-    fn build_file_basic_info(open: &S::Open) -> SMBResult<Vec<u8>> {
+    fn build_basic_info(open: &S::Open) -> SMBResult<FileBasicInformation> {
         let metadata = open.file_metadata()?;
-        let mut buf = Vec::with_capacity(40);
-        buf.extend_from_slice(&metadata.creation_time.as_bytes());         // CreationTime (8)
-        buf.extend_from_slice(&metadata.last_access_time.as_bytes());      // LastAccessTime (8)
-        buf.extend_from_slice(&metadata.last_write_time.as_bytes());       // LastWriteTime (8)
-        buf.extend_from_slice(&metadata.last_modification_time.as_bytes()); // ChangeTime (8)
-        buf.extend_from_slice(&(open.file_attributes().bits() as u32).to_le_bytes()); // FileAttributes (4)
-        buf.extend_from_slice(&[0u8; 4]); // Reserved (4)
-        Ok(buf)
+        Ok(FileBasicInformation {
+            creation_time: metadata.creation_time,
+            last_access_time: metadata.last_access_time,
+            last_write_time: metadata.last_write_time,
+            change_time: metadata.last_modification_time,
+            file_attributes: open.file_attributes(),
+            reserved: 0,
+        })
     }
 
-    /// Build a FILE_STANDARD_INFORMATION buffer (MS-FSCC 2.4.41) from open metadata.
-    fn build_file_standard_info(open: &S::Open) -> SMBResult<Vec<u8>> {
+    fn build_standard_info(open: &S::Open) -> SMBResult<FileStandardInformation> {
         let metadata = open.file_metadata()?;
-        let mut buf = Vec::with_capacity(24);
-        buf.extend_from_slice(&metadata.allocated_size.to_le_bytes());  // AllocationSize (8)
-        buf.extend_from_slice(&metadata.actual_size.to_le_bytes());     // EndOfFile (8)
-        buf.extend_from_slice(&1u32.to_le_bytes());                     // NumberOfLinks (4)
-        buf.push(0); // DeletePending (1)
-        buf.push(if open.file_attributes().contains(crate::protocol::body::create::file_attributes::SMBFileAttributes::DIRECTORY) { 1 } else { 0 }); // Directory (1)
-        buf.extend_from_slice(&[0u8; 2]); // Reserved (2)
-        Ok(buf)
+        let is_dir = open.file_attributes().contains(SMBFileAttributes::DIRECTORY);
+        Ok(FileStandardInformation {
+            allocation_size: metadata.allocated_size,
+            end_of_file: metadata.actual_size,
+            number_of_links: 1,
+            delete_pending: 0,
+            directory: if is_dir { 1 } else { 0 },
+            reserved: 0,
+        })
     }
 
-    /// Build a FILE_NETWORK_OPEN_INFORMATION buffer (MS-FSCC 2.4.29) from open metadata.
-    fn build_file_network_open_info(open: &S::Open) -> SMBResult<Vec<u8>> {
+    fn build_network_open_info(open: &S::Open) -> SMBResult<FileNetworkOpenInformation> {
         let metadata = open.file_metadata()?;
-        let mut buf = Vec::with_capacity(56);
-        buf.extend_from_slice(&metadata.creation_time.as_bytes());          // CreationTime (8)
-        buf.extend_from_slice(&metadata.last_access_time.as_bytes());       // LastAccessTime (8)
-        buf.extend_from_slice(&metadata.last_write_time.as_bytes());        // LastWriteTime (8)
-        buf.extend_from_slice(&metadata.last_modification_time.as_bytes()); // ChangeTime (8)
-        buf.extend_from_slice(&metadata.allocated_size.to_le_bytes());      // AllocationSize (8)
-        buf.extend_from_slice(&metadata.actual_size.to_le_bytes());         // EndOfFile (8)
-        buf.extend_from_slice(&(open.file_attributes().bits() as u32).to_le_bytes()); // FileAttributes (4)
-        buf.extend_from_slice(&[0u8; 4]); // Reserved (4)
-        Ok(buf)
+        Ok(FileNetworkOpenInformation {
+            creation_time: metadata.creation_time,
+            last_access_time: metadata.last_access_time,
+            last_write_time: metadata.last_write_time,
+            change_time: metadata.last_modification_time,
+            allocation_size: metadata.allocated_size,
+            end_of_file: metadata.actual_size,
+            file_attributes: open.file_attributes(),
+            reserved: 0,
+        })
     }
 
-    /// Build a FILE_ALL_INFORMATION buffer (MS-FSCC 2.4.2) from open metadata.
-    /// Composite of Basic + Standard + Internal + EA + Access + Position + Mode + Alignment + Name.
-    fn build_file_all_info(open: &S::Open) -> SMBResult<Vec<u8>> {
-        let metadata = open.file_metadata()?;
-        let is_dir = open.file_attributes().contains(crate::protocol::body::create::file_attributes::SMBFileAttributes::DIRECTORY);
-        let mut buf = Vec::with_capacity(104);
-        // FileBasicInformation (40 bytes)
-        buf.extend_from_slice(&metadata.creation_time.as_bytes());
-        buf.extend_from_slice(&metadata.last_access_time.as_bytes());
-        buf.extend_from_slice(&metadata.last_write_time.as_bytes());
-        buf.extend_from_slice(&metadata.last_modification_time.as_bytes());
-        buf.extend_from_slice(&(open.file_attributes().bits() as u32).to_le_bytes());
-        buf.extend_from_slice(&[0u8; 4]); // Reserved
-        // FileStandardInformation (24 bytes)
-        buf.extend_from_slice(&metadata.allocated_size.to_le_bytes());
-        buf.extend_from_slice(&metadata.actual_size.to_le_bytes());
-        buf.extend_from_slice(&1u32.to_le_bytes()); // NumberOfLinks
-        buf.push(0); // DeletePending
-        buf.push(if is_dir { 1 } else { 0 }); // Directory
-        buf.extend_from_slice(&[0u8; 2]); // Reserved
-        // FileInternalInformation (8 bytes)
-        buf.extend_from_slice(&0u64.to_le_bytes()); // IndexNumber
-        // FileEaInformation (4 bytes)
-        buf.extend_from_slice(&0u32.to_le_bytes()); // EaSize
-        // FileAccessInformation (4 bytes)
-        buf.extend_from_slice(&0x001f01ffu32.to_le_bytes()); // AccessFlags (GENERIC_ALL)
-        // FilePositionInformation (8 bytes)
-        buf.extend_from_slice(&0u64.to_le_bytes()); // CurrentByteOffset
-        // FileModeInformation (4 bytes)
-        buf.extend_from_slice(&0u32.to_le_bytes()); // Mode
-        // FileAlignmentInformation (4 bytes)
-        buf.extend_from_slice(&0u32.to_le_bytes()); // AlignmentRequirement
-        // FileNameInformation (variable)
+    fn build_all_info(open: &S::Open) -> SMBResult<FileAllInformation> {
         let name = open.file_name();
-        let name_utf16: Vec<u16> = name.encode_utf16().collect();
-        let name_bytes: Vec<u8> = name_utf16.iter().flat_map(|c| c.to_le_bytes()).collect();
-        buf.extend_from_slice(&(name_bytes.len() as u32).to_le_bytes()); // FileNameLength
-        buf.extend_from_slice(&name_bytes); // FileName
-        Ok(buf)
+        let name_byte_len = (name.encode_utf16().count() * 2) as u32;
+        Ok(FileAllInformation {
+            basic: Self::build_basic_info(open)?,
+            standard: Self::build_standard_info(open)?,
+            internal: FileInternalInformation { index_number: 0 },
+            ea: FileEaInformation { ea_size: 0 },
+            access: FileAccessInformation { access_flags: 0x001f01ff },
+            position: FilePositionInformation { current_byte_offset: 0 },
+            mode: FileModeInformation { mode: 0 },
+            alignment: FileAlignmentInformation { alignment_requirement: 0 },
+            name: FileNameInformation {
+                file_name_length: name_byte_len,
+                file_name: name.into(),
+            },
+        })
     }
 }
 
@@ -250,10 +233,10 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
             SMBInfoType::File => {
                 // MS-FSCC file information classes
                 match message.file_info_class() {
-                    4 => SMBTreeConnect::<S>::build_file_basic_info(&*open_rd)?,       // FileBasicInformation
-                    5 => SMBTreeConnect::<S>::build_file_standard_info(&*open_rd)?,    // FileStandardInformation
-                    18 => SMBTreeConnect::<S>::build_file_all_info(&*open_rd)?,        // FileAllInformation
-                    34 => SMBTreeConnect::<S>::build_file_network_open_info(&*open_rd)?, // FileNetworkOpenInformation
+                    4 => SMBTreeConnect::<S>::build_basic_info(&*open_rd)?.smb_to_bytes(),
+                    5 => SMBTreeConnect::<S>::build_standard_info(&*open_rd)?.smb_to_bytes(),
+                    18 => SMBTreeConnect::<S>::build_all_info(&*open_rd)?.to_bytes(),
+                    34 => SMBTreeConnect::<S>::build_network_open_info(&*open_rd)?.smb_to_bytes(),
                     _ => {
                         debug!(class = message.file_info_class(), "unsupported file info class");
                         return Err(SMBError::response_error(NTStatus::InvalidInfoClass));
