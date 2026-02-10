@@ -40,7 +40,7 @@ async fn main() -> SMBResult<()> {
         .unencrypted_access(true)
         .require_message_signing(false)
         .encrypt_data(false)
-        .add_fs_share("test".into(), "".into(), file_allowed, get_file_perms)
+        .add_fs_share("test".into(), std::env::var("SMB_SHARE_PATH").unwrap_or_default(), file_allowed, get_file_perms)
         .add_ipc_share()
         .auth_provider(NTLMAuthProvider::new(vec![
             User::new("tejasmehta", "password"),

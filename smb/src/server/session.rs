@@ -243,7 +243,7 @@ impl<S: Server<Session=SMBSession<S>>> SMBLockedMessageHandlerBase for Arc<RwLoc
         let response = SMBTreeConnectResponse::for_share(share.deref());
         let tree_id = SMBSession::<S>::get_next_map_id(&self_rd.tree_connect_table);
         let tree_connect = SMBTreeConnect::init(tree_id, Arc::downgrade(self), share.clone(), response.access_mask().clone());
-        let header = SMBSyncHeader::create_response_header(&header, 0, self_rd.id(), 1);
+        let header = SMBSyncHeader::create_response_header(&header, 0, self_rd.id(), tree_id);
         drop(self_rd);
         let mut self_wr = self.write().await;
         self_wr.tree_connect_table.insert(tree_id, Arc::new(tree_connect));
