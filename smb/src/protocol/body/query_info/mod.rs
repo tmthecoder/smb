@@ -73,7 +73,7 @@ impl SMBQueryInfoRequest {
     Deserialize,
     Clone
 )]
-#[smb_byte_tag(value = 17)]
+#[smb_byte_tag(value = 9)]
 pub struct SMBQueryInfoResponse {
     #[smb_skip(start = 2, length = 6)]
     reserved: PhantomData<Vec<u8>>,
@@ -126,8 +126,8 @@ mod tests {
             let mut buf = Vec::new();
             // struct_size (u16) = 41
             buf.extend_from_slice(&41u16.to_le_bytes());
-            // info_type (u8) = 0 (File)
-            buf.push(0);
+            // info_type (u8) = 1 (File) per MS-SMB2
+            buf.push(1);
             // file_info_class (u8) = 4 (FileBasicInformation)
             buf.push(4);
             // output_buffer_length (u32) = 4096

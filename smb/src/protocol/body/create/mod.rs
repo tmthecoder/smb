@@ -66,7 +66,7 @@ pub struct SMBCreateRequest {
     create_disposition: SMBCreateDisposition,
     #[smb_direct(start(fixed = 40))]
     create_options: SMBCreateOptions,
-    #[smb_string(order = 0, start(inner(start = 44, num_type = "u16", subtract = 68)), length(inner(start = 46, num_type = "u16")), underlying = "u16")]
+    #[smb_string(order = 0, start(inner(start = 44, num_type = "u16", subtract = 64)), length(inner(start = 46, num_type = "u16")), underlying = "u16")]
     file_name: String,
     #[smb_vector(order = 1, align = 8, length(inner(start = 52, num_type = "u32")), offset(inner(start = 48, num_type = "u32", subtract = 64)))]
     contexts: Vec<CreateRequestContext>,

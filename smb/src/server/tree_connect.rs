@@ -108,6 +108,47 @@ impl<S: Server> SMBTreeConnect<S> {
         buf.extend_from_slice(&[0u8; 4]); // Reserved (4)
         Ok(buf)
     }
+
+    /// Build a FILE_ALL_INFORMATION buffer (MS-FSCC 2.4.2) from open metadata.
+    /// Composite of Basic + Standard + Internal + EA + Access + Position + Mode + Alignment + Name.
+    fn build_file_all_info(open: &S::Open) -> SMBResult<Vec<u8>> {
+        let metadata = open.file_metadata()?;
+        let is_dir = open.file_attributes().contains(crate::protocol::body::create::file_attributes::SMBFileAttributes::DIRECTORY);
+        let mut buf = Vec::with_capacity(104);
+        // FileBasicInformation (40 bytes)
+        buf.extend_from_slice(&metadata.creation_time.as_bytes());
+        buf.extend_from_slice(&metadata.last_access_time.as_bytes());
+        buf.extend_from_slice(&metadata.last_write_time.as_bytes());
+        buf.extend_from_slice(&metadata.last_modification_time.as_bytes());
+        buf.extend_from_slice(&(open.file_attributes().bits() as u32).to_le_bytes());
+        buf.extend_from_slice(&[0u8; 4]); // Reserved
+        // FileStandardInformation (24 bytes)
+        buf.extend_from_slice(&metadata.allocated_size.to_le_bytes());
+        buf.extend_from_slice(&metadata.actual_size.to_le_bytes());
+        buf.extend_from_slice(&1u32.to_le_bytes()); // NumberOfLinks
+        buf.push(0); // DeletePending
+        buf.push(if is_dir { 1 } else { 0 }); // Directory
+        buf.extend_from_slice(&[0u8; 2]); // Reserved
+        // FileInternalInformation (8 bytes)
+        buf.extend_from_slice(&0u64.to_le_bytes()); // IndexNumber
+        // FileEaInformation (4 bytes)
+        buf.extend_from_slice(&0u32.to_le_bytes()); // EaSize
+        // FileAccessInformation (4 bytes)
+        buf.extend_from_slice(&0x001f01ffu32.to_le_bytes()); // AccessFlags (GENERIC_ALL)
+        // FilePositionInformation (8 bytes)
+        buf.extend_from_slice(&0u64.to_le_bytes()); // CurrentByteOffset
+        // FileModeInformation (4 bytes)
+        buf.extend_from_slice(&0u32.to_le_bytes()); // Mode
+        // FileAlignmentInformation (4 bytes)
+        buf.extend_from_slice(&0u32.to_le_bytes()); // AlignmentRequirement
+        // FileNameInformation (variable)
+        let name = open.file_name();
+        let name_utf16: Vec<u16> = name.encode_utf16().collect();
+        let name_bytes: Vec<u8> = name_utf16.iter().flat_map(|c| c.to_le_bytes()).collect();
+        buf.extend_from_slice(&(name_bytes.len() as u32).to_le_bytes()); // FileNameLength
+        buf.extend_from_slice(&name_bytes); // FileName
+        Ok(buf)
+    }
 }
 
 impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
@@ -211,6 +252,7 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
                 match message.file_info_class() {
                     4 => SMBTreeConnect::<S>::build_file_basic_info(&*open_rd)?,       // FileBasicInformation
                     5 => SMBTreeConnect::<S>::build_file_standard_info(&*open_rd)?,    // FileStandardInformation
+                    18 => SMBTreeConnect::<S>::build_file_all_info(&*open_rd)?,        // FileAllInformation
                     34 => SMBTreeConnect::<S>::build_file_network_open_info(&*open_rd)?, // FileNetworkOpenInformation
                     _ => {
                         debug!(class = message.file_info_class(), "unsupported file info class");

@@ -182,7 +182,10 @@ impl<UserName: Send + Sync, Handle: From<SMBFileSystemHandle> + ResourceHandle +
     }
 
     fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Handle> {
-        let path = format!("{}/{}", self.local_path, path);
+        // Sanitize: strip NUL terminators from UTF-16LE wire encoding,
+        // convert Windows backslashes to forward slashes
+        let sanitized = path.trim_end_matches('\0').replace('\\', "/");
+        let path = format!("{}/{}", self.local_path, sanitized);
         let resource = match directory {
             true => SMBFileSystemResourceHandle::directory(&path),
             false => SMBFileSystemResourceHandle::file(&path, disposition)
