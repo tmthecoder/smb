@@ -3,118 +3,27 @@
 //! Typed representations of the file information structures defined in
 //! [MS-FSCC] sections 2.4.x, used in QueryInfo / SetInfo responses.
 
-use serde::{Deserialize, Serialize};
+mod access;
+mod alignment;
+mod basic;
+mod ea;
+mod internal;
+mod mode;
+mod name;
+mod network_open;
+mod position;
+mod standard;
 
-use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
-
-use crate::protocol::body::create::file_attributes::SMBFileAttributes;
-use crate::protocol::body::filetime::FileTime;
-
-/// FILE_BASIC_INFORMATION (MS-FSCC 2.4.7) — 40 bytes
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
-pub struct FileBasicInformation {
-    #[smb_direct(start(fixed = 0))]
-    pub creation_time: FileTime,
-    #[smb_direct(start(fixed = 8))]
-    pub last_access_time: FileTime,
-    #[smb_direct(start(fixed = 16))]
-    pub last_write_time: FileTime,
-    #[smb_direct(start(fixed = 24))]
-    pub change_time: FileTime,
-    #[smb_direct(start(fixed = 32))]
-    pub file_attributes: SMBFileAttributes,
-    #[smb_direct(start(fixed = 36))]
-    pub reserved: u32,
-}
-
-/// FILE_STANDARD_INFORMATION (MS-FSCC 2.4.41) — 24 bytes
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
-pub struct FileStandardInformation {
-    #[smb_direct(start(fixed = 0))]
-    pub allocation_size: u64,
-    #[smb_direct(start(fixed = 8))]
-    pub end_of_file: u64,
-    #[smb_direct(start(fixed = 16))]
-    pub number_of_links: u32,
-    #[smb_direct(start(fixed = 20))]
-    pub delete_pending: u8,
-    #[smb_direct(start(fixed = 21))]
-    pub directory: u8,
-    #[smb_direct(start(fixed = 22))]
-    pub reserved: u16,
-}
-
-/// FILE_INTERNAL_INFORMATION (MS-FSCC 2.4.20) — 8 bytes
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
-pub struct FileInternalInformation {
-    #[smb_direct(start(fixed = 0))]
-    pub index_number: u64,
-}
-
-/// FILE_EA_INFORMATION (MS-FSCC 2.4.12) — 4 bytes
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
-pub struct FileEaInformation {
-    #[smb_direct(start(fixed = 0))]
-    pub ea_size: u32,
-}
-
-/// FILE_ACCESS_INFORMATION (MS-FSCC 2.4.1) — 4 bytes
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
-pub struct FileAccessInformation {
-    #[smb_direct(start(fixed = 0))]
-    pub access_flags: u32,
-}
-
-/// FILE_POSITION_INFORMATION (MS-FSCC 2.4.35) — 8 bytes
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
-pub struct FilePositionInformation {
-    #[smb_direct(start(fixed = 0))]
-    pub current_byte_offset: u64,
-}
-
-/// FILE_MODE_INFORMATION (MS-FSCC 2.4.26) — 4 bytes
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
-pub struct FileModeInformation {
-    #[smb_direct(start(fixed = 0))]
-    pub mode: u32,
-}
-
-/// FILE_ALIGNMENT_INFORMATION (MS-FSCC 2.4.3) — 4 bytes
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
-pub struct FileAlignmentInformation {
-    #[smb_direct(start(fixed = 0))]
-    pub alignment_requirement: u32,
-}
-
-/// FILE_NAME_INFORMATION (MS-FSCC 2.4.28) — variable length
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
-pub struct FileNameInformation {
-    #[smb_direct(start(fixed = 0))]
-    pub file_name_length: u32,
-    #[smb_string(order = 0, start(fixed = 4), length(inner(start = 0, num_type = "u32")), underlying = "u16")]
-    pub file_name: String,
-}
-
-/// FILE_NETWORK_OPEN_INFORMATION (MS-FSCC 2.4.29) — 56 bytes
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
-pub struct FileNetworkOpenInformation {
-    #[smb_direct(start(fixed = 0))]
-    pub creation_time: FileTime,
-    #[smb_direct(start(fixed = 8))]
-    pub last_access_time: FileTime,
-    #[smb_direct(start(fixed = 16))]
-    pub last_write_time: FileTime,
-    #[smb_direct(start(fixed = 24))]
-    pub change_time: FileTime,
-    #[smb_direct(start(fixed = 32))]
-    pub allocation_size: u64,
-    #[smb_direct(start(fixed = 40))]
-    pub end_of_file: u64,
-    #[smb_direct(start(fixed = 48))]
-    pub file_attributes: SMBFileAttributes,
-    #[smb_direct(start(fixed = 52))]
-    pub reserved: u32,
-}
+pub use access::FileAccessInformation;
+pub use alignment::FileAlignmentInformation;
+pub use basic::FileBasicInformation;
+pub use ea::FileEaInformation;
+pub use internal::FileInternalInformation;
+pub use mode::FileModeInformation;
+pub use name::FileNameInformation;
+pub use network_open::FileNetworkOpenInformation;
+pub use position::FilePositionInformation;
+pub use standard::FileStandardInformation;
 
 /// FILE_ALL_INFORMATION (MS-FSCC 2.4.2) — composite structure
 ///
@@ -156,6 +65,8 @@ impl FileAllInformation {
 mod tests {
     use super::*;
     use smb_core::{SMBByteSize, SMBFromBytes, SMBToBytes};
+    use crate::protocol::body::create::file_attributes::SMBFileAttributes;
+    use crate::protocol::body::filetime::FileTime;
 
     #[test]
     fn file_basic_information_size_is_40() {
