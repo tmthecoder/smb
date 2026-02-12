@@ -57,6 +57,7 @@ pub trait Session<C: Connection, A: AuthProvider, O: Open>: Send + Sync {
     fn provider(&self) -> &Arc<A>;
     fn encrypt_data(&self) -> bool;
     fn open_table(&self) -> &HashMap<u64, Arc<RwLock<O>>>;
+    fn open_table_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<O>>>;
     fn add_open(&mut self, open: Arc<RwLock<O>>) -> impl Future<Output=()>;
     fn set_previous_file_id(&mut self, file_id: SMBFileId);
     fn signing_key(&self) -> &[u8];
@@ -242,7 +243,7 @@ impl<S: Server<Session=SMBSession<S>>> SMBLockedMessageHandlerBase for Arc<RwLoc
         let response = SMBTreeConnectResponse::for_share(share.deref());
         let tree_id = SMBSession::<S>::get_next_map_id(&self_rd.tree_connect_table);
         let tree_connect = SMBTreeConnect::init(tree_id, Arc::downgrade(self), share.clone(), response.access_mask().clone());
-        let header = SMBSyncHeader::create_response_header(&header, 0, self_rd.id(), 1);
+        let header = SMBSyncHeader::create_response_header(&header, 0, self_rd.id(), tree_id);
         drop(self_rd);
         let mut self_wr = self.write().await;
         self_wr.tree_connect_table.insert(tree_id, Arc::new(tree_connect));
@@ -340,6 +341,10 @@ impl<S: Server<Session=Self>> Session<S::Connection, S::AuthProvider, S::Open> f
 
     fn open_table(&self) -> &HashMap<u64, Arc<RwLock<S::Open>>> {
         &self.open_table
+    }
+
+    fn open_table_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<S::Open>>> {
+        &mut self.open_table
     }
 
     async fn add_open(&mut self, open: Arc<RwLock<S::Open>>) {
