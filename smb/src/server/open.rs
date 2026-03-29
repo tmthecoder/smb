@@ -142,8 +142,8 @@ impl<S: Server> Open for SMBOpen<S> {
 
     fn file_id(&self) -> SMBFileId {
         SMBFileId {
-            persistent: self.session_id,
-            volatile: self.session_id,
+            persistent: self.global_id as u64,
+            volatile: self.session_id as u64,
         }
     }
 
