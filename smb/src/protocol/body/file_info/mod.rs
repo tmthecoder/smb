@@ -47,7 +47,7 @@ pub struct FileAllInformation {
 impl FileAllInformation {
     pub fn to_bytes(&self) -> Vec<u8> {
         use smb_core::SMBToBytes;
-        let mut buf = Vec::with_capacity(104);
+        let mut buf = Vec::with_capacity(96 + self.name.file_name.len() * 2 + 4);
         buf.extend_from_slice(&self.basic.smb_to_bytes());
         buf.extend_from_slice(&self.standard.smb_to_bytes());
         buf.extend_from_slice(&self.internal.smb_to_bytes());

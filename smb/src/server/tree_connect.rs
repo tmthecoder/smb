@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 use smb_core::{SMBByteSize, SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
-use smb_core::logging::{debug, trace};
+use smb_core::logging::{debug, trace, warn};
 use smb_core::nt_status::NTStatus;
 
 use crate::protocol::body::close::{SMBCloseRequest, SMBCloseResponse};
@@ -69,10 +69,17 @@ impl<S: Server> SMBTreeConnect<S> {
     async fn find_open(&self, file_id: &SMBFileId) -> SMBResult<Arc<RwLock<S::Open>>> {
         let session = self.get_session()?;
         let session_rd = session.read().await;
-        session_rd.open_table()
+        let open = session_rd.open_table()
             .get(&file_id.volatile)
             .cloned()
-            .ok_or(SMBError::response_error(NTStatus::FileClosed))
+            .ok_or(SMBError::response_error(NTStatus::FileClosed))?;
+        // MS-SMB2 §3.3.5.10/12/20: verify Open.DurableFileId == FileId.Persistent
+        let open_rd = open.read().await;
+        if open_rd.file_id().persistent != file_id.persistent {
+            return Err(SMBError::response_error(NTStatus::FileClosed));
+        }
+        drop(open_rd);
+        Ok(open)
     }
 
     fn build_basic_info(open: &S::Open) -> SMBResult<FileBasicInformation> {
@@ -160,7 +167,7 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
             session.write().await.set_previous_file_id(file_id);
         }
         debug!("tree connect create handled");
-        let header = header.create_response_header(header.channel_sequence, header.session_id, header.tree_id);
+        let header = header.create_response_header(0, header.session_id, header.tree_id);
         trace!(response_size = response.smb_byte_size(), "create response built");
         Ok(SMBHandlerState::Finished(SMBMessage::new(header, response)))
     }
@@ -179,6 +186,10 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
         };
         let (response, file_id) = {
             let open_rd = open.read().await;
+            // MS-SMB2 §3.3.5.10: verify Open.DurableFileId == FileId.Persistent
+            if open_rd.file_id().persistent != message.file_id().persistent {
+                return Err(SMBError::response_error(NTStatus::FileClosed));
+            }
             let response = if message.flags().contains(crate::protocol::body::close::flags::SMBCloseFlags::POSTQUERY_ATTRIB) {
                 let metadata = open_rd.file_metadata()?;
                 SMBCloseResponse::from_metadata(&metadata, open_rd.file_attributes())
@@ -189,11 +200,15 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
         };
 
         // Phase 2: Cleanup — acquire locks outer to inner (server_wr, then session_wr)
-        // Server write first (outermost)
+        // Server write first (outermost) — use persistent (global_id) as GlobalOpenTable key
         if let Ok(conn) = session.upper().await {
             if let Ok(server) = conn.upper().await {
-                server.write().await.remove_open(file_id.volatile as u32);
+                server.write().await.remove_open(file_id.persistent as u32);
+            } else {
+                warn!(file_id = ?file_id, "failed to acquire server lock during close; global open table entry leaked");
             }
+        } else {
+            warn!(file_id = ?file_id, "failed to acquire connection lock during close; global open table entry leaked");
         }
         // Session write second (inner relative to server)
         {
