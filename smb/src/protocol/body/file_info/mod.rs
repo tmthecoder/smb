@@ -25,40 +25,35 @@ pub use network_open::FileNetworkOpenInformation;
 pub use position::FilePositionInformation;
 pub use standard::FileStandardInformation;
 
+use serde::{Deserialize, Serialize};
+
+use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
+
 /// FILE_ALL_INFORMATION (MS-FSCC 2.4.2) — composite structure
 ///
-/// This is a concatenation of the sub-structures above.
-/// We serialize it by concatenating each sub-struct's bytes rather than
-/// using the derive macro, because the derive macro doesn't support
-/// nested struct composition at variable offsets.
-#[derive(Debug, PartialEq, Eq, Clone)]
+/// Concatenation of sub-structures at fixed offsets:
+/// basic(40) + standard(24) + internal(8) + ea(4) + access(4)
+/// + position(8) + mode(4) + alignment(4) + name(variable).
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
 pub struct FileAllInformation {
+    #[smb_direct(start(fixed = 0))]
     pub basic: FileBasicInformation,
+    #[smb_direct(start(fixed = 40))]
     pub standard: FileStandardInformation,
+    #[smb_direct(start(fixed = 64))]
     pub internal: FileInternalInformation,
+    #[smb_direct(start(fixed = 72))]
     pub ea: FileEaInformation,
+    #[smb_direct(start(fixed = 76))]
     pub access: FileAccessInformation,
+    #[smb_direct(start(fixed = 80))]
     pub position: FilePositionInformation,
+    #[smb_direct(start(fixed = 88))]
     pub mode: FileModeInformation,
+    #[smb_direct(start(fixed = 92))]
     pub alignment: FileAlignmentInformation,
+    #[smb_direct(start(fixed = 96))]
     pub name: FileNameInformation,
-}
-
-impl FileAllInformation {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        use smb_core::SMBToBytes;
-        let mut buf = Vec::with_capacity(96 + self.name.file_name.len() * 2 + 4);
-        buf.extend_from_slice(&self.basic.smb_to_bytes());
-        buf.extend_from_slice(&self.standard.smb_to_bytes());
-        buf.extend_from_slice(&self.internal.smb_to_bytes());
-        buf.extend_from_slice(&self.ea.smb_to_bytes());
-        buf.extend_from_slice(&self.access.smb_to_bytes());
-        buf.extend_from_slice(&self.position.smb_to_bytes());
-        buf.extend_from_slice(&self.mode.smb_to_bytes());
-        buf.extend_from_slice(&self.alignment.smb_to_bytes());
-        buf.extend_from_slice(&self.name.smb_to_bytes());
-        buf
-    }
 }
 
 #[cfg(test)]
@@ -243,7 +238,7 @@ mod tests {
                 file_name: "testfile.txt".into(),
             },
         };
-        let bytes = all.to_bytes();
+        let bytes = all.smb_to_bytes();
         // 40 + 24 + 8 + 4 + 4 + 8 + 4 + 4 + (4 + 24) = 124
         assert_eq!(bytes.len(), 124);
     }
@@ -272,8 +267,39 @@ mod tests {
             alignment: FileAlignmentInformation { alignment_requirement: 0 },
             name: FileNameInformation { file_name_length: 0, file_name: String::new() },
         };
-        let all_bytes = all.to_bytes();
+        let all_bytes = all.smb_to_bytes();
         let basic_bytes = basic.smb_to_bytes();
         assert_eq!(&all_bytes[..40], &basic_bytes[..]);
+    }
+
+    #[test]
+    fn file_all_information_round_trip() {
+        let all = FileAllInformation {
+            basic: FileBasicInformation {
+                creation_time: FileTime::now(),
+                last_access_time: FileTime::now(),
+                last_write_time: FileTime::now(),
+                change_time: FileTime::now(),
+                file_attributes: SMBFileAttributes::ARCHIVE,
+                reserved: 0,
+            },
+            standard: FileStandardInformation {
+                allocation_size: 4096, end_of_file: 512, number_of_links: 1,
+                delete_pending: 0, directory: 0, reserved: 0,
+            },
+            internal: FileInternalInformation { index_number: 7 },
+            ea: FileEaInformation { ea_size: 0 },
+            access: FileAccessInformation { access_flags: 0x001f01ff },
+            position: FilePositionInformation { current_byte_offset: 256 },
+            mode: FileModeInformation { mode: 0 },
+            alignment: FileAlignmentInformation { alignment_requirement: 0 },
+            name: FileNameInformation {
+                file_name_length: 24,
+                file_name: "testfile.txt".into(),
+            },
+        };
+        let bytes = all.smb_to_bytes();
+        let (_, parsed) = FileAllInformation::smb_from_bytes(&bytes).unwrap();
+        assert_eq!(all, parsed);
     }
 }
