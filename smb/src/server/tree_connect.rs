@@ -294,7 +294,7 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
                 match message.file_info_class() {
                     4 => SMBTreeConnect::<S>::build_basic_info(&*open_rd)?.smb_to_bytes(),
                     5 => SMBTreeConnect::<S>::build_standard_info(&*open_rd)?.smb_to_bytes(),
-                    18 => SMBTreeConnect::<S>::build_all_info(&*open_rd)?.to_bytes(),
+                    18 => SMBTreeConnect::<S>::build_all_info(&*open_rd)?.smb_to_bytes(),
                     34 => SMBTreeConnect::<S>::build_network_open_info(&*open_rd)?.smb_to_bytes(),
                     _ => {
                         debug!(
