@@ -16,8 +16,9 @@ use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::file_info::{
     FileBasicInformation, FileStandardInformation, FileNetworkOpenInformation,
     FileAllInformation, FileInternalInformation, FileEaInformation,
-    FileAccessInformation, FilePositionInformation, FileModeInformation,
-    FileAlignmentInformation, FileNameInformation,
+    FileAccessInformation, FileAccessFlags, FilePositionInformation,
+    FileModeInformation, FileModeFlags,
+    FileAlignmentInformation, FileAlignmentRequirement, FileNameInformation,
 };
 use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::query_info::{SMBQueryInfoRequest, SMBQueryInfoResponse};
@@ -129,10 +130,10 @@ impl<S: Server> SMBTreeConnect<S> {
             standard: Self::build_standard_info(open)?,
             internal: FileInternalInformation { index_number: 0 },
             ea: FileEaInformation { ea_size: 0 },
-            access: FileAccessInformation { access_flags: 0x001f01ff },
+            access: FileAccessInformation { access_flags: FileAccessFlags::from_bits_truncate(0x001f01ff) },
             position: FilePositionInformation { current_byte_offset: 0 },
-            mode: FileModeInformation { mode: 0 },
-            alignment: FileAlignmentInformation { alignment_requirement: 0 },
+            mode: FileModeInformation { mode: FileModeFlags::empty() },
+            alignment: FileAlignmentInformation { alignment_requirement: FileAlignmentRequirement::Byte },
             name: FileNameInformation {
                 file_name_length: name_byte_len,
                 file_name: name.into(),

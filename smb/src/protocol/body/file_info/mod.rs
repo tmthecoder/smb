@@ -14,12 +14,12 @@ mod network_open;
 mod position;
 mod standard;
 
-pub use access::FileAccessInformation;
-pub use alignment::FileAlignmentInformation;
+pub use access::{FileAccessInformation, FileAccessFlags};
+pub use alignment::{FileAlignmentInformation, FileAlignmentRequirement};
 pub use basic::FileBasicInformation;
 pub use ea::FileEaInformation;
 pub use internal::FileInternalInformation;
-pub use mode::FileModeInformation;
+pub use mode::{FileModeInformation, FileModeFlags};
 pub use name::FileNameInformation;
 pub use network_open::FileNetworkOpenInformation;
 pub use position::FilePositionInformation;
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn file_access_information_round_trip() {
-        let info = FileAccessInformation { access_flags: 0x001f01ff };
+        let info = FileAccessInformation { access_flags: FileAccessFlags::from_bits_truncate(0x001f01ff) };
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 4);
         let (_, parsed) = FileAccessInformation::smb_from_bytes(&bytes).unwrap();
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn file_mode_information_round_trip() {
-        let info = FileModeInformation { mode: 0 };
+        let info = FileModeInformation { mode: FileModeFlags::empty() };
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 4);
         let (_, parsed) = FileModeInformation::smb_from_bytes(&bytes).unwrap();
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn file_alignment_information_round_trip() {
-        let info = FileAlignmentInformation { alignment_requirement: 0 };
+        let info = FileAlignmentInformation { alignment_requirement: FileAlignmentRequirement::Byte };
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 4);
         let (_, parsed) = FileAlignmentInformation::smb_from_bytes(&bytes).unwrap();
@@ -229,10 +229,10 @@ mod tests {
             },
             internal: FileInternalInformation { index_number: 0 },
             ea: FileEaInformation { ea_size: 0 },
-            access: FileAccessInformation { access_flags: 0x001f01ff },
+            access: FileAccessInformation { access_flags: FileAccessFlags::from_bits_truncate(0x001f01ff) },
             position: FilePositionInformation { current_byte_offset: 0 },
-            mode: FileModeInformation { mode: 0 },
-            alignment: FileAlignmentInformation { alignment_requirement: 0 },
+            mode: FileModeInformation { mode: FileModeFlags::empty() },
+            alignment: FileAlignmentInformation { alignment_requirement: FileAlignmentRequirement::Byte },
             name: FileNameInformation {
                 file_name_length: 24,
                 file_name: "testfile.txt".into(),
@@ -261,10 +261,10 @@ mod tests {
             },
             internal: FileInternalInformation { index_number: 0 },
             ea: FileEaInformation { ea_size: 0 },
-            access: FileAccessInformation { access_flags: 0 },
+            access: FileAccessInformation { access_flags: FileAccessFlags::empty() },
             position: FilePositionInformation { current_byte_offset: 0 },
-            mode: FileModeInformation { mode: 0 },
-            alignment: FileAlignmentInformation { alignment_requirement: 0 },
+            mode: FileModeInformation { mode: FileModeFlags::empty() },
+            alignment: FileAlignmentInformation { alignment_requirement: FileAlignmentRequirement::Byte },
             name: FileNameInformation { file_name_length: 0, file_name: String::new() },
         };
         let all_bytes = all.smb_to_bytes();
@@ -289,10 +289,10 @@ mod tests {
             },
             internal: FileInternalInformation { index_number: 7 },
             ea: FileEaInformation { ea_size: 0 },
-            access: FileAccessInformation { access_flags: 0x001f01ff },
+            access: FileAccessInformation { access_flags: FileAccessFlags::from_bits_truncate(0x001f01ff) },
             position: FilePositionInformation { current_byte_offset: 256 },
-            mode: FileModeInformation { mode: 0 },
-            alignment: FileAlignmentInformation { alignment_requirement: 0 },
+            mode: FileModeInformation { mode: FileModeFlags::empty() },
+            alignment: FileAlignmentInformation { alignment_requirement: FileAlignmentRequirement::Byte },
             name: FileNameInformation {
                 file_name_length: 24,
                 file_name: "testfile.txt".into(),
