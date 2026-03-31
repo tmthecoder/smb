@@ -14,12 +14,12 @@ mod network_open;
 mod position;
 mod standard;
 
-pub use access::FileAccessInformation;
-pub use alignment::FileAlignmentInformation;
+pub use access::{FileAccessFlags, FileAccessInformation};
+pub use alignment::{FileAlignmentInformation, FileAlignmentRequirement};
 pub use basic::FileBasicInformation;
 pub use ea::FileEaInformation;
 pub use internal::FileInternalInformation;
-pub use mode::FileModeInformation;
+pub use mode::{FileModeFlags, FileModeInformation};
 pub use name::FileNameInformation;
 pub use network_open::FileNetworkOpenInformation;
 pub use position::FilePositionInformation;
@@ -34,7 +34,9 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 /// Concatenation of sub-structures at fixed offsets:
 /// basic(40) + standard(24) + internal(8) + ea(4) + access(4)
 /// + position(8) + mode(4) + alignment(4) + name(variable).
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes,
+)]
 pub struct FileAllInformation {
     #[smb_direct(start(fixed = 0))]
     pub basic: FileBasicInformation,
@@ -142,7 +144,7 @@ mod tests {
     #[test]
     fn file_access_information_round_trip() {
         let info = FileAccessInformation {
-            access_flags: 0x001f01ff,
+            access_flags: FileAccessFlags::from_bits_truncate(0x001f01ff),
         };
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 4);
@@ -163,7 +165,9 @@ mod tests {
 
     #[test]
     fn file_mode_information_round_trip() {
-        let info = FileModeInformation { mode: 0 };
+        let info = FileModeInformation {
+            mode: FileModeFlags::empty(),
+        };
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 4);
         let (_, parsed) = FileModeInformation::smb_from_bytes(&bytes).unwrap();
@@ -173,7 +177,7 @@ mod tests {
     #[test]
     fn file_alignment_information_round_trip() {
         let info = FileAlignmentInformation {
-            alignment_requirement: 0,
+            alignment_requirement: FileAlignmentRequirement::Byte,
         };
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 4);
@@ -236,14 +240,16 @@ mod tests {
             internal: FileInternalInformation { index_number: 0 },
             ea: FileEaInformation { ea_size: 0 },
             access: FileAccessInformation {
-                access_flags: 0x001f01ff,
+                access_flags: FileAccessFlags::from_bits_truncate(0x001f01ff),
             },
             position: FilePositionInformation {
                 current_byte_offset: 0,
             },
-            mode: FileModeInformation { mode: 0 },
+            mode: FileModeInformation {
+                mode: FileModeFlags::empty(),
+            },
             alignment: FileAlignmentInformation {
-                alignment_requirement: 0,
+                alignment_requirement: FileAlignmentRequirement::Byte,
             },
             name: FileNameInformation {
                 file_name_length: 24,
@@ -277,13 +283,17 @@ mod tests {
             },
             internal: FileInternalInformation { index_number: 0 },
             ea: FileEaInformation { ea_size: 0 },
-            access: FileAccessInformation { access_flags: 0 },
+            access: FileAccessInformation {
+                access_flags: FileAccessFlags::empty(),
+            },
             position: FilePositionInformation {
                 current_byte_offset: 0,
             },
-            mode: FileModeInformation { mode: 0 },
+            mode: FileModeInformation {
+                mode: FileModeFlags::empty(),
+            },
             alignment: FileAlignmentInformation {
-                alignment_requirement: 0,
+                alignment_requirement: FileAlignmentRequirement::Byte,
             },
             name: FileNameInformation {
                 file_name_length: 0,
@@ -307,15 +317,27 @@ mod tests {
                 reserved: 0,
             },
             standard: FileStandardInformation {
-                allocation_size: 4096, end_of_file: 512, number_of_links: 1,
-                delete_pending: 0, directory: 0, reserved: 0,
+                allocation_size: 4096,
+                end_of_file: 512,
+                number_of_links: 1,
+                delete_pending: 0,
+                directory: 0,
+                reserved: 0,
             },
             internal: FileInternalInformation { index_number: 7 },
             ea: FileEaInformation { ea_size: 0 },
-            access: FileAccessInformation { access_flags: 0x001f01ff },
-            position: FilePositionInformation { current_byte_offset: 256 },
-            mode: FileModeInformation { mode: 0 },
-            alignment: FileAlignmentInformation { alignment_requirement: 0 },
+            access: FileAccessInformation {
+                access_flags: FileAccessFlags::from_bits_truncate(0x001f01ff),
+            },
+            position: FilePositionInformation {
+                current_byte_offset: 256,
+            },
+            mode: FileModeInformation {
+                mode: FileModeFlags::empty(),
+            },
+            alignment: FileAlignmentInformation {
+                alignment_requirement: FileAlignmentRequirement::Byte,
+            },
             name: FileNameInformation {
                 file_name_length: 24,
                 file_name: "testfile.txt".into(),
