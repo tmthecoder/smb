@@ -1,4 +1,3 @@
-use std::fmt::Debug;
 
 pub use auth_context::*;
 use smb_core::{SMBParseResult, SMBResult};

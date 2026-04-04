@@ -1,7 +1,3 @@
-pub(crate) fn bytes_to_u16(bytes: &[u8]) -> u16 {
-    (bytes[0] as u16) | ((bytes[1] as u16) << 8)
-}
-
 pub(crate) fn u16_to_bytes(num: u16) -> [u8; 2] {
     [(num & 0xFF) as u8, ((num >> 8) & 0xFF) as u8]
 }
@@ -51,11 +47,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn u16_round_trip() {
+    fn u16_to_bytes_correctness() {
         let val: u16 = 0x0210;
         let bytes = u16_to_bytes(val);
         assert_eq!(bytes, [0x10, 0x02]);
-        assert_eq!(bytes_to_u16(&bytes), val);
     }
 
     #[test]

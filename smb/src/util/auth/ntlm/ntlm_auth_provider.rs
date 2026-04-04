@@ -38,7 +38,7 @@ impl AuthProvider for NTLMAuthProvider {
                 context.server_challenge = (*challenge.server_challenge()).into();
                 (status, NTLMMessage::Challenge(challenge))
             },
-            NTLMMessage::Challenge(x) => {
+            NTLMMessage::Challenge(_x) => {
                 (NTStatus::StatusSuccess, NTLMMessage::Dummy)
             },
             NTLMMessage::Authenticate(x) => {

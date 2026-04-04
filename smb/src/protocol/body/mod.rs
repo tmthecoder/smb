@@ -14,7 +14,7 @@ use nom::multi::many1;
 use nom::number::complete::le_u8;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBByteSize, SMBEnumFromBytes, SMBFromBytes, SMBParseResult, SMBToBytes};
+use smb_core::{SMBByteSize, SMBEnumFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBToBytes};
 

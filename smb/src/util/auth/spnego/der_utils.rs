@@ -17,7 +17,6 @@ pub const MECH_TYPE_LIST_TAG: u8 = 0xA0;
 pub const MECH_TOKEN_TAG: u8 = 0xA2;
 pub const MECH_LIST_MIC_TAG: u8 = 0xA3;
 
-pub const REQUIRED_FLAGS_TAG: u8 = 0xA1;
 pub const APPLICATION_TAG: u8 = 0x60;
 pub const RESPONSE_TOKEN_TAG: u8 = 0xA2;
 pub const SUPPORTED_MECH_TAG: u8 = 0xA1;

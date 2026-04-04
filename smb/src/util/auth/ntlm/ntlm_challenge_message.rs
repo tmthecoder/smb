@@ -26,7 +26,7 @@ impl NTLMChallengeMessageBody {
         }
     }
 
-    pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
+    pub fn parse(_bytes: &[u8]) -> IResult<&[u8], Self> {
         todo!()
     }
 
