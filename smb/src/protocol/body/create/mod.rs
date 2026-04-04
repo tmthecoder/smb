@@ -112,7 +112,7 @@ impl SMBCreateRequest {
             // TODO make this the right error code
             return Err(SMBError::response_error(NTStatus::NotSupported));
         }
-        Ok((&self.file_name(), self.disposition(), self.create_options.contains(SMBCreateOptions::DIRECTORY_FILE)))
+        Ok((self.file_name(), self.disposition(), self.create_options.contains(SMBCreateOptions::DIRECTORY_FILE)))
     }
 }
 

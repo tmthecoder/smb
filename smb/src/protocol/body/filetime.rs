@@ -18,7 +18,7 @@ const TIME_SINCE_1601_AND_EPOCH: u64 = 11644473600000;
 
 impl FileTime {
     pub fn from_unix(unix_timestamp: u64) -> Self {
-        let filetype_normalized = unix_timestamp + TIME_SINCE_1601_AND_EPOCH as u64;
+        let filetype_normalized = unix_timestamp + TIME_SINCE_1601_AND_EPOCH;
         let bytes = u64_to_bytes(filetype_normalized);
         FileTime {
             low_date_time: bytes_to_u32(&bytes[0..4]),

@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
-use std::ops::{Add, Deref, DerefMut};
+use std::ops::{Deref, DerefMut};
 
 use smb_core::error::SMBError;
 use smb_core::SMBResult;
@@ -27,7 +27,7 @@ pub trait SMBSocket<T: Send + Sync>: Send + Sync {
     }
 
     #[cfg(feature = "async")]
-    fn new_socket(addr: T) -> impl Future<Output=SMBResult<Self>> + Send where Self: Sized {
+    fn new_socket(_addr: T) -> impl Future<Output=SMBResult<Self>> + Send where Self: Sized {
         async {
             Err(SMBError::precondition_failed("Invalid socket address type"))
         }
