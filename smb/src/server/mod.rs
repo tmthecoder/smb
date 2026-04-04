@@ -18,7 +18,7 @@ use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::filetime::FileTime;
 use crate::server::client::SMBClient;
 use crate::server::connection::{Connection, SMBConnection, WeakLockedSMBConnection};
-use crate::server::lease::{Lease, SMBLease, SMBLeaseTable, SMBLeaseTableOf};
+use crate::server::lease::{Lease, SMBLease, SMBLeaseTable};
 use crate::server::open::{LockedSMBOpen, Open, SMBOpen};
 use crate::server::safe_locked_getter::InnerGetter;
 use crate::server::session::{LockedSMBSession, Session, SMBSession};
@@ -122,9 +122,9 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
     #[builder(default = "HashLevel::EnableAll")]
     hash_level: HashLevel,
     #[builder(field(
-        type = "HashMap<Uuid, SMBLeaseTableOf<SMBServer<Addrs, Listener, Auth, Share, Handle>>>"
+        type = "HashMap<Uuid, SMBLeaseTable<SMBLease<SMBServer<Addrs, Listener, Auth, Share, Handle>>>>"
     ))]
-    lease_table_list: HashMap<Uuid, SMBLeaseTableOf<SMBServer<Addrs, Listener, Auth, Share, Handle>>>,
+    lease_table_list: HashMap<Uuid, SMBLeaseTable<SMBLease<SMBServer<Addrs, Listener, Auth, Share, Handle>>>>,
     #[builder(default = "5000")]
     max_resiliency_timeout: u64,
     #[builder(default = "5000")]
