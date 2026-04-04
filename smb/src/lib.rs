@@ -1,3 +1,4 @@
+// TODO: Remove once protocol implementation consumes all public types
 #![allow(dead_code)]
 //! # SMB Reader
 //!
