@@ -28,9 +28,9 @@ pub enum SMBCommandCode {
     LegacyNegotiate
 }
 
-impl Into<u64> for SMBCommandCode {
-    fn into(self) -> u64 {
-        self as u16 as u64
+impl From<SMBCommandCode> for u64 {
+    fn from(val: SMBCommandCode) -> Self {
+        val as u16 as u64
     }
 }
 
@@ -110,9 +110,9 @@ pub enum LegacySMBCommandCode {
     WriteBulkData
 }
 
-impl Into<u64> for LegacySMBCommandCode {
-    fn into(self) -> u64 {
-        self as u8 as u64
+impl From<LegacySMBCommandCode> for u64 {
+    fn from(val: LegacySMBCommandCode) -> Self {
+        val as u8 as u64
     }
 }
 

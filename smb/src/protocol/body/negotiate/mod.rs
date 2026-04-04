@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::collections::HashSet;
 use std::marker::PhantomData;
 
@@ -62,7 +61,7 @@ impl SMBNegotiateRequest {
             return Err(SMBError::response_error(NTStatus::InvalidParameter));
         }
         let mut update = SMBConnectionUpdate::default();
-        let mut received_ctxs = HashSet::new();
+        let received_ctxs = HashSet::new();
         // TODO: uncomment after signing is fixed + working
         // for context in self.negotiate_contexts.iter() {
         //     let (change, actual) = context.validate_and_set_state(update, server)?;
@@ -104,7 +103,7 @@ impl SMBNegotiateRequest {
         let dialect = SMBDialect::V2_1_0;
         let preauth_value = if dialect == SMBDialect::V3_1_1 {
             let mut sha = Sha512::default();
-            sha.update(&self.smb_to_bytes());
+            sha.update(self.smb_to_bytes());
             sha.finalize().to_vec()
         } else {
             Vec::new()

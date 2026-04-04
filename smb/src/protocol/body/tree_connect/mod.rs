@@ -82,7 +82,7 @@ impl Default for SMBTreeConnectResponse {
 }
 
 impl SMBTreeConnectResponse {
-    pub fn IPC() -> Self {
+    pub fn ipc() -> Self {
         Self {
             maximal_access: SMBAccessMask::FilePipePrinter(SMBFilePipePrinterAccessMask::from_bits_truncate(2032127)),
             share_type: SMBShareType::Pipe,
@@ -113,17 +113,12 @@ impl SMBTreeConnectResponse {
 }
 
 #[repr(u8)]
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Copy, Clone, SMBByteSize, SMBFromBytes, SMBToBytes, TryFromPrimitive)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Copy, Clone, SMBByteSize, SMBFromBytes, SMBToBytes, TryFromPrimitive, Default)]
 pub enum SMBShareType {
+    #[default]
     Disk = 0x01,
     Pipe,
     Print,
-}
-
-impl Default for SMBShareType {
-    fn default() -> Self {
-        Self::Disk
-    }
 }
 
 impl_smb_byte_size_for_bitflag! {
