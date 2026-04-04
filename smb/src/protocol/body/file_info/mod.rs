@@ -37,23 +37,49 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
 pub struct FileAllInformation {
     #[smb_direct(start(fixed = 0))]
-    pub basic: FileBasicInformation,
+    basic: FileBasicInformation,
     #[smb_direct(start(fixed = 40))]
-    pub standard: FileStandardInformation,
+    standard: FileStandardInformation,
     #[smb_direct(start(fixed = 64))]
-    pub internal: FileInternalInformation,
+    internal: FileInternalInformation,
     #[smb_direct(start(fixed = 72))]
-    pub ea: FileEaInformation,
+    ea: FileEaInformation,
     #[smb_direct(start(fixed = 76))]
-    pub access: FileAccessInformation,
+    access: FileAccessInformation,
     #[smb_direct(start(fixed = 80))]
-    pub position: FilePositionInformation,
+    position: FilePositionInformation,
     #[smb_direct(start(fixed = 88))]
-    pub mode: FileModeInformation,
+    mode: FileModeInformation,
     #[smb_direct(start(fixed = 92))]
-    pub alignment: FileAlignmentInformation,
+    alignment: FileAlignmentInformation,
     #[smb_direct(start(fixed = 96))]
-    pub name: FileNameInformation,
+    name: FileNameInformation,
+}
+
+impl FileAllInformation {
+    pub fn new(
+        basic: FileBasicInformation,
+        standard: FileStandardInformation,
+        internal: FileInternalInformation,
+        ea: FileEaInformation,
+        access: FileAccessInformation,
+        position: FilePositionInformation,
+        mode: FileModeInformation,
+        alignment: FileAlignmentInformation,
+        name: FileNameInformation,
+    ) -> Self {
+        Self { basic, standard, internal, ea, access, position, mode, alignment, name }
+    }
+
+    pub fn basic(&self) -> &FileBasicInformation { &self.basic }
+    pub fn standard(&self) -> &FileStandardInformation { &self.standard }
+    pub fn internal(&self) -> &FileInternalInformation { &self.internal }
+    pub fn ea(&self) -> &FileEaInformation { &self.ea }
+    pub fn access(&self) -> &FileAccessInformation { &self.access }
+    pub fn position(&self) -> &FilePositionInformation { &self.position }
+    pub fn mode(&self) -> &FileModeInformation { &self.mode }
+    pub fn alignment(&self) -> &FileAlignmentInformation { &self.alignment }
+    pub fn name(&self) -> &FileNameInformation { &self.name }
 }
 
 #[cfg(test)]
@@ -65,27 +91,19 @@ mod tests {
 
     #[test]
     fn file_basic_information_size_is_40() {
-        let info = FileBasicInformation {
-            creation_time: FileTime::zero(),
-            last_access_time: FileTime::zero(),
-            last_write_time: FileTime::zero(),
-            change_time: FileTime::zero(),
-            file_attributes: SMBFileAttributes::NORMAL,
-            reserved: 0,
-        };
+        let info = FileBasicInformation::new(
+            FileTime::zero(), FileTime::zero(), FileTime::zero(), FileTime::zero(),
+            SMBFileAttributes::NORMAL,
+        );
         assert_eq!(info.smb_byte_size(), 40);
     }
 
     #[test]
     fn file_basic_information_round_trip() {
-        let info = FileBasicInformation {
-            creation_time: FileTime::now(),
-            last_access_time: FileTime::now(),
-            last_write_time: FileTime::now(),
-            change_time: FileTime::now(),
-            file_attributes: SMBFileAttributes::ARCHIVE | SMBFileAttributes::READONLY,
-            reserved: 0,
-        };
+        let info = FileBasicInformation::new(
+            FileTime::now(), FileTime::now(), FileTime::now(), FileTime::now(),
+            SMBFileAttributes::ARCHIVE | SMBFileAttributes::READONLY,
+        );
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 40);
         let (_, parsed) = FileBasicInformation::smb_from_bytes(&bytes).unwrap();
@@ -94,27 +112,13 @@ mod tests {
 
     #[test]
     fn file_standard_information_size_is_24() {
-        let info = FileStandardInformation {
-            allocation_size: 4096,
-            end_of_file: 1024,
-            number_of_links: 1,
-            delete_pending: 0,
-            directory: 0,
-            reserved: 0,
-        };
+        let info = FileStandardInformation::new(4096, 1024, 1, false, false);
         assert_eq!(info.smb_byte_size(), 24);
     }
 
     #[test]
     fn file_standard_information_round_trip() {
-        let info = FileStandardInformation {
-            allocation_size: 8192,
-            end_of_file: 2048,
-            number_of_links: 3,
-            delete_pending: 1,
-            directory: 0,
-            reserved: 0,
-        };
+        let info = FileStandardInformation::new(8192, 2048, 3, true, false);
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 24);
         let (_, parsed) = FileStandardInformation::smb_from_bytes(&bytes).unwrap();
@@ -122,8 +126,19 @@ mod tests {
     }
 
     #[test]
+    fn file_standard_information_bool_getters() {
+        let info = FileStandardInformation::new(0, 0, 1, true, false);
+        assert!(info.delete_pending());
+        assert!(!info.directory());
+
+        let info2 = FileStandardInformation::new(0, 0, 1, false, true);
+        assert!(!info2.delete_pending());
+        assert!(info2.directory());
+    }
+
+    #[test]
     fn file_internal_information_round_trip() {
-        let info = FileInternalInformation { index_number: 42 };
+        let info = FileInternalInformation::new(42);
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 8);
         let (_, parsed) = FileInternalInformation::smb_from_bytes(&bytes).unwrap();
@@ -132,7 +147,7 @@ mod tests {
 
     #[test]
     fn file_ea_information_round_trip() {
-        let info = FileEaInformation { ea_size: 0 };
+        let info = FileEaInformation::new(0);
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 4);
         let (_, parsed) = FileEaInformation::smb_from_bytes(&bytes).unwrap();
@@ -141,7 +156,7 @@ mod tests {
 
     #[test]
     fn file_access_information_round_trip() {
-        let info = FileAccessInformation { access_flags: FileAccessFlags::from_bits_truncate(0x001f01ff) };
+        let info = FileAccessInformation::new(FileAccessFlags::from_bits_truncate(0x001f01ff));
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 4);
         let (_, parsed) = FileAccessInformation::smb_from_bytes(&bytes).unwrap();
@@ -150,7 +165,7 @@ mod tests {
 
     #[test]
     fn file_position_information_round_trip() {
-        let info = FilePositionInformation { current_byte_offset: 512 };
+        let info = FilePositionInformation::new(512);
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 8);
         let (_, parsed) = FilePositionInformation::smb_from_bytes(&bytes).unwrap();
@@ -159,7 +174,7 @@ mod tests {
 
     #[test]
     fn file_mode_information_round_trip() {
-        let info = FileModeInformation { mode: FileModeFlags::empty() };
+        let info = FileModeInformation::new(FileModeFlags::empty());
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 4);
         let (_, parsed) = FileModeInformation::smb_from_bytes(&bytes).unwrap();
@@ -168,7 +183,7 @@ mod tests {
 
     #[test]
     fn file_alignment_information_round_trip() {
-        let info = FileAlignmentInformation { alignment_requirement: FileAlignmentRequirement::Byte };
+        let info = FileAlignmentInformation::new(FileAlignmentRequirement::Byte);
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 4);
         let (_, parsed) = FileAlignmentInformation::smb_from_bytes(&bytes).unwrap();
@@ -177,31 +192,19 @@ mod tests {
 
     #[test]
     fn file_network_open_information_size_is_56() {
-        let info = FileNetworkOpenInformation {
-            creation_time: FileTime::zero(),
-            last_access_time: FileTime::zero(),
-            last_write_time: FileTime::zero(),
-            change_time: FileTime::zero(),
-            allocation_size: 0,
-            end_of_file: 0,
-            file_attributes: SMBFileAttributes::NORMAL,
-            reserved: 0,
-        };
+        let info = FileNetworkOpenInformation::new(
+            FileTime::zero(), FileTime::zero(), FileTime::zero(), FileTime::zero(),
+            0, 0, SMBFileAttributes::NORMAL,
+        );
         assert_eq!(info.smb_byte_size(), 56);
     }
 
     #[test]
     fn file_network_open_information_round_trip() {
-        let info = FileNetworkOpenInformation {
-            creation_time: FileTime::now(),
-            last_access_time: FileTime::now(),
-            last_write_time: FileTime::now(),
-            change_time: FileTime::now(),
-            allocation_size: 4096,
-            end_of_file: 1024,
-            file_attributes: SMBFileAttributes::ARCHIVE,
-            reserved: 0,
-        };
+        let info = FileNetworkOpenInformation::new(
+            FileTime::now(), FileTime::now(), FileTime::now(), FileTime::now(),
+            4096, 1024, SMBFileAttributes::ARCHIVE,
+        );
         let bytes = info.smb_to_bytes();
         assert_eq!(bytes.len(), 56);
         let (_, parsed) = FileNetworkOpenInformation::smb_from_bytes(&bytes).unwrap();
@@ -210,34 +213,20 @@ mod tests {
 
     #[test]
     fn file_all_information_contains_all_sub_structs() {
-        let all = FileAllInformation {
-            basic: FileBasicInformation {
-                creation_time: FileTime::zero(),
-                last_access_time: FileTime::zero(),
-                last_write_time: FileTime::zero(),
-                change_time: FileTime::zero(),
-                file_attributes: SMBFileAttributes::NORMAL,
-                reserved: 0,
-            },
-            standard: FileStandardInformation {
-                allocation_size: 4096,
-                end_of_file: 21,
-                number_of_links: 1,
-                delete_pending: 0,
-                directory: 0,
-                reserved: 0,
-            },
-            internal: FileInternalInformation { index_number: 0 },
-            ea: FileEaInformation { ea_size: 0 },
-            access: FileAccessInformation { access_flags: FileAccessFlags::from_bits_truncate(0x001f01ff) },
-            position: FilePositionInformation { current_byte_offset: 0 },
-            mode: FileModeInformation { mode: FileModeFlags::empty() },
-            alignment: FileAlignmentInformation { alignment_requirement: FileAlignmentRequirement::Byte },
-            name: FileNameInformation {
-                file_name_length: 24,
-                file_name: "testfile.txt".into(),
-            },
-        };
+        let all = FileAllInformation::new(
+            FileBasicInformation::new(
+                FileTime::zero(), FileTime::zero(), FileTime::zero(), FileTime::zero(),
+                SMBFileAttributes::NORMAL,
+            ),
+            FileStandardInformation::new(4096, 21, 1, false, false),
+            FileInternalInformation::new(0),
+            FileEaInformation::new(0),
+            FileAccessInformation::new(FileAccessFlags::from_bits_truncate(0x001f01ff)),
+            FilePositionInformation::new(0),
+            FileModeInformation::new(FileModeFlags::empty()),
+            FileAlignmentInformation::new(FileAlignmentRequirement::Byte),
+            FileNameInformation::new(24, "testfile.txt".into()),
+        );
         let bytes = all.smb_to_bytes();
         // 40 + 24 + 8 + 4 + 4 + 8 + 4 + 4 + (4 + 24) = 124
         assert_eq!(bytes.len(), 124);
@@ -245,28 +234,21 @@ mod tests {
 
     #[test]
     fn file_all_information_basic_segment_matches_standalone() {
-        let basic = FileBasicInformation {
-            creation_time: FileTime::now(),
-            last_access_time: FileTime::now(),
-            last_write_time: FileTime::now(),
-            change_time: FileTime::now(),
-            file_attributes: SMBFileAttributes::ARCHIVE,
-            reserved: 0,
-        };
-        let all = FileAllInformation {
-            basic: basic.clone(),
-            standard: FileStandardInformation {
-                allocation_size: 0, end_of_file: 0, number_of_links: 1,
-                delete_pending: 0, directory: 0, reserved: 0,
-            },
-            internal: FileInternalInformation { index_number: 0 },
-            ea: FileEaInformation { ea_size: 0 },
-            access: FileAccessInformation { access_flags: FileAccessFlags::empty() },
-            position: FilePositionInformation { current_byte_offset: 0 },
-            mode: FileModeInformation { mode: FileModeFlags::empty() },
-            alignment: FileAlignmentInformation { alignment_requirement: FileAlignmentRequirement::Byte },
-            name: FileNameInformation { file_name_length: 0, file_name: String::new() },
-        };
+        let basic = FileBasicInformation::new(
+            FileTime::now(), FileTime::now(), FileTime::now(), FileTime::now(),
+            SMBFileAttributes::ARCHIVE,
+        );
+        let all = FileAllInformation::new(
+            basic.clone(),
+            FileStandardInformation::new(0, 0, 1, false, false),
+            FileInternalInformation::new(0),
+            FileEaInformation::new(0),
+            FileAccessInformation::new(FileAccessFlags::empty()),
+            FilePositionInformation::new(0),
+            FileModeInformation::new(FileModeFlags::empty()),
+            FileAlignmentInformation::new(FileAlignmentRequirement::Byte),
+            FileNameInformation::new(0, String::new()),
+        );
         let all_bytes = all.smb_to_bytes();
         let basic_bytes = basic.smb_to_bytes();
         assert_eq!(&all_bytes[..40], &basic_bytes[..]);
@@ -274,32 +256,46 @@ mod tests {
 
     #[test]
     fn file_all_information_round_trip() {
-        let all = FileAllInformation {
-            basic: FileBasicInformation {
-                creation_time: FileTime::now(),
-                last_access_time: FileTime::now(),
-                last_write_time: FileTime::now(),
-                change_time: FileTime::now(),
-                file_attributes: SMBFileAttributes::ARCHIVE,
-                reserved: 0,
-            },
-            standard: FileStandardInformation {
-                allocation_size: 4096, end_of_file: 512, number_of_links: 1,
-                delete_pending: 0, directory: 0, reserved: 0,
-            },
-            internal: FileInternalInformation { index_number: 7 },
-            ea: FileEaInformation { ea_size: 0 },
-            access: FileAccessInformation { access_flags: FileAccessFlags::from_bits_truncate(0x001f01ff) },
-            position: FilePositionInformation { current_byte_offset: 256 },
-            mode: FileModeInformation { mode: FileModeFlags::empty() },
-            alignment: FileAlignmentInformation { alignment_requirement: FileAlignmentRequirement::Byte },
-            name: FileNameInformation {
-                file_name_length: 24,
-                file_name: "testfile.txt".into(),
-            },
-        };
+        let all = FileAllInformation::new(
+            FileBasicInformation::new(
+                FileTime::now(), FileTime::now(), FileTime::now(), FileTime::now(),
+                SMBFileAttributes::ARCHIVE,
+            ),
+            FileStandardInformation::new(4096, 512, 1, false, false),
+            FileInternalInformation::new(7),
+            FileEaInformation::new(0),
+            FileAccessInformation::new(FileAccessFlags::from_bits_truncate(0x001f01ff)),
+            FilePositionInformation::new(256),
+            FileModeInformation::new(FileModeFlags::empty()),
+            FileAlignmentInformation::new(FileAlignmentRequirement::Byte),
+            FileNameInformation::new(24, "testfile.txt".into()),
+        );
         let bytes = all.smb_to_bytes();
         let (_, parsed) = FileAllInformation::smb_from_bytes(&bytes).unwrap();
         assert_eq!(all, parsed);
+    }
+
+    #[test]
+    fn file_all_information_getters() {
+        let all = FileAllInformation::new(
+            FileBasicInformation::new(
+                FileTime::zero(), FileTime::zero(), FileTime::zero(), FileTime::zero(),
+                SMBFileAttributes::NORMAL,
+            ),
+            FileStandardInformation::new(4096, 100, 1, false, false),
+            FileInternalInformation::new(5),
+            FileEaInformation::new(0),
+            FileAccessInformation::new(FileAccessFlags::from_bits_truncate(0x001f01ff)),
+            FilePositionInformation::new(50),
+            FileModeInformation::new(FileModeFlags::empty()),
+            FileAlignmentInformation::new(FileAlignmentRequirement::Byte),
+            FileNameInformation::new(8, "test".into()),
+        );
+        assert_eq!(all.basic().file_attributes(), SMBFileAttributes::NORMAL);
+        assert_eq!(all.standard().allocation_size(), 4096);
+        assert_eq!(all.standard().end_of_file(), 100);
+        assert_eq!(all.internal().index_number(), 5);
+        assert_eq!(all.position().current_byte_offset(), 50);
+        assert_eq!(all.name().file_name(), "test");
     }
 }

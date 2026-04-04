@@ -80,12 +80,12 @@ impl SMBCloseResponse {
         Self {
             flags: SMBCloseFlags::POSTQUERY_ATTRIB,
             reserved: PhantomData,
-            creation_time: metadata.creation_time.clone(),
-            last_access_time: metadata.last_access_time.clone(),
-            last_write_time: metadata.last_write_time.clone(),
-            change_time: metadata.last_modification_time.clone(),
-            allocation_size: metadata.allocated_size,
-            end_of_file: metadata.actual_size,
+            creation_time: metadata.creation_time().clone(),
+            last_access_time: metadata.last_access_time().clone(),
+            last_write_time: metadata.last_write_time().clone(),
+            change_time: metadata.last_modification_time().clone(),
+            allocation_size: metadata.allocated_size(),
+            end_of_file: metadata.actual_size(),
             file_attributes: attributes,
         }
     }
@@ -131,14 +131,14 @@ mod tests {
     #[test]
     fn close_response_from_metadata_sets_postquery_flag() {
         use crate::server::share::SMBFileMetadata;
-        let metadata = SMBFileMetadata {
-            creation_time: FileTime::from_unix(1700000000),
-            last_access_time: FileTime::from_unix(1700000100),
-            last_write_time: FileTime::from_unix(1700000200),
-            last_modification_time: FileTime::from_unix(1700000300),
-            allocated_size: 4096,
-            actual_size: 1024,
-        };
+        let metadata = SMBFileMetadata::new(
+            FileTime::from_unix(1700000000),
+            FileTime::from_unix(1700000100),
+            FileTime::from_unix(1700000200),
+            FileTime::from_unix(1700000300),
+            4096,
+            1024,
+        );
         let resp = SMBCloseResponse::from_metadata(&metadata, SMBFileAttributes::NORMAL);
         assert!(resp.flags.contains(SMBCloseFlags::POSTQUERY_ATTRIB));
         assert_eq!(resp.allocation_size, 4096);
@@ -149,14 +149,14 @@ mod tests {
     #[test]
     fn close_response_from_metadata_serialization_round_trip() {
         use crate::server::share::SMBFileMetadata;
-        let metadata = SMBFileMetadata {
-            creation_time: FileTime::from_unix(1700000000),
-            last_access_time: FileTime::from_unix(1700000100),
-            last_write_time: FileTime::from_unix(1700000200),
-            last_modification_time: FileTime::from_unix(1700000300),
-            allocated_size: 8192,
-            actual_size: 2048,
-        };
+        let metadata = SMBFileMetadata::new(
+            FileTime::from_unix(1700000000),
+            FileTime::from_unix(1700000100),
+            FileTime::from_unix(1700000200),
+            FileTime::from_unix(1700000300),
+            8192,
+            2048,
+        );
         let resp = SMBCloseResponse::from_metadata(&metadata, SMBFileAttributes::ARCHIVE);
         let bytes = resp.smb_to_bytes();
         assert_eq!(bytes.len(), resp.smb_byte_size());
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn close_request_accessors() {
-        let file_id = SMBFileId { persistent: 42, volatile: 99 };
+        let file_id = SMBFileId::new(42, 99);
         let bytes = {
             let mut buf = Vec::new();
             // struct_size (u16) = 24
@@ -181,8 +181,8 @@ mod tests {
             buf
         };
         let (_, req) = SMBCloseRequest::smb_from_bytes(&bytes).unwrap();
-        assert_eq!(req.file_id().persistent, file_id.persistent);
-        assert_eq!(req.file_id().volatile, file_id.volatile);
+        assert_eq!(req.file_id().persistent(), file_id.persistent());
+        assert_eq!(req.file_id().volatile(), file_id.volatile());
         assert!(req.flags().contains(SMBCloseFlags::POSTQUERY_ATTRIB));
     }
 }

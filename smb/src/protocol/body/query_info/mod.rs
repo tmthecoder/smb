@@ -151,7 +151,7 @@ mod tests {
         assert_eq!(req.info_type(), SMBInfoType::File);
         assert_eq!(req.file_info_class(), 4);
         assert_eq!(req.output_buffer_length(), 4096);
-        assert_eq!(req.file_id().persistent, 55);
-        assert_eq!(req.file_id().volatile, 77);
+        assert_eq!(req.file_id().persistent(), 55);
+        assert_eq!(req.file_id().volatile(), 77);
     }
 }

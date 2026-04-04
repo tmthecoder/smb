@@ -6,5 +6,13 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, SMBByteSize, SMBFromBytes, SMBToBytes)]
 pub struct FileInternalInformation {
     #[smb_direct(start(fixed = 0))]
-    pub index_number: u64,
+    index_number: u64,
+}
+
+impl FileInternalInformation {
+    pub fn new(index_number: u64) -> Self {
+        Self { index_number }
+    }
+
+    pub fn index_number(&self) -> u64 { self.index_number }
 }

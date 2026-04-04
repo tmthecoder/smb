@@ -4,10 +4,12 @@ use std::fs;
 use std::fs::{File, OpenOptions, ReadDir};
 use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
+use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use smb_core::error::SMBError;
-use smb_core::logging::debug;
+use smb_core::logging::{debug, warn};
+use smb_core::nt_status::NTStatus;
 use smb_core::SMBResult;
 
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
@@ -15,6 +17,31 @@ use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::server::share::{ConnectAllowed, FilePerms, ResourceHandle, ResourceType, SharedResource, SMBFileMetadata};
+
+/// Maximum single read size (8 MB), per MS-SMB2 §3.3.5.12 recommendation for SMB 3.x.
+const MAX_READ_SIZE: u32 = 8 * 1024 * 1024;
+
+/// Normalize a path by resolving `.` and `..` components lexically (without
+/// touching the filesystem). Returns `None` if the normalized path would
+/// escape the root (i.e., more `..` than preceding components).
+fn normalize_path(path: &str) -> Option<PathBuf> {
+    let mut components = Vec::new();
+    for component in Path::new(path).components() {
+        match component {
+            Component::ParentDir => {
+                if components.is_empty() {
+                    // Attempting to go above root — reject
+                    return None;
+                }
+                components.pop();
+            }
+            Component::Normal(c) => components.push(c),
+            Component::CurDir => {} // skip "."
+            Component::RootDir | Component::Prefix(_) => {} // skip absolute prefixes
+        }
+    }
+    Some(components.iter().collect())
+}
 
 #[derive(Debug)]
 pub struct SMBFileSystemHandle {
@@ -78,21 +105,23 @@ impl ResourceHandle for SMBFileSystemHandle {
                 .unwrap()
                 .as_secs()
         };
-        Ok(SMBFileMetadata {
-            creation_time: FileTime::from_unix(metadata.created().map(time_transform).unwrap_or(0)),
-            last_access_time: FileTime::from_unix(metadata.accessed().map(time_transform).unwrap_or(0)),
-            last_write_time: FileTime::from_unix(metadata.modified().map(time_transform).unwrap_or(0)),
-            last_modification_time: FileTime::from_unix(metadata.modified().map(time_transform).unwrap_or(0)),
-            allocated_size: metadata.len(),
-            actual_size: metadata.len(),
-        })
+        Ok(SMBFileMetadata::new(
+            FileTime::from_unix(metadata.created().map(time_transform).unwrap_or(0)),
+            FileTime::from_unix(metadata.accessed().map(time_transform).unwrap_or(0)),
+            FileTime::from_unix(metadata.modified().map(time_transform).unwrap_or(0)),
+            FileTime::from_unix(metadata.modified().map(time_transform).unwrap_or(0)),
+            metadata.len(),
+            metadata.len(),
+        ))
     }
 
     fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>> {
         match &mut self.resource {
             SMBFileSystemResourceHandle::File(file) => {
+                // Cap to MAX_READ_SIZE to prevent OOM from malicious clients
+                let capped_length = length.min(MAX_READ_SIZE) as usize;
                 file.seek(SeekFrom::Start(offset)).map_err(SMBError::io_error)?;
-                let mut buf = vec![0u8; length as usize];
+                let mut buf = vec![0u8; capped_length];
                 let bytes_read = file.read(&mut buf).map_err(SMBError::io_error)?;
                 buf.truncate(bytes_read);
                 Ok(buf)
@@ -185,7 +214,15 @@ impl<UserName: Send + Sync, Handle: From<SMBFileSystemHandle> + ResourceHandle +
         // Sanitize: strip NUL terminators from UTF-16LE wire encoding,
         // convert Windows backslashes to forward slashes
         let sanitized = path.trim_end_matches('\0').replace('\\', "/");
-        let path = format!("{}/{}", self.local_path, sanitized);
+
+        // Normalize and reject path traversal attempts (e.g. "../../etc/passwd")
+        let relative = normalize_path(&sanitized)
+            .ok_or_else(|| {
+                warn!(path = %sanitized, "rejected path traversal attempt");
+                SMBError::response_error(NTStatus::AccessDenied)
+            })?;
+        let path = format!("{}/{}", self.local_path, relative.display());
+
         let resource = match directory {
             true => SMBFileSystemResourceHandle::directory(&path),
             false => SMBFileSystemResourceHandle::file(&path, disposition)
@@ -265,5 +302,46 @@ impl<UserName: Send + Sync, Handle: TryFrom<SMBFileSystemHandle>> Debug for SMBF
             .field("supports_identity_remoting", &self.supports_identity_remoting)
             .field("compress_data", &self.compress_data)
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_path_simple() {
+        assert_eq!(normalize_path("foo/bar.txt"), Some(PathBuf::from("foo/bar.txt")));
+    }
+
+    #[test]
+    fn normalize_path_strips_current_dir() {
+        assert_eq!(normalize_path("./foo/./bar.txt"), Some(PathBuf::from("foo/bar.txt")));
+    }
+
+    #[test]
+    fn normalize_path_resolves_parent_within_subtree() {
+        assert_eq!(normalize_path("foo/bar/../baz.txt"), Some(PathBuf::from("foo/baz.txt")));
+    }
+
+    #[test]
+    fn normalize_path_rejects_traversal_above_root() {
+        assert_eq!(normalize_path("../etc/passwd"), None);
+    }
+
+    #[test]
+    fn normalize_path_rejects_deep_traversal() {
+        assert_eq!(normalize_path("foo/../../etc/passwd"), None);
+    }
+
+    #[test]
+    fn normalize_path_empty() {
+        assert_eq!(normalize_path(""), Some(PathBuf::from("")));
+    }
+
+    #[test]
+    fn normalize_path_backslash_after_sanitize() {
+        // After backslash conversion happens in handle_create, this tests the forward slash version
+        assert_eq!(normalize_path("subdir/file.txt"), Some(PathBuf::from("subdir/file.txt")));
     }
 }
