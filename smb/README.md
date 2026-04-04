@@ -21,18 +21,23 @@ Built following the [MS-SMB2](https://learn.microsoft.com/en-us/openspecs/window
 
 ### `server`
 
+- `client.rs` — SMB client representation
 - `connection.rs` — Connection state and lifecycle
 - `session.rs` — User session management
 - `tree_connect.rs` — Share connection state
 - `open.rs` — File/directory open handles
 - `lease.rs` — Oplock/lease management
+- `channel.rs` — Multi-channel support
 - `share/` — Filesystem and IPC share abstractions
 - `message_handler.rs` — Command dispatch and response generation
+- `request.rs` — Request representation
 - `preauth_session.rs` — Pre-authentication session state
 - `safe_locked_getter.rs` — Helper for locked access patterns
 
 ### `util`
 
+- `auth/auth_context.rs` — `AuthContext` and `AuthProvider` traits
+- `auth/user.rs` — User representation with credentials
 - `auth/ntlm/` — Full NTLM authentication flow (Negotiate, Challenge, Authenticate)
 - `auth/spnego/` — SPNEGO/DER token wrapping
 - `crypto/` — DES, NTLMv1 extended, NTLMv2, SMB2 signing/encryption keys, SP800-108 KDF
