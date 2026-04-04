@@ -5,36 +5,41 @@ use std::sync::{Arc, Weak};
 use derive_builder::Builder;
 use digest::Digest;
 use sha2::Sha512;
-use tokio::sync::{Mutex, RwLock};
 use tokio::sync::mpsc::Sender;
+use tokio::sync::{Mutex, RwLock};
 use tokio_stream::StreamExt;
 use uuid::Uuid;
 
-use smb_core::{SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
-use smb_core::logging::{trace, debug, info, warn, error};
+use smb_core::logging::{debug, error, info, trace, warn};
 use smb_core::nt_status::NTStatus;
+use smb_core::{SMBResult, SMBToBytes};
 
+use crate::protocol::body::SMBBody;
 use crate::protocol::body::capabilities::Capabilities;
 use crate::protocol::body::create::SMBCreateRequest;
 use crate::protocol::body::dialect::SMBDialect;
-use crate::protocol::body::filetime::FileTime;
-use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
-use crate::protocol::body::negotiate::context::{CompressionAlgorithm, EncryptionCipher, HashAlgorithm, RDMATransformID, SigningAlgorithm};
-use crate::protocol::body::negotiate::security_mode::NegotiateSecurityMode;
-use crate::protocol::body::session_setup::flags::SMBSessionSetupFlags;
-use crate::protocol::body::session_setup::SMBSessionSetupRequest;
 use crate::protocol::body::error::SMBErrorResponse;
-use crate::protocol::body::SMBBody;
+use crate::protocol::body::filetime::FileTime;
+use crate::protocol::body::negotiate::context::{
+    CompressionAlgorithm, EncryptionCipher, HashAlgorithm, RDMATransformID, SigningAlgorithm,
+};
+use crate::protocol::body::negotiate::security_mode::NegotiateSecurityMode;
+use crate::protocol::body::negotiate::{SMBNegotiateRequest, SMBNegotiateResponse};
+use crate::protocol::body::session_setup::SMBSessionSetupRequest;
+use crate::protocol::body::session_setup::flags::SMBSessionSetupFlags;
 use crate::protocol::header::SMBSyncHeader;
 use crate::protocol::message::{Message, SMBMessage};
-use crate::server::{Server, SMBServerDiagnosticsUpdate};
-use crate::server::message_handler::{NonEndingHandler, SMBHandlerState, SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
+use crate::server::message_handler::{
+    NonEndingHandler, SMBHandlerState, SMBLockedMessageHandler, SMBLockedMessageHandlerBase,
+    SMBMessageType,
+};
 use crate::server::open::Open;
 use crate::server::preauth_session::SMBPreauthSession;
 use crate::server::request::Request;
 use crate::server::safe_locked_getter::{InnerGetter, SafeLockedGetter};
 use crate::server::session::Session;
+use crate::server::{SMBServerDiagnosticsUpdate, Server};
 use crate::socket::message_stream::{SMBReadStream, SMBSocketConnection, SMBWriteStream};
 use crate::util::auth::AuthProvider;
 
@@ -118,7 +123,7 @@ pub struct SMBConnection<R: SMBReadStream, W: SMBWriteStream, S: Server> {
     signing_algorithm_id: SigningAlgorithm,
     accept_transport_security: bool,
     underlying_stream: Arc<Mutex<SMBSocketConnection<R, W>>>,
-    server: Weak<RwLock<S>>
+    server: Weak<RwLock<S>>,
 }
 
 // Getters
@@ -218,9 +223,15 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> Connection for SMBConnectio
     }
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnection<R, W, S>
-    where Arc<RwLock<S::Session>>: SMBLockedMessageHandler {
-    pub async fn start_message_handler<A: AuthProvider>(stream: &mut SMBSocketConnection<R, W>, mut connection: Arc<RwLock<SMBConnection<R, W, S>>>, update_channel: Sender<SMBServerDiagnosticsUpdate>) -> SMBResult<()> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection = Self>> SMBConnection<R, W, S>
+where
+    Arc<RwLock<S::Session>>: SMBLockedMessageHandler,
+{
+    pub async fn start_message_handler<A: AuthProvider>(
+        stream: &mut SMBSocketConnection<R, W>,
+        mut connection: Arc<RwLock<SMBConnection<R, W, S>>>,
+        update_channel: Sender<SMBServerDiagnosticsUpdate>,
+    ) -> SMBResult<()> {
         let (read, write) = stream.streams();
         info!("starting message handler");
         let mut messages = read.messages();
@@ -241,7 +252,11 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
                         if let Some(session_lock) = session {
                             let session_rd = session_lock.read().await;
                             let key = session_rd.signing_key().to_vec();
-                            if !key.is_empty() { Some((key, conn_rd.dialect)) } else { None }
+                            if !key.is_empty() {
+                                Some((key, conn_rd.dialect))
+                            } else {
+                                None
+                            }
                         } else {
                             None
                         }
@@ -254,7 +269,9 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
                 debug!(command = ?response.header.command, status = ?status, "sending error response");
                 trace!(?response, "full error response");
                 let sent = write.write_message(&response).await?;
-                let _ = update_channel.send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64)).await;
+                let _ = update_channel
+                    .send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64))
+                    .await;
                 continue;
             }
             let result = connection.handle_message(&incoming).await;
@@ -279,7 +296,11 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
                     if let Some(session_lock) = session {
                         let session_rd = session_lock.read().await;
                         let key = session_rd.signing_key().to_vec();
-                        if !key.is_empty() { Some((key, conn_rd.dialect)) } else { None }
+                        if !key.is_empty() {
+                            Some((key, conn_rd.dialect))
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
@@ -292,7 +313,9 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
             debug!(command = ?response.header.command, mid = response.header.message_id, "sending response");
             trace!(?response, "full outgoing response");
             let sent = write.write_message(&response).await?;
-            let _ = update_channel.send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64)).await;
+            let _ = update_channel
+                .send(SMBServerDiagnosticsUpdate::default().bytes_sent(sent as u64))
+                .await;
         }
 
         // Close streams on message parse finish (logoff)
@@ -320,9 +343,18 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
         // The SMB2 message starts at offset 4 (after the 4-byte NetBIOS header)
         let smb2_offset = 4;
         let smb2_len = bytes.len() - smb2_offset;
-        trace!(?dialect, key_len = signing_key.len(), smb2_len, "signing message");
+        trace!(
+            ?dialect,
+            key_len = signing_key.len(),
+            smb2_len,
+            "signing message"
+        );
         if let Ok(sig) = crate::util::crypto::smb2::calculate_signature(
-            signing_key, dialect, &bytes, smb2_offset, smb2_len
+            signing_key,
+            dialect,
+            &bytes,
+            smb2_offset,
+            smb2_len,
         ) {
             trace!(signature = ?&sig[..std::cmp::min(16, sig.len())], "computed signature");
             let len = std::cmp::min(16, sig.len());
@@ -331,7 +363,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
     }
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnection<R, W, S> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection = Self>> SMBConnection<R, W, S> {
     pub fn underlying_socket(&self) -> Arc<Mutex<SMBSocketConnection<R, W>>> {
         self.underlying_stream.clone()
     }
@@ -438,7 +470,9 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
 type LockedSMBConnection<R, W, S> = Arc<RwLock<SMBConnection<R, W, S>>>;
 pub type WeakLockedSMBConnection<R, W, S> = Weak<RwLock<SMBConnection<R, W, S>>>;
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> InnerGetter for SMBConnection<R, W, S> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection = Self>> InnerGetter
+    for SMBConnection<R, W, S>
+{
     type Upper = S;
 
     fn upper(&self) -> Option<Arc<RwLock<S>>> {
@@ -446,47 +480,87 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> InnerGette
     }
 }
 
-
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnection<R, W, S> {
-    fn handle_negotiate<A: AuthProvider>(&mut self, server: &S, header: &SMBSyncHeader, request: &SMBNegotiateRequest) -> SMBResult<SMBMessageType> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection = Self>> SMBConnection<R, W, S> {
+    fn handle_negotiate<A: AuthProvider>(
+        &mut self,
+        server: &S,
+        header: &SMBSyncHeader,
+        request: &SMBNegotiateRequest,
+    ) -> SMBResult<SMBMessageType> {
         let (update, contexts) = request.validate_and_set_state(self, server)?;
         self.apply_update(update);
         let resp_header = header.create_response_header(0x0, 0, 0);
-        let resp_body = SMBNegotiateResponse::from_connection_state::<A, R, W, S>(self, server, contexts);
-        Ok(SMBMessage::new(resp_header, SMBBody::NegotiateResponse(resp_body)))
+        let resp_body =
+            SMBNegotiateResponse::from_connection_state::<A, R, W, S>(self, server, contexts);
+        Ok(SMBMessage::new(
+            resp_header,
+            SMBBody::NegotiateResponse(resp_body),
+        ))
     }
 
-    async fn handle_session_setup<F: FnOnce() -> Arc<RwLock<Self>>>(&mut self, server: &S, header: &SMBSyncHeader, request: &SMBSessionSetupRequest, get_locked: F) -> SMBResult<Arc<RwLock<S::Session>>> {
+    async fn handle_session_setup<F: FnOnce() -> Arc<RwLock<Self>>>(
+        &mut self,
+        server: &S,
+        header: &SMBSyncHeader,
+        request: &SMBSessionSetupRequest,
+        get_locked: F,
+    ) -> SMBResult<Arc<RwLock<S::Session>>> {
         let locked_conn = get_locked();
         let mut sha = Sha512::default();
         sha.update(self.preauth_integtiry_hash_value());
         sha.update(request.smb_to_bytes());
         let preauth_val = sha.finalize().to_vec();
-        let session = S::Session::init(1, server.encrypt_data(), preauth_val, Arc::downgrade(&locked_conn), server.auth_provider().clone());
+        let session = S::Session::init(
+            1,
+            server.encrypt_data(),
+            preauth_val,
+            Arc::downgrade(&locked_conn),
+            server.auth_provider().clone(),
+        );
         let id = session.id();
         let wrapped_session = Arc::new(RwLock::new(session));
         self.session_table.insert(id, wrapped_session.clone());
         let unlocked = wrapped_session.read().await;
-        let update = request.validate_and_set_state(self, server, &unlocked, header).await?;
+        let update = request
+            .validate_and_set_state(self, server, &unlocked, header)
+            .await?;
         drop(unlocked);
         self.apply_update(update);
         Ok(wrapped_session)
     }
 
-    fn get_session(&self, server: &S, header: &SMBSyncHeader, flags: SMBSessionSetupFlags) -> SMBResult<Arc<RwLock<S::Session>>> {
-        if self.dialect.is_smb3() && server.multi_channel_capable() && flags.contains(SMBSessionSetupFlags::BINDING) {
+    fn get_session(
+        &self,
+        server: &S,
+        header: &SMBSyncHeader,
+        flags: SMBSessionSetupFlags,
+    ) -> SMBResult<Arc<RwLock<S::Session>>> {
+        if self.dialect.is_smb3()
+            && server.multi_channel_capable()
+            && flags.contains(SMBSessionSetupFlags::BINDING)
+        {
             server.sessions().get(&header.session_id)
-        } else if !self.dialect.is_smb3() && !server.multi_channel_capable() && flags.contains(SMBSessionSetupFlags::BINDING) {
+        } else if !self.dialect.is_smb3()
+            && !server.multi_channel_capable()
+            && flags.contains(SMBSessionSetupFlags::BINDING)
+        {
             None
         } else {
             self.sessions().get(&header.session_id)
-        }.map(Arc::clone).ok_or(SMBError::response_error(NTStatus::UserSessionDeleted))
+        }
+        .map(Arc::clone)
+        .ok_or(SMBError::response_error(NTStatus::UserSessionDeleted))
     }
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=SMBConnection<R, W, S>>> NonEndingHandler for LockedSMBConnection<R, W, S> {}
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection = SMBConnection<R, W, S>>>
+    NonEndingHandler for LockedSMBConnection<R, W, S>
+{
+}
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=SMBConnection<R, W, S>>> SMBLockedMessageHandlerBase for LockedSMBConnection<R, W, S> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection = SMBConnection<R, W, S>>>
+    SMBLockedMessageHandlerBase for LockedSMBConnection<R, W, S>
+{
     type Inner = Arc<RwLock<S::Session>>;
 
     async fn inner(&self, message: &SMBMessageType) -> Option<Arc<RwLock<S::Session>>> {
@@ -500,34 +574,53 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=SMBConnection<R, 
             read.get_session(&server_rd, &message.header, req.flags())
                 .ok()
         } else {
-            server_rd.sessions().get(&message.header.session_id)
+            server_rd
+                .sessions()
+                .get(&message.header.session_id)
                 .or(read.sessions().get(&message.header.session_id))
                 .map(Arc::clone)
         }
     }
-    async fn handle_negotiate(&mut self, header: &SMBSyncHeader, message: &SMBNegotiateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+    async fn handle_negotiate(
+        &mut self,
+        header: &SMBSyncHeader,
+        message: &SMBNegotiateRequest,
+    ) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let server = self.upper().await?;
         let unlocked = server.read().await;
-        let message = self.write().await.handle_negotiate::<S::AuthProvider>(&unlocked, header, message)?;
+        let message = self
+            .write()
+            .await
+            .handle_negotiate::<S::AuthProvider>(&unlocked, header, message)?;
         Ok(SMBHandlerState::Finished(message))
     }
 
-    async fn handle_session_setup(&mut self, header: &SMBSyncHeader, message: &SMBSessionSetupRequest) -> SMBResult<SMBHandlerState<Arc<RwLock<S::Session>>>> {
+    async fn handle_session_setup(
+        &mut self,
+        header: &SMBSyncHeader,
+        message: &SMBSessionSetupRequest,
+    ) -> SMBResult<SMBHandlerState<Arc<RwLock<S::Session>>>> {
         let server = self.upper().await?;
         let unlocked = server.read().await;
         let cloned_arc = self.clone();
-        let get_locked = || {
-            cloned_arc
-        };
+        let get_locked = || cloned_arc;
         if header.session_id == 0 {
-            let session = self.write().await.handle_session_setup(&unlocked, header, message, get_locked).await?;
+            let session = self
+                .write()
+                .await
+                .handle_session_setup(&unlocked, header, message, get_locked)
+                .await?;
             Ok(SMBHandlerState::Next(Some(session)))
         } else {
             Ok(SMBHandlerState::Next(None))
         }
     }
 
-    async fn handle_create(&mut self, _header: &SMBSyncHeader, message: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+    async fn handle_create(
+        &mut self,
+        _header: &SMBSyncHeader,
+        message: &SMBCreateRequest,
+    ) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let server = self.upper().await?;
         let server_rd = server.read().await;
         let conn = self.read().await;
@@ -544,7 +637,9 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=SMBConnection<R, 
     }
 }
 
-impl<R: SMBReadStream, W: SMBWriteStream, S: Server> TryFrom<(SMBSocketConnection<R, W>, Weak<RwLock<S>>)> for SMBConnection<R, W, S> {
+impl<R: SMBReadStream, W: SMBWriteStream, S: Server>
+    TryFrom<(SMBSocketConnection<R, W>, Weak<RwLock<S>>)> for SMBConnection<R, W, S>
+{
     type Error = SMBError;
 
     fn try_from(value: (SMBSocketConnection<R, W>, Weak<RwLock<S>>)) -> Result<Self, Self::Error> {
@@ -582,7 +677,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server> TryFrom<(SMBSocketConnectio
             signing_algorithm_id: SigningAlgorithm::HmacSha256,
             accept_transport_security: false,
             underlying_stream: Arc::new(Mutex::new(value.0)),
-            server: value.1
+            server: value.1,
         })
     }
 }

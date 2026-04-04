@@ -8,15 +8,7 @@ use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::empty::SMBEmpty;
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 24)]
 pub struct SMBFlushRequest {

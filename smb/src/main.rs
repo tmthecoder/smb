@@ -6,10 +6,12 @@ use tokio::net::TcpListener;
 
 use smb_core::SMBResult;
 use smb_core::logging::info;
-use smb_reader::protocol::body::tree_connect::access_mask::{SMBAccessMask, SMBDirectoryAccessMask};
+use smb_reader::protocol::body::tree_connect::access_mask::{
+    SMBAccessMask, SMBDirectoryAccessMask,
+};
 use smb_reader::server::{DefaultShare, SMBServerBuilder, StartSMBServer};
-use smb_reader::util::auth::ntlm::NTLMAuthProvider;
 use smb_reader::util::auth::User;
+use smb_reader::util::auth::ntlm::NTLMAuthProvider;
 
 const NTLM_ID: [u8; 10] = [0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x02, 0x0a];
 const SPNEGO_ID: [u8; 6] = [0x2b, 0x06, 0x01, 0x05, 0x05, 0x02];
@@ -24,8 +26,7 @@ async fn main() -> SMBResult<()> {
         use tracing_subscriber::EnvFilter;
         tracing_subscriber::fmt()
             .with_env_filter(
-                EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| EnvFilter::new("info")),
+                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
             )
             .init();
     }
@@ -35,18 +36,28 @@ async fn main() -> SMBResult<()> {
         .and_then(|p| p.parse().ok())
         .unwrap_or(50122);
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    let builder = SMBServerBuilder::<_, TcpListener, NTLMAuthProvider, DefaultShare<NTLMAuthProvider>, _>::default()
-        .anonymous_access(true)
-        .unencrypted_access(true)
-        .require_message_signing(false)
-        .encrypt_data(false)
-        .add_fs_share("test".into(), "".into(), file_allowed, get_file_perms)
-        .add_ipc_share()
-        .auth_provider(NTLMAuthProvider::new(vec![
+    let builder = SMBServerBuilder::<
+        _,
+        TcpListener,
+        NTLMAuthProvider,
+        DefaultShare<NTLMAuthProvider>,
+        _,
+    >::default()
+    .anonymous_access(true)
+    .unencrypted_access(true)
+    .require_message_signing(false)
+    .encrypt_data(false)
+    .add_fs_share("test".into(), "".into(), file_allowed, get_file_perms)
+    .add_ipc_share()
+    .auth_provider(NTLMAuthProvider::new(
+        vec![
             User::new("tejasmehta", "password"),
             User::new("tejas2", "password"),
-        ], false))
-        .listener_address(addr).await?;
+        ],
+        false,
+    ))
+    .listener_address(addr)
+    .await?;
     let server = builder.build()?;
     info!(port, "SMB server starting");
     server.start().await

@@ -10,8 +10,8 @@
 use std::cmp::min;
 use std::marker::PhantomData;
 
-use nom::error::ErrorKind;
 use nom::IResult;
+use nom::error::ErrorKind;
 use serde::{Deserialize, Serialize};
 
 use smb_core::{SMBFromBytes, SMBToBytes};
@@ -25,14 +25,14 @@ use crate::protocol::header::status::SMBStatus;
 
 /// SMB2 command codes ([\[MS-SMB2\] 2.2.1]).
 pub mod command_code;
-/// NT Status codes and legacy DOS error codes.
-pub mod status;
+/// Legacy SMB1 header extra fields.
+pub mod extra;
 /// SMB2 header flags ([\[MS-SMB2\] 2.2.1]: `Flags` field).
 pub mod flags;
 /// Legacy SMB1 Flags2 field.
 pub mod flags2;
-/// Legacy SMB1 header extra fields.
-pub mod extra;
+/// NT Status codes and legacy DOS error codes.
+pub mod status;
 
 /// Indicates the direction of an SMB message.
 ///
@@ -57,9 +57,16 @@ pub trait Header: SMBFromBytes + SMBToBytes {
     fn command_code(&self) -> Self::CommandCode;
 
     /// Parse a header from raw bytes, returning the header and its command code.
-    fn parse(bytes: &[u8]) -> IResult<&[u8], (Self, Self::CommandCode)> where Self: Sized + SMBFromBytes {
-        let (remaining, message) = Self::smb_from_bytes(bytes)
-            .map_err(|_e| nom::Err::Error(nom::error::ParseError::from_error_kind(bytes, ErrorKind::MapRes)))?;
+    fn parse(bytes: &[u8]) -> IResult<&[u8], (Self, Self::CommandCode)>
+    where
+        Self: Sized + SMBFromBytes,
+    {
+        let (remaining, message) = Self::smb_from_bytes(bytes).map_err(|_e| {
+            nom::Err::Error(nom::error::ParseError::from_error_kind(
+                bytes,
+                ErrorKind::MapRes,
+            ))
+        })?;
         let command = message.command_code();
         // .map_err(|_e| );
         Ok((remaining, (message, command)))
@@ -93,15 +100,7 @@ pub trait Header: SMBFromBytes + SMBToBytes {
 /// | 40 | 8 | SessionId |
 /// | 48 | 16 | Signature |
 #[derive(
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    Debug,
-    SMBFromBytes,
-    SMBToBytes,
-    SMBByteSize,
-    Clone
+    Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBToBytes, SMBByteSize, Clone,
 )]
 #[allow(clippy::duplicated_attributes)]
 #[smb_byte_tag(value = 0xFE, order = 0)]
@@ -240,7 +239,12 @@ impl SMBSyncHeader {
     ///
     /// Sets `SMB2_FLAGS_SERVER_TO_REDIR`, copies the command and message ID,
     /// and zeroes the signature (to be filled in later if signing is required).
-    pub fn create_response_header(&self, channel_sequence: u32, session_id: u64, tree_id: u32) -> Self {
+    pub fn create_response_header(
+        &self,
+        channel_sequence: u32,
+        session_id: u64,
+        tree_id: u32,
+    ) -> Self {
         Self {
             command: self.command,
             flags: SMBFlags::SERVER_TO_REDIR,
@@ -273,7 +277,13 @@ mod tests {
     #[test]
     fn sync_header_protocol_id_and_structure_size() {
         let header = SMBSyncHeader::new(
-            SMBCommandCode::Negotiate, SMBFlags::empty(), 0, 0, 0, 0, [0; 16],
+            SMBCommandCode::Negotiate,
+            SMBFlags::empty(),
+            0,
+            0,
+            0,
+            0,
+            [0; 16],
         );
         let bytes = header.smb_to_bytes();
         assert_eq!(bytes[0], 0xFE);
@@ -286,16 +296,21 @@ mod tests {
 
     #[test]
     fn sync_header_is_64_bytes() {
-        let header = SMBSyncHeader::new(
-            SMBCommandCode::Echo, SMBFlags::empty(), 0, 0, 0, 0, [0; 16],
-        );
+        let header =
+            SMBSyncHeader::new(SMBCommandCode::Echo, SMBFlags::empty(), 0, 0, 0, 0, [0; 16]);
         assert_eq!(header.smb_to_bytes().len(), 64);
     }
 
     #[test]
     fn sync_header_command_field_offset() {
         let header = SMBSyncHeader::new(
-            SMBCommandCode::SessionSetup, SMBFlags::empty(), 0, 0, 0, 0, [0; 16],
+            SMBCommandCode::SessionSetup,
+            SMBFlags::empty(),
+            0,
+            0,
+            0,
+            0,
+            [0; 16],
         );
         let bytes = header.smb_to_bytes();
         let cmd = u16::from_le_bytes([bytes[12], bytes[13]]);
@@ -307,7 +322,11 @@ mod tests {
         let header = SMBSyncHeader::new(
             SMBCommandCode::Negotiate,
             SMBFlags::SERVER_TO_REDIR | SMBFlags::SIGNED,
-            0, 0, 0, 0, [0; 16],
+            0,
+            0,
+            0,
+            0,
+            [0; 16],
         );
         let bytes = header.smb_to_bytes();
         let flags = u32::from_le_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
@@ -318,12 +337,17 @@ mod tests {
     #[test]
     fn sync_header_message_id_offset() {
         let header = SMBSyncHeader::new(
-            SMBCommandCode::Echo, SMBFlags::empty(), 0, 42, 0, 0, [0; 16],
+            SMBCommandCode::Echo,
+            SMBFlags::empty(),
+            0,
+            42,
+            0,
+            0,
+            [0; 16],
         );
         let bytes = header.smb_to_bytes();
         let msg_id = u64::from_le_bytes([
-            bytes[24], bytes[25], bytes[26], bytes[27],
-            bytes[28], bytes[29], bytes[30], bytes[31],
+            bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29], bytes[30], bytes[31],
         ]);
         assert_eq!(msg_id, 42);
     }
@@ -331,13 +355,18 @@ mod tests {
     #[test]
     fn sync_header_tree_id_and_session_id() {
         let header = SMBSyncHeader::new(
-            SMBCommandCode::Create, SMBFlags::empty(), 0, 0, 0x1234, 0xABCD, [0; 16],
+            SMBCommandCode::Create,
+            SMBFlags::empty(),
+            0,
+            0,
+            0x1234,
+            0xABCD,
+            [0; 16],
         );
         let bytes = header.smb_to_bytes();
         let tree_id = u32::from_le_bytes([bytes[36], bytes[37], bytes[38], bytes[39]]);
         let session_id = u64::from_le_bytes([
-            bytes[40], bytes[41], bytes[42], bytes[43],
-            bytes[44], bytes[45], bytes[46], bytes[47],
+            bytes[40], bytes[41], bytes[42], bytes[43], bytes[44], bytes[45], bytes[46], bytes[47],
         ]);
         assert_eq!(tree_id, 0x1234);
         assert_eq!(session_id, 0xABCD);
@@ -346,9 +375,7 @@ mod tests {
     #[test]
     fn sync_header_signature_offset() {
         let sig = [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-        let header = SMBSyncHeader::new(
-            SMBCommandCode::Echo, SMBFlags::empty(), 0, 0, 0, 0, sig,
-        );
+        let header = SMBSyncHeader::new(SMBCommandCode::Echo, SMBFlags::empty(), 0, 0, 0, 0, sig);
         let bytes = header.smb_to_bytes();
         assert_eq!(&bytes[48..64], &sig);
     }
@@ -356,7 +383,13 @@ mod tests {
     #[test]
     fn sync_header_round_trip() {
         let header = SMBSyncHeader::new(
-            SMBCommandCode::TreeConnect, SMBFlags::SERVER_TO_REDIR, 0, 7, 3, 99, [0xAA; 16],
+            SMBCommandCode::TreeConnect,
+            SMBFlags::SERVER_TO_REDIR,
+            0,
+            7,
+            3,
+            99,
+            [0xAA; 16],
         );
         let bytes = header.smb_to_bytes();
         let (remaining, parsed) = SMBSyncHeader::smb_from_bytes(&bytes).unwrap();
@@ -372,7 +405,13 @@ mod tests {
     #[test]
     fn create_response_header_sets_server_flag() {
         let request = SMBSyncHeader::new(
-            SMBCommandCode::Negotiate, SMBFlags::empty(), 0, 1, 0, 0, [0; 16],
+            SMBCommandCode::Negotiate,
+            SMBFlags::empty(),
+            0,
+            1,
+            0,
+            0,
+            [0; 16],
         );
         let response = request.create_response_header(0, 0, 0);
         assert!(response.flags.contains(SMBFlags::SERVER_TO_REDIR));
@@ -382,9 +421,8 @@ mod tests {
 
     #[test]
     fn set_signature_enables_signed_flag() {
-        let mut header = SMBSyncHeader::new(
-            SMBCommandCode::Echo, SMBFlags::empty(), 0, 0, 0, 0, [0; 16],
-        );
+        let mut header =
+            SMBSyncHeader::new(SMBCommandCode::Echo, SMBFlags::empty(), 0, 0, 0, 0, [0; 16]);
         assert!(!header.flags.contains(SMBFlags::SIGNED));
         let sig = [0xDE; 16];
         header.set_signature(&sig);

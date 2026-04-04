@@ -5,5 +5,5 @@ use crate::protocol::body::dialect::SMBDialect;
 #[derive(Debug)]
 pub struct SMBClient {
     client_guid: Uuid,
-    dialect: SMBDialect
+    dialect: SMBDialect,
 }

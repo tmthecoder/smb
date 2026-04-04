@@ -4,7 +4,22 @@ use serde::{Deserialize, Serialize};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, Serialize, Deserialize, Copy, Clone, Ord, PartialOrd, SMBFromBytes, SMBByteSize, SMBToBytes, Default)]
+#[derive(
+    Debug,
+    Eq,
+    PartialEq,
+    TryFromPrimitive,
+    Serialize,
+    Deserialize,
+    Copy,
+    Clone,
+    Ord,
+    PartialOrd,
+    SMBFromBytes,
+    SMBByteSize,
+    SMBToBytes,
+    Default,
+)]
 #[allow(non_camel_case_types)]
 pub enum SMBDialect {
     V2_0_2 = 0x202,
@@ -13,7 +28,7 @@ pub enum SMBDialect {
     V3_0_2 = 0x302,
     V3_1_1 = 0x311,
     #[default]
-    V2_X_X = 0x2FF
+    V2_X_X = 0x2FF,
 }
 
 impl SMBDialect {

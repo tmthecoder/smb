@@ -42,7 +42,10 @@ fn spawn_server(port: u16) -> Child {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    panic!("Server did not start listening on {} within 5 seconds", addr);
+    panic!(
+        "Server did not start listening on {} within 5 seconds",
+        addr
+    );
 }
 
 /// Run an smbclient command and return (exit_status, stdout, stderr).
@@ -75,10 +78,13 @@ fn negotiate_completes() {
     let port_str = port.to_string();
     let (_success, _stdout, stderr) = run_smbclient(&[
         "//127.0.0.1/share",
-        "-p", &port_str,
-        "-N",  // no password
-        "-m", "SMB2",
-        "-c", "exit",
+        "-p",
+        &port_str,
+        "-N", // no password
+        "-m",
+        "SMB2",
+        "-c",
+        "exit",
     ]);
 
     // smbclient may fail auth but should get past negotiate.
@@ -106,10 +112,13 @@ fn server_does_not_crash_on_smb1_only() {
     let port_str = port.to_string();
     let (_success, _stdout, _stderr) = run_smbclient(&[
         "//127.0.0.1/share",
-        "-p", &port_str,
+        "-p",
+        &port_str,
         "-N",
-        "-m", "NT1",
-        "-c", "exit",
+        "-m",
+        "NT1",
+        "-c",
+        "exit",
     ]);
 
     // Server should still be running (not crashed)
@@ -142,10 +151,14 @@ fn session_setup_with_credentials() {
     let port_str = port.to_string();
     let (_success, _stdout, stderr) = run_smbclient(&[
         "//127.0.0.1/share",
-        "-p", &port_str,
-        "-U", "testuser%testpass",
-        "-m", "SMB2",
-        "-c", "exit",
+        "-p",
+        &port_str,
+        "-U",
+        "testuser%testpass",
+        "-m",
+        "SMB2",
+        "-c",
+        "exit",
     ]);
 
     // Server should not crash
@@ -170,10 +183,13 @@ fn session_setup_anonymous() {
     let port_str = port.to_string();
     let (_success, _stdout, stderr) = run_smbclient(&[
         "//127.0.0.1/share",
-        "-p", &port_str,
+        "-p",
+        &port_str,
         "-N",
-        "-m", "SMB2",
-        "-c", "exit",
+        "-m",
+        "SMB2",
+        "-c",
+        "exit",
     ]);
 
     // Server should not crash
@@ -206,10 +222,14 @@ fn tree_connect_to_share() {
     let port_str = port.to_string();
     let (_success, _stdout, stderr) = run_smbclient(&[
         "//127.0.0.1/share",
-        "-p", &port_str,
-        "-U", "testuser%testpass",
-        "-m", "SMB2",
-        "-c", "ls",
+        "-p",
+        &port_str,
+        "-U",
+        "testuser%testpass",
+        "-m",
+        "SMB2",
+        "-c",
+        "ls",
     ]);
 
     // Server should not crash
@@ -234,10 +254,14 @@ fn tree_connect_nonexistent_share() {
     let port_str = port.to_string();
     let (success, _stdout, stderr) = run_smbclient(&[
         "//127.0.0.1/nonexistent_share_xyz",
-        "-p", &port_str,
-        "-U", "testuser%testpass",
-        "-m", "SMB2",
-        "-c", "ls",
+        "-p",
+        &port_str,
+        "-U",
+        "testuser%testpass",
+        "-m",
+        "SMB2",
+        "-c",
+        "ls",
     ]);
 
     // Should fail (share doesn't exist)
@@ -269,10 +293,13 @@ fn server_survives_multiple_connections() {
         let port_str = port.to_string();
         let (_success, _stdout, _stderr) = run_smbclient(&[
             "//127.0.0.1/share",
-            "-p", &port_str,
+            "-p",
+            &port_str,
             "-N",
-            "-m", "SMB2",
-            "-c", "exit",
+            "-m",
+            "SMB2",
+            "-c",
+            "exit",
         ]);
     }
 

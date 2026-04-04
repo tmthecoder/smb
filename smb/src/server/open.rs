@@ -6,15 +6,17 @@ use uuid::Uuid;
 
 use smb_core::SMBResult;
 
+use crate::protocol::body::create::SMBCreateRequest;
 use crate::protocol::body::create::file_attributes::SMBFileAttributes;
 use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::create::oplock::SMBOplockLevel;
 use crate::protocol::body::create::options::SMBCreateOptions;
-use crate::protocol::body::create::SMBCreateRequest;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
-use crate::server::lease::SMBLease;
-use crate::server::message_handler::{SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType};
 use crate::server::Server;
+use crate::server::lease::SMBLease;
+use crate::server::message_handler::{
+    SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType,
+};
 use crate::server::share::{ResourceHandle, SMBFileMetadata};
 use crate::server::tree_connect::SMBTreeConnect;
 
@@ -157,7 +159,7 @@ struct FileAttributes;
 pub enum SMBOplockState {
     Held,
     Breaking,
-    None
+    None,
 }
 
 #[derive(Debug)]
@@ -166,7 +168,13 @@ pub struct LockSequence {
     valid: bool,
 }
 
-impl<S: Server> Debug for SMBOpen<S> where S: Debug, S::Session: Debug, S::Handle: Debug, S::Share: Debug {
+impl<S: Server> Debug for SMBOpen<S>
+where
+    S: Debug,
+    S::Session: Debug,
+    S::Handle: Debug,
+    S::Share: Debug,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SMBOpen")
             .field("file_share_id", &self.file_share_id)
@@ -180,7 +188,10 @@ impl<S: Server> Debug for SMBOpen<S> where S: Debug, S::Session: Debug, S::Handl
             .field("oplock_timeout", &self.oplock_timeout)
             .field("is_durable", &self.is_durable)
             .field("durable_open_timeout", &self.durable_open_timeout)
-            .field("durable_open_scavenger_timeout", &self.durable_open_scavenger_timeout)
+            .field(
+                "durable_open_scavenger_timeout",
+                &self.durable_open_scavenger_timeout,
+            )
             .field("durable_owner", &self.durable_owner)
             .field("underlying", &self.underlying)
             .field("current_ea_index", &self.current_ea_index)
@@ -202,10 +213,19 @@ impl<S: Server> Debug for SMBOpen<S> where S: Debug, S::Session: Debug, S::Handl
             .field("is_persistent", &self.is_persistent)
             .field("channel_sequence", &self.channel_sequence)
             .field("outstanding_request_count", &self.outstanding_request_count)
-            .field("outstanding_pre_request_count", &self.outstanding_pre_request_count)
+            .field(
+                "outstanding_pre_request_count",
+                &self.outstanding_pre_request_count,
+            )
             .field("is_shared_vhdx", &self.is_shared_vhdx)
-            .field("application_instance_version_high", &self.application_instance_version_high)
-            .field("application_instance_version_low", &self.application_instance_version_low)
+            .field(
+                "application_instance_version_high",
+                &self.application_instance_version_high,
+            )
+            .field(
+                "application_instance_version_low",
+                &self.application_instance_version_low,
+            )
             .finish()
     }
 }

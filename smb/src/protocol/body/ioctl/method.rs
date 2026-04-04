@@ -2,7 +2,18 @@ use serde::{Deserialize, Serialize};
 
 use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBFromBytes, SMBToBytes};
 
-#[derive(SMBEnumFromBytes, Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes)]
+#[derive(
+    SMBEnumFromBytes,
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    SMBByteSize,
+    SMBToBytes,
+)]
 pub enum SMBIoCtlMethod {
     #[smb_discriminator(value = 0x00060194)]
     #[smb_direct(start(fixed = 0))]
@@ -51,48 +62,77 @@ pub enum SMBIoCtlMethod {
     ValidateNegotiateInfo(ValidateNegotiateInfo),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct DfsGetReferrals {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct PipePeek {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct PipeWait {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct PipeTransceive {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct SrvCopyChunk {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct SrvEnumerateSnapshots {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct SrvRequestResumeKey {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct SrvReadHash {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct SrvCopyChunkWrite {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct LmrRequestResiliency {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct NetworkInterfaceInfo {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct SetReparsePoint {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct DfsGetReferralsEx {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct FileLevelTrip {}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, SMBByteSize, SMBToBytes, SMBFromBytes,
+)]
 pub struct ValidateNegotiateInfo {}
-

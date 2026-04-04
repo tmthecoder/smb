@@ -41,12 +41,12 @@
 
 extern crate core;
 
+mod byte_helper;
 /// SMB2/3 wire-format protocol types: headers, bodies, and message framing.
 pub mod protocol;
-/// Utility modules: authentication, cryptography, byte helpers, and flag macros.
-pub mod util;
 /// SMB server implementation: connection, session, tree-connect, and open management.
 pub mod server;
 /// Socket abstractions for SMB message transport (TCP listener, read/write streams).
 pub mod socket;
-mod byte_helper;
+/// Utility modules: authentication, cryptography, byte helpers, and flag macros.
+pub mod util;

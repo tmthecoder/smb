@@ -1,24 +1,24 @@
 use serde::{Deserialize, Serialize};
 
+use smb_core::SMBResult;
 use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
-use smb_core::SMBResult;
 
-use crate::util::auth::{AuthContext, AuthProvider};
 use crate::util::auth::ntlm::ntlm_message::NTLMMessage;
 use crate::util::auth::user::User;
+use crate::util::auth::{AuthContext, AuthProvider};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct NTLMAuthProvider {
     accepted_users: Vec<User>,
-    guest_supported: bool
+    guest_supported: bool,
 }
 
 impl NTLMAuthProvider {
     pub fn new(accepted_users: Vec<User>, guest_supported: bool) -> Self {
         Self {
             accepted_users,
-            guest_supported
+            guest_supported,
         }
     }
 }
@@ -31,27 +31,28 @@ impl AuthProvider for NTLMAuthProvider {
         vec![0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x02, 0x0a]
     }
 
-    fn accept_security_context(&self, input_message: &NTLMMessage, context: &mut NTLMAuthContext) -> (NTStatus, NTLMMessage) {
+    fn accept_security_context(
+        &self,
+        input_message: &NTLMMessage,
+        context: &mut NTLMAuthContext,
+    ) -> (NTStatus, NTLMMessage) {
         match input_message {
             NTLMMessage::Negotiate(x) => {
                 let (status, challenge) = x.get_challenge_response();
                 context.server_challenge = (*challenge.server_challenge()).into();
                 (status, NTLMMessage::Challenge(challenge))
-            },
-            NTLMMessage::Challenge(_x) => {
-                (NTStatus::StatusSuccess, NTLMMessage::Dummy)
-            },
+            }
+            NTLMMessage::Challenge(_x) => (NTStatus::StatusSuccess, NTLMMessage::Dummy),
             NTLMMessage::Authenticate(x) => {
-                let auth_status = x.authenticate(context, &self.accepted_users, self.guest_supported);
+                let auth_status =
+                    x.authenticate(context, &self.accepted_users, self.guest_supported);
                 if auth_status == 0 {
                     (NTStatus::StatusSuccess, NTLMMessage::Dummy)
                 } else {
                     (NTStatus::LogonFailure, NTLMMessage::Dummy)
                 }
-            },
-            NTLMMessage::Dummy => {
-                (NTStatus::StatusSuccess, NTLMMessage::Dummy)
             }
+            NTLMMessage::Dummy => (NTStatus::StatusSuccess, NTLMMessage::Dummy),
         }
     }
 }
@@ -99,6 +100,8 @@ impl AuthContext for NTLMAuthContext {
     }
 
     fn user_name(&self) -> SMBResult<&Self::UserName> {
-        self.user_name.as_ref().ok_or(SMBError::server_error("No user name"))
+        self.user_name
+            .as_ref()
+            .ok_or(SMBError::server_error("No user name"))
     }
 }

@@ -4,7 +4,21 @@ use serde::{Deserialize, Serialize};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, SMBFromBytes, SMBToBytes, SMBByteSize, TryFromPrimitive, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    SMBFromBytes,
+    SMBToBytes,
+    SMBByteSize,
+    TryFromPrimitive,
+    Serialize,
+    Deserialize,
+)]
 pub enum SMBOplockLevel {
     None = 0x0,
     II = 0x1,

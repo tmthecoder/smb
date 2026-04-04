@@ -1,14 +1,16 @@
-use std::cmp::{max, Ordering};
+use std::cmp::{Ordering, max};
 use std::fmt::Debug;
 
 use darling::FromAttributes;
 use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned};
-use syn::{Attribute, Field, Type};
 use syn::spanned::Spanned;
+use syn::{Attribute, Field, Type};
 
-use crate::attrs::{AttributeInfo, Buffer, ByteTag, Direct, Skip, SMBEnum, SMBString, StringTag, Vector};
 use crate::SMBDeriveError;
+use crate::attrs::{
+    AttributeInfo, Buffer, ByteTag, Direct, SMBEnum, SMBString, Skip, StringTag, Vector,
+};
 
 /// A single field within an SMB struct or enum variant, together with its
 /// parsed attribute metadata.
@@ -64,7 +66,10 @@ impl<'a, T: Spanned> SMBField<'a, T> {
         let field = self.spanned;
         let ty = &self.ty;
         let _name_str = name.to_string();
-        let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_from_bytes(name, field, ty));
+        let all_bytes = self
+            .val_type
+            .iter()
+            .map(|field_ty| field_ty.smb_from_bytes(name, field, ty));
         quote! {
             #(#all_bytes)*
         }
@@ -84,7 +89,10 @@ impl<'a, T: Spanned> SMBField<'a, T> {
         };
         let field = self.spanned;
         let _ty = &self.ty;
-        let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_to_bytes(&name_token_adj, &raw_token, field));
+        let all_bytes = self
+            .val_type
+            .iter()
+            .map(|field_ty| field_ty.smb_to_bytes(&name_token_adj, &raw_token, field));
         quote! {
             #(#all_bytes)*
         }
@@ -98,7 +106,10 @@ impl<'a, T: Spanned> SMBField<'a, T> {
             &#group
         };
         let field = self.spanned;
-        let all_bytes = self.val_type.iter().map(|field_ty| field_ty.smb_to_bytes(&token_adj, &raw_token, field));
+        let all_bytes = self
+            .val_type
+            .iter()
+            .map(|field_ty| field_ty.smb_to_bytes(&token_adj, &raw_token, field));
         quote! {
             #(#all_bytes)*
         }
@@ -132,12 +143,14 @@ impl<T: Spanned + Debug> SMBField<'_, T> {
     }
 
     pub(crate) fn get_named_token(&self) -> TokenStream {
-        format!("&self.{}", &self.name.to_string()).parse()
+        format!("&self.{}", &self.name.to_string())
+            .parse()
             .unwrap_or_else(|_e| Self::error(self.spanned))
     }
 
     pub(crate) fn get_unnamed_token(&self, idx: usize) -> TokenStream {
-        format!("&self.{}", idx).parse()
+        format!("&self.{}", idx)
+            .parse()
             .unwrap_or_else(|_e| Self::error(self.spanned))
     }
 
@@ -149,7 +162,9 @@ impl<T: Spanned + Debug> SMBField<'_, T> {
     }
 
     pub(crate) fn get_disc_enum_token(&self) -> TokenStream {
-        format!("Self::{}", &self.name.to_string()).parse().unwrap_or_else(|_e| Self::error(self.spanned))
+        format!("Self::{}", &self.name.to_string())
+            .parse()
+            .unwrap_or_else(|_e| Self::error(self.spanned))
     }
 
     pub(crate) fn get_smb_message_size(&self, size_tokens: TokenStream) -> TokenStream {
@@ -170,11 +185,7 @@ impl<T: Spanned + Debug> SMBField<'_, T> {
         let align = if let SMBFieldType::Vector(vec) = ty {
             if vec.align > 0 { vec.align } else { 1 }
         } else if let SMBFieldType::String(str) = ty {
-            if str.underlying == "u8" {
-                1
-            } else {
-                2
-            }
+            if str.underlying == "u8" { 1 } else { 2 }
         } else {
             1
         };
@@ -201,16 +212,18 @@ impl<T: Spanned + Debug> SMBField<'_, T> {
                 } else {
                     (l.get_pos(), l.get_type(&self.spanned.span()))
                 }
-            },
+            }
             (Some(o), None) => (o.get_pos(), o.get_type(&self.spanned.span())),
             (None, Some(l)) => (l.get_pos(), l.get_type(&self.spanned.span())),
-            _ => (0, None)
+            _ => (0, None),
         };
 
         let buffer_min_pos = offset.map(AttributeInfo::get_min_val).unwrap_or(0);
 
         let attr_start_ty = match attr_ty {
-            Some(ty) => quote! { ::std::cmp::max(#buffer_min_pos, #attr_start + std::mem::size_of::<#ty>())},
+            Some(ty) => {
+                quote! { ::std::cmp::max(#buffer_min_pos, #attr_start + std::mem::size_of::<#ty>())}
+            }
             None => quote! { ::std::cmp::max(#attr_start, #buffer_min_pos) },
         };
 
@@ -227,21 +240,25 @@ impl<T: Spanned + Debug> SMBField<'_, T> {
 }
 
 impl<'a> SMBField<'a, Field> {
-    pub(crate) fn from_iter<U: Iterator<Item=&'a Field>>(fields: U) -> Result<Vec<Self>, SMBDeriveError<Field>> {
-        fields.enumerate().map(|(idx, field)| {
-            let val_types = field.attrs.iter().map(|attr| get_field_types(field, std::slice::from_ref(attr))).collect::<Result<Vec<SMBFieldType>, SMBDeriveError<Field>>>()?;
-            let name = if let Some(x) = &field.ident {
-                x.clone()
-            } else {
-                format_ident!("val_{}", idx)
-            };
-            Ok(SMBField::new(
-                field,
-                name,
-                field.ty.clone(),
-                val_types,
-            ))
-        }).collect::<Vec<Result<SMBField<Field>, SMBDeriveError<Field>>>>()
+    pub(crate) fn from_iter<U: Iterator<Item = &'a Field>>(
+        fields: U,
+    ) -> Result<Vec<Self>, SMBDeriveError<Field>> {
+        fields
+            .enumerate()
+            .map(|(idx, field)| {
+                let val_types = field
+                    .attrs
+                    .iter()
+                    .map(|attr| get_field_types(field, std::slice::from_ref(attr)))
+                    .collect::<Result<Vec<SMBFieldType>, SMBDeriveError<Field>>>()?;
+                let name = if let Some(x) = &field.ident {
+                    x.clone()
+                } else {
+                    format_ident!("val_{}", idx)
+                };
+                Ok(SMBField::new(field, name, field.ty.clone(), val_types))
+            })
+            .collect::<Vec<Result<SMBField<Field>, SMBDeriveError<Field>>>>()
             .into_iter()
             .collect::<Result<Vec<SMBField<Field>>, SMBDeriveError<Field>>>()
     }
@@ -260,7 +277,12 @@ impl SMBFieldType {
             SMBFieldType::StringTag(string_tag) => string_tag.smb_from_bytes(field),
         }
     }
-    fn smb_to_bytes<T: Spanned>(&self, token: &TokenStream, raw_token: &TokenStream, field: &T) -> TokenStream {
+    fn smb_to_bytes<T: Spanned>(
+        &self,
+        token: &TokenStream,
+        raw_token: &TokenStream,
+        field: &T,
+    ) -> TokenStream {
         match self {
             SMBFieldType::Direct(direct) => direct.smb_to_bytes(field, token),
             SMBFieldType::Buffer(buffer) => buffer.smb_to_bytes(field, token),
@@ -287,11 +309,15 @@ impl SMBFieldType {
 }
 
 impl PartialOrd for SMBFieldType {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl<T: Spanned + PartialEq + Eq> PartialOrd for SMBField<'_, T> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl<T: Spanned + PartialEq + Eq> Ord for SMBField<'_, T> {
@@ -315,16 +341,16 @@ impl SMBFieldType {
         match self {
             Self::Direct(x) => match x.start {
                 AttributeInfo::Fixed(idx) => idx,
-                AttributeInfo::CurrentPos |
-                AttributeInfo::Inner(_) |
-                AttributeInfo::NullTerminated(_) => x.order
+                AttributeInfo::CurrentPos
+                | AttributeInfo::Inner(_)
+                | AttributeInfo::NullTerminated(_) => x.order,
             },
             Self::Enum(x) => match x.start {
                 AttributeInfo::Fixed(idx) => idx,
-                AttributeInfo::CurrentPos |
-                AttributeInfo::Inner(_) |
-                AttributeInfo::NullTerminated(_) => x.order
-            }
+                AttributeInfo::CurrentPos
+                | AttributeInfo::Inner(_)
+                | AttributeInfo::NullTerminated(_) => x.order,
+            },
             Self::Buffer(x) => x.order,
             Self::Vector(x) => x.order,
             Self::String(x) => x.order,
@@ -366,7 +392,10 @@ impl FromAttributes for SMBFieldType {
     }
 }
 
-fn get_field_types(field: &Field, attrs: &[Attribute]) -> Result<SMBFieldType, SMBDeriveError<Field>> {
+fn get_field_types(
+    field: &Field,
+    attrs: &[Attribute],
+) -> Result<SMBFieldType, SMBDeriveError<Field>> {
     SMBFieldType::from_attributes(attrs)
         .map_err(|_e| SMBDeriveError::TypeError(Box::new(field.clone())))
 }

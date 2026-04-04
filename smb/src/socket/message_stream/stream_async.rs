@@ -5,21 +5,32 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_stream::Stream;
 use tokio_util::sync::ReusableBoxFuture;
 
-use smb_core::{SMBParseResult, SMBResult};
 use smb_core::error::SMBError;
-use smb_core::logging::{trace, debug, warn};
+use smb_core::logging::{debug, trace, warn};
+use smb_core::{SMBParseResult, SMBResult};
 
 use crate::protocol::body::SMBBody;
 use crate::protocol::header::SMBSyncHeader;
 use crate::protocol::message::{Message, SMBMessage};
-use crate::socket::message_stream::{SMBMessageIterator, SMBMessageStream, SMBReadStream, SMBSocketConnection, SMBStream, SMBWriteStream};
+use crate::socket::message_stream::{
+    SMBMessageIterator, SMBMessageStream, SMBReadStream, SMBSocketConnection, SMBStream,
+    SMBWriteStream,
+};
 
-async fn make_future<T: SMBReadStream>(mut iterator: SMBMessageIterator<'_, T>) -> (SMBResult<SMBMessage<SMBSyncHeader, SMBBody>>, SMBMessageIterator<'_, T>) {
+async fn make_future<T: SMBReadStream>(
+    mut iterator: SMBMessageIterator<'_, T>,
+) -> (
+    SMBResult<SMBMessage<SMBSyncHeader, SMBBody>>,
+    SMBMessageIterator<'_, T>,
+) {
     let res = loop {
         match iterator.reader.read_message(&mut iterator.buffer).await {
             Ok(msg) => break Ok(msg),
             Err(SMBError::PayloadTooSmall(_x)) => {
-                trace!(buf_len = iterator.buffer.len(), "buffer too small, reading more data");
+                trace!(
+                    buf_len = iterator.buffer.len(),
+                    "buffer too small, reading more data"
+                );
             }
             Err(e) => {
                 warn!(?e, "message read error");
@@ -33,7 +44,11 @@ async fn make_future<T: SMBReadStream>(mut iterator: SMBMessageIterator<'_, T>) 
     } else {
         Err(res.err().unwrap())
     };
-    debug!(ok = msg_res.is_ok(), remaining = iterator.buffer.len(), "message read complete");
+    debug!(
+        ok = msg_res.is_ok(),
+        remaining = iterator.buffer.len(),
+        "message read complete"
+    );
     trace!(?msg_res, "parsed message result");
     (msg_res, iterator)
 }
@@ -42,13 +57,14 @@ impl<'a, T: SMBReadStream> SMBMessageStream<'a, T> {
     pub fn new(reader: &'a mut T) -> Self {
         let iterator = SMBMessageIterator::new(reader);
         let future = ReusableBoxFuture::new(make_future(iterator));
-        Self {
-            inner: future,
-        }
+        Self { inner: future }
     }
 }
 
-impl<Writer> SMBWriteStream for Writer where Writer: AsyncWriteExt + Unpin + Send + Sync + SMBStream {
+impl<Writer> SMBWriteStream for Writer
+where
+    Writer: AsyncWriteExt + Unpin + Send + Sync + SMBStream,
+{
     async fn write_message<T: Message + Sync>(&mut self, message: &T) -> SMBResult<usize> {
         let bytes = message.as_bytes();
         self.write_all(&bytes).await.map_err(SMBError::io_error)?;
@@ -56,8 +72,14 @@ impl<Writer> SMBWriteStream for Writer where Writer: AsyncWriteExt + Unpin + Sen
     }
 }
 
-impl<Reader> SMBReadStream for Reader where Reader: AsyncReadExt + Unpin + Send + Sync + SMBStream {
-    async fn read_message<'a>(&'a mut self, existing: &'a mut Vec<u8>) -> SMBParseResult<&'a [u8], SMBMessage<SMBSyncHeader, SMBBody>> {
+impl<Reader> SMBReadStream for Reader
+where
+    Reader: AsyncReadExt + Unpin + Send + Sync + SMBStream,
+{
+    async fn read_message<'a>(
+        &'a mut self,
+        existing: &'a mut Vec<u8>,
+    ) -> SMBParseResult<&'a [u8], SMBMessage<SMBSyncHeader, SMBBody>> {
         trace!(buf_len = existing.len(), "read_message called");
         if let Ok((remaining, res)) = Self::read_message_inner(existing) {
             return Ok((&existing[(existing.len() - remaining.len())..], res));
@@ -69,7 +91,10 @@ impl<Reader> SMBReadStream for Reader where Reader: AsyncReadExt + Unpin + Send 
         Self::read_message_inner(existing)
     }
 
-    fn messages(&mut self) -> SMBMessageStream<'_, Self> where Self: Sized {
+    fn messages(&mut self) -> SMBMessageStream<'_, Self>
+    where
+        Self: Sized,
+    {
         SMBMessageStream::new(self)
     }
 }

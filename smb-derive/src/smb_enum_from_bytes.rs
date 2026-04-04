@@ -4,8 +4,8 @@ use proc_macro2::Ident;
 use quote::quote;
 use syn::spanned::Spanned;
 
+use crate::field_mapping::{SMBFieldMapping, smb_enum_from_bytes};
 use crate::{CreatorFn, SMBDeriveError};
-use crate::field_mapping::{smb_enum_from_bytes, SMBFieldMapping};
 
 /// Code-generation backend for [`SMBEnumFromBytes`].
 ///
@@ -14,12 +14,19 @@ use crate::field_mapping::{smb_enum_from_bytes, SMBFieldMapping};
 pub(crate) struct EnumFromBytesCreator {}
 
 impl CreatorFn for EnumFromBytesCreator {
-    fn call<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(self, mapping: Result<Vec<SMBFieldMapping<T, U>>, SMBDeriveError<U>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
+    fn call<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(
+        self,
+        mapping: Result<Vec<SMBFieldMapping<T, U>>, SMBDeriveError<U>>,
+        name: &Ident,
+    ) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
         enum_from_bytes_parser_impl(mapping, name)
     }
 }
 
-fn enum_from_bytes_parser_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(mappings: Result<Vec<SMBFieldMapping<T, U>>, SMBDeriveError<U>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
+fn enum_from_bytes_parser_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(
+    mappings: Result<Vec<SMBFieldMapping<T, U>>, SMBDeriveError<U>>,
+    name: &Ident,
+) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
     let mappings = mappings?;
     let parser = mappings.iter().map(|mapping| smb_enum_from_bytes(mapping));
     Ok(quote! {

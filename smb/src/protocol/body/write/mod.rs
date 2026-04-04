@@ -11,15 +11,7 @@ use crate::protocol::body::write::flags::SMBWriteFlags;
 mod flags;
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 49)]
 pub struct SMBWriteRequest {
@@ -35,22 +27,20 @@ pub struct SMBWriteRequest {
     remaining_bytes: u32,
     #[smb_direct(start(fixed = 44))]
     flags: SMBWriteFlags,
-    #[smb_buffer(offset(inner(start = 40, num_type = "u16", subtract = 64)), length(inner(start = 42, num_type = "u16")))]
+    #[smb_buffer(
+        offset(inner(start = 40, num_type = "u16", subtract = 64)),
+        length(inner(start = 42, num_type = "u16"))
+    )]
     channel_information: Vec<u8>,
-    #[smb_buffer(offset(inner(start = 2, num_type = "u16", subtract = 64)), length(inner(start = 4, num_type = "u32")))]
+    #[smb_buffer(
+        offset(inner(start = 2, num_type = "u16", subtract = 64)),
+        length(inner(start = 4, num_type = "u32"))
+    )]
     data_to_write: Vec<u8>,
 }
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 17)]
 pub struct SMBWriteResponse {

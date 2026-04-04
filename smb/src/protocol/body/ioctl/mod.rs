@@ -12,15 +12,7 @@ mod flags;
 mod method;
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 57)]
 pub struct SMBIoCtlRequest {
@@ -38,20 +30,15 @@ pub struct SMBIoCtlRequest {
     flags: SMBIoCtlRequestFlags,
     #[smb_skip(start = 52, length = 4)]
     reserved2: PhantomData<Vec<u8>>,
-    #[smb_enum(start(inner(start = 24, num_type = "u32")), discriminator(inner(start = 4, num_type = "u32")))]
+    #[smb_enum(
+        start(inner(start = 24, num_type = "u32")),
+        discriminator(inner(start = 4, num_type = "u32"))
+    )]
     input_method: SMBIoCtlMethod,
 }
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 49)]
 pub struct SMBIoCtlResponse {
@@ -65,6 +52,9 @@ pub struct SMBIoCtlResponse {
     flags: PhantomData<Vec<u8>>,
     #[smb_skip(start = 44, length = 4)]
     reserved2: PhantomData<Vec<u8>>,
-    #[smb_enum(start(inner(start = 30, num_type = "u32")), discriminator(inner(start = 4, num_type = "u32")))]
+    #[smb_enum(
+        start(inner(start = 30, num_type = "u32")),
+        discriminator(inner(start = 4, num_type = "u32"))
+    )]
     input_method: SMBIoCtlMethod,
 }

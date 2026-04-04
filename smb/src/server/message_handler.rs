@@ -1,10 +1,11 @@
 use std::future::Future;
 
-use smb_core::error::SMBError;
-use smb_core::logging::{trace, debug};
-use smb_core::nt_status::NTStatus;
 use smb_core::SMBResult;
+use smb_core::error::SMBError;
+use smb_core::logging::{debug, trace};
+use smb_core::nt_status::NTStatus;
 
+use crate::protocol::body::SMBBody;
 use crate::protocol::body::cancel::SMBCancelRequest;
 use crate::protocol::body::change_notify::SMBChangeNotifyRequest;
 use crate::protocol::body::close::SMBCloseRequest;
@@ -21,7 +22,6 @@ use crate::protocol::body::query_info::SMBQueryInfoRequest;
 use crate::protocol::body::read::SMBReadRequest;
 use crate::protocol::body::session_setup::SMBSessionSetupRequest;
 use crate::protocol::body::set_info::SMBSetInfoRequest;
-use crate::protocol::body::SMBBody;
 use crate::protocol::body::tree_connect::SMBTreeConnectRequest;
 use crate::protocol::body::tree_disconnect::SMBTreeDisconnectRequest;
 use crate::protocol::body::write::SMBWriteRequest;
@@ -48,16 +48,25 @@ impl<H> SMBHandlerState<H> {
 pub trait SMBLockedMessageHandlerBase {
     type Inner;
 
-    fn inner(&self, message: &SMBMessageType) -> impl Future<Output=Option<Self::Inner>>;
-    fn handle_message_inner(&mut self, message: &SMBMessageType) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn inner(&self, message: &SMBMessageType) -> impl Future<Output = Option<Self::Inner>>;
+    fn handle_message_inner(
+        &mut self,
+        message: &SMBMessageType,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         debug!(command = ?message.header.command, mid = message.header.message_id, "dispatching to handler");
         async {
             match &message.body {
                 SMBBody::NegotiateRequest(req) => self.handle_negotiate(&message.header, req).await,
-                SMBBody::SessionSetupRequest(req) => self.handle_session_setup(&message.header, req).await,
+                SMBBody::SessionSetupRequest(req) => {
+                    self.handle_session_setup(&message.header, req).await
+                }
                 SMBBody::LogoffRequest(req) => self.handle_logoff(&message.header, req).await,
-                SMBBody::TreeConnectRequest(req) => self.handle_tree_connect(&message.header, req).await,
-                SMBBody::TreeDisconnectRequest(req) => self.handle_tree_disconnect(&message.header, req).await,
+                SMBBody::TreeConnectRequest(req) => {
+                    self.handle_tree_connect(&message.header, req).await
+                }
+                SMBBody::TreeDisconnectRequest(req) => {
+                    self.handle_tree_disconnect(&message.header, req).await
+                }
                 SMBBody::CreateRequest(req) => self.handle_create(&message.header, req).await,
                 SMBBody::CloseRequest(req) => self.handle_close(&message.header, req).await,
                 SMBBody::FlushRequest(req) => self.handle_flush(&message.header, req).await,
@@ -67,109 +76,196 @@ pub trait SMBLockedMessageHandlerBase {
                 SMBBody::IoCtlRequest(req) => self.handle_ioctl(&message.header, req).await,
                 SMBBody::CancelRequest(req) => self.handle_cancel(&message.header, req).await,
                 SMBBody::EchoRequest(req) => self.handle_echo(&message.header, req).await,
-                SMBBody::QueryDirectoryRequest(req) => self.handle_query_directory(&message.header, req).await,
-                SMBBody::ChangeNotifyRequest(req) => self.handle_change_notify(&message.header, req).await,
-                SMBBody::QueryInfoRequest(req) => self.handle_query_info(&message.header, req).await,
+                SMBBody::QueryDirectoryRequest(req) => {
+                    self.handle_query_directory(&message.header, req).await
+                }
+                SMBBody::ChangeNotifyRequest(req) => {
+                    self.handle_change_notify(&message.header, req).await
+                }
+                SMBBody::QueryInfoRequest(req) => {
+                    self.handle_query_info(&message.header, req).await
+                }
                 SMBBody::SetInfoRequest(req) => self.handle_set_info(&message.header, req).await,
-                SMBBody::OplockBreakAcknowledgement(req) => self.handle_oplock_break(&message.header, req).await,
+                SMBBody::OplockBreakAcknowledgement(req) => {
+                    self.handle_oplock_break(&message.header, req).await
+                }
                 SMBBody::ErrorResponse(_) => {
                     let status = NTStatus::try_from(message.header.channel_sequence)
                         .unwrap_or(NTStatus::NotSupported);
                     Err(SMBError::response_error(status))
-                },
+                }
                 _ => Err(SMBError::server_error("Command not implemented")),
             }
         }
     }
 
-    fn handle_negotiate(&mut self, _header: &SMBSyncHeader, _message: &SMBNegotiateRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_negotiate(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBNegotiateRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_session_setup(&mut self, _header: &SMBSyncHeader, _message: &SMBSessionSetupRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_session_setup(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBSessionSetupRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_logoff(&mut self, _header: &SMBSyncHeader, _message: &SMBLogoffRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_logoff(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBLogoffRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_tree_connect(&mut self, _header: &SMBSyncHeader, _message: &SMBTreeConnectRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_tree_connect(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBTreeConnectRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_tree_disconnect(&mut self, _header: &SMBSyncHeader, _message: &SMBTreeDisconnectRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_tree_disconnect(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBTreeDisconnectRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_create(&mut self, _header: &SMBSyncHeader, _message: &SMBCreateRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_create(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBCreateRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         debug!("create request, passing to next handler");
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_close(&mut self, _header: &SMBSyncHeader, _message: &SMBCloseRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_close(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBCloseRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_flush(&mut self, _header: &SMBSyncHeader, _message: &SMBFlushRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_flush(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBFlushRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_read(&mut self, _header: &SMBSyncHeader, _message: &SMBReadRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_read(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBReadRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_write(&mut self, _header: &SMBSyncHeader, _message: &SMBWriteRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_write(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBWriteRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_lock(&mut self, _header: &SMBSyncHeader, _message: &SMBLockRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_lock(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBLockRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_ioctl(&mut self, _header: &SMBSyncHeader, _message: &SMBIoCtlRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_ioctl(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBIoCtlRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_cancel(&mut self, _header: &SMBSyncHeader, _message: &SMBCancelRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_cancel(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBCancelRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_echo(&mut self, _header: &SMBSyncHeader, _message: &SMBEchoRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_echo(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBEchoRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_query_directory(&mut self, _header: &SMBSyncHeader, _message: &SMBQueryDirectoryRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_query_directory(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBQueryDirectoryRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_change_notify(&mut self, _header: &SMBSyncHeader, _message: &SMBChangeNotifyRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_change_notify(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBChangeNotifyRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_query_info(&mut self, _header: &SMBSyncHeader, _message: &SMBQueryInfoRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_query_info(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBQueryInfoRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_set_info(&mut self, _header: &SMBSyncHeader, _message: &SMBSetInfoRequest) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_set_info(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBSetInfoRequest,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 
-    fn handle_oplock_break(&mut self, _header: &SMBSyncHeader, _message: &SMBOplockBreakAcknowledgement) -> impl Future<Output=SMBResult<SMBHandlerState<Self::Inner>>> {
+    fn handle_oplock_break(
+        &mut self,
+        _header: &SMBSyncHeader,
+        _message: &SMBOplockBreakAcknowledgement,
+    ) -> impl Future<Output = SMBResult<SMBHandlerState<Self::Inner>>> {
         async { Ok(SMBHandlerState::Next(None)) }
     }
 }
 
 pub trait SMBLockedMessageHandler: SMBLockedMessageHandlerBase {
-    fn handle_message(&mut self, message: &SMBMessageType) -> impl Future<Output=SMBResult<SMBMessageType>> {
-        async {
-            self.handle_message_inner(message).await?
-                .get_message()
-        }
+    fn handle_message(
+        &mut self,
+        message: &SMBMessageType,
+    ) -> impl Future<Output = SMBResult<SMBMessageType>> {
+        async { self.handle_message_inner(message).await?.get_message() }
     }
 }
 
-impl<H: SMBLockedMessageHandlerBase + NonEndingHandler> SMBLockedMessageHandler for H where H::Inner: SMBLockedMessageHandler {
+impl<H: SMBLockedMessageHandlerBase + NonEndingHandler> SMBLockedMessageHandler for H
+where
+    H::Inner: SMBLockedMessageHandler,
+{
     async fn handle_message(&mut self, message: &SMBMessageType) -> SMBResult<SMBMessageType> {
         debug!(command = ?message.header.command, mid = message.header.message_id, "handling message in chain");
         let state = self.handle_message_inner(message).await?;
@@ -178,18 +274,19 @@ impl<H: SMBLockedMessageHandlerBase + NonEndingHandler> SMBLockedMessageHandler 
             SMBHandlerState::Finished(msg) => {
                 trace!("handler produced final response");
                 Ok(msg)
-            },
+            }
             SMBHandlerState::Next(Some(mut handler)) => {
                 trace!("delegating to explicit next handler");
                 handler.handle_message(message).await
-            },
+            }
             SMBHandlerState::Next(None) => {
                 trace!("delegating to inner handler");
-                self.inner(message).await
+                self.inner(message)
+                    .await
                     .ok_or(SMBError::server_error("Invalid handler defined"))?
                     .handle_message(message)
                     .await
-            },
+            }
         }
     }
 }

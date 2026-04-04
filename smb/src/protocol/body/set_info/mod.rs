@@ -10,15 +10,7 @@ use crate::protocol::body::set_info::info_type::SMBInfoType;
 mod info_type;
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 33)]
 pub struct SMBSetInfoRequest {
@@ -30,20 +22,15 @@ pub struct SMBSetInfoRequest {
     additional_information: u32,
     #[smb_direct(start(fixed = 16))]
     file_id: SMBFileId,
-    #[smb_buffer(offset(inner(start = 8, num_type = "u16", subtract = 64)), length(inner(start = 4, num_type = "u32")))]
+    #[smb_buffer(
+        offset(inner(start = 8, num_type = "u16", subtract = 64)),
+        length(inner(start = 4, num_type = "u32"))
+    )]
     buffer: Vec<u8>,
 }
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 2)]
 pub struct SMBSetInfoResponse {

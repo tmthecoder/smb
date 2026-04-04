@@ -1,7 +1,9 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
+use crate::util::flags_helper::{
+    impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag,
+};
 
 bitflags! {
     #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Copy, Clone)]
@@ -32,11 +34,11 @@ bitflags! {
 
 impl SMBCreateOptions {
     pub fn validate_directory(&self) -> bool {
-        let flag = SMBCreateOptions::WRITE_THROUGH |
-            SMBCreateOptions::OPEN_FOR_BACKUP_INTENT |
-            SMBCreateOptions::DELETE_ON_CLOSE |
-            SMBCreateOptions::OPEN_REPARSE_POINT |
-            SMBCreateOptions::DIRECTORY_FILE;
+        let flag = SMBCreateOptions::WRITE_THROUGH
+            | SMBCreateOptions::OPEN_FOR_BACKUP_INTENT
+            | SMBCreateOptions::DELETE_ON_CLOSE
+            | SMBCreateOptions::OPEN_REPARSE_POINT
+            | SMBCreateOptions::DIRECTORY_FILE;
         (flag.complement() & *self) == SMBCreateOptions::empty()
     }
 }

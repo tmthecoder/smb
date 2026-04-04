@@ -4,36 +4,28 @@ use digest::Digest;
 use serde::{Deserialize, Serialize};
 use sha2::Sha512;
 
-use smb_core::{SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
+use smb_core::{SMBResult, SMBToBytes};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::protocol::body::capabilities::Capabilities;
 use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::session_setup::flags::{SMBSessionFlags, SMBSessionSetupFlags};
 use crate::protocol::body::session_setup::security_mode::SessionSetupSecurityMode;
-use crate::protocol::header::flags::SMBFlags;
 use crate::protocol::header::SMBSyncHeader;
+use crate::protocol::header::flags::SMBFlags;
+use crate::server::Server;
 use crate::server::connection::{Connection, SMBConnection, SMBConnectionUpdate};
 use crate::server::preauth_session::SMBPreauthSession;
-use crate::server::Server;
 use crate::server::session::{Session, SessionState};
 use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
 
-pub mod security_mode;
 pub mod flags;
+pub mod security_mode;
 
 #[derive(
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    Debug,
-    SMBFromBytes,
-    SMBByteSize,
-    SMBToBytes,
-    Clone
+    Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize, SMBToBytes, Clone,
 )]
 #[smb_byte_tag(value = 25)]
 pub struct SMBSessionSetupRequest {
@@ -45,12 +37,21 @@ pub struct SMBSessionSetupRequest {
     capabilities: Capabilities,
     #[smb_direct(start(fixed = 16))]
     previous_session_id: u64,
-    #[smb_buffer(offset(inner(start = 12, num_type = "u16", subtract = 64)), length(inner(start = 14, num_type = "u16")))]
+    #[smb_buffer(
+        offset(inner(start = 12, num_type = "u16", subtract = 64)),
+        length(inner(start = 14, num_type = "u16"))
+    )]
     buffer: Vec<u8>,
 }
 
 impl SMBSessionSetupRequest {
-    pub fn new(flags: SMBSessionSetupFlags, security_mode: SessionSetupSecurityMode, capabilities: Capabilities, previous_session_id: u64, buffer: Vec<u8>) -> Self {
+    pub fn new(
+        flags: SMBSessionSetupFlags,
+        security_mode: SessionSetupSecurityMode,
+        capabilities: Capabilities,
+        previous_session_id: u64,
+        buffer: Vec<u8>,
+    ) -> Self {
         Self {
             flags,
             security_mode,
@@ -65,19 +66,37 @@ impl SMBSessionSetupRequest {
     pub fn flags(&self) -> SMBSessionSetupFlags {
         self.flags
     }
-    pub async fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=SMBConnection<R, W, S>>>(&self, connection: &SMBConnection<R, W, S>, server: &S, session: &S::Session, header: &SMBSyncHeader) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
+    pub async fn validate_and_set_state<
+        R: SMBReadStream,
+        W: SMBWriteStream,
+        S: Server<Connection = SMBConnection<R, W, S>>,
+    >(
+        &self,
+        connection: &SMBConnection<R, W, S>,
+        server: &S,
+        session: &S::Session,
+        header: &SMBSyncHeader,
+    ) -> SMBResult<SMBConnectionUpdate<R, W, S>> {
         let mut update = SMBConnectionUpdate::default();
-        if server.encrypt_data() && (!server.unencrypted_access()
-            && (connection.dialect().is_smb3()
-            || !connection.client_capabilities().contains(Capabilities::ENCRYPTION))) {
+        if server.encrypt_data()
+            && (!server.unencrypted_access()
+                && (connection.dialect().is_smb3()
+                    || !connection
+                        .client_capabilities()
+                        .contains(Capabilities::ENCRYPTION)))
+        {
             return Err(SMBError::response_error(NTStatus::AccessDenied));
         }
 
-        if connection.dialect().is_smb3() && server.multi_channel_capable() && self.flags.contains(SMBSessionSetupFlags::BINDING) {
+        if connection.dialect().is_smb3()
+            && server.multi_channel_capable()
+            && self.flags.contains(SMBSessionSetupFlags::BINDING)
+        {
             let locked_conn = session.connection_res()?;
             let session_conn = locked_conn.read().await;
-            if session_conn.dialect() != connection.dialect() ||
-                header.flags.contains(SMBFlags::SIGNED) {
+            if session_conn.dialect() != connection.dialect()
+                || header.flags.contains(SMBFlags::SIGNED)
+            {
                 return Err(SMBError::response_error(NTStatus::InvalidParameter));
             }
             if session_conn.client_guid() != connection.client_guid() {
@@ -88,19 +107,22 @@ impl SMBSessionSetupRequest {
             }
 
             if session.state() == SessionState::Expired {
-                return Err(SMBError::response_error(NTStatus::NetworkSessionExpired))
+                return Err(SMBError::response_error(NTStatus::NetworkSessionExpired));
             }
 
             if session.anonymous() || session.guest() {
                 return Err(SMBError::response_error(NTStatus::NotSupported));
             }
-            if connection.dialect() == SMBDialect::V3_1_1 && !connection.preauth_sessions().contains_key(&session.id()) {
+            if connection.dialect() == SMBDialect::V3_1_1
+                && !connection.preauth_sessions().contains_key(&session.id())
+            {
                 let mut sha = Sha512::default();
                 sha.update(connection.preauth_integtiry_hash_value());
                 sha.update(self.smb_to_bytes());
                 let bytes = sha.finalize().to_vec();
                 let preauth_session = SMBPreauthSession::new(session.id(), bytes);
-                update = update.preauth_session_table(HashMap::from([(session.id(), preauth_session)]));
+                update =
+                    update.preauth_session_table(HashMap::from([(session.id(), preauth_session)]));
             }
         }
         Ok(update)
@@ -108,21 +130,16 @@ impl SMBSessionSetupRequest {
 }
 
 #[derive(
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    Debug,
-    SMBToBytes,
-    SMBFromBytes,
-    SMBByteSize,
-    Clone
+    Serialize, Deserialize, PartialEq, Eq, Debug, SMBToBytes, SMBFromBytes, SMBByteSize, Clone,
 )]
 #[smb_byte_tag(value = 9)]
 pub struct SMBSessionSetupResponse {
     #[smb_direct(start(fixed = 2))]
     session_flags: SMBSessionFlags,
-    #[smb_buffer(offset(inner(start = 4, num_type = "u16", subtract = 64, min_val = 72)), length(inner(start = 6, num_type = "u16")))]
+    #[smb_buffer(
+        offset(inner(start = 4, num_type = "u16", subtract = 64, min_val = 72)),
+        length(inner(start = 6, num_type = "u16"))
+    )]
     buffer: Vec<u8>,
 }
 

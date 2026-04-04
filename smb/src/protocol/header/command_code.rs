@@ -4,7 +4,20 @@ use serde::{Deserialize, Serialize};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 #[repr(u16)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Serialize, Deserialize, Clone, Copy, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Debug,
+    Eq,
+    PartialEq,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+    Clone,
+    Copy,
+    SMBFromBytes,
+    SMBByteSize,
+    SMBToBytes,
+)]
 pub enum SMBCommandCode {
     Negotiate = 0x0,
     SessionSetup,
@@ -25,7 +38,7 @@ pub enum SMBCommandCode {
     QueryInfo,
     SetInfo,
     OplockBreak,
-    LegacyNegotiate
+    LegacyNegotiate,
 }
 
 impl From<SMBCommandCode> for u64 {
@@ -35,7 +48,20 @@ impl From<SMBCommandCode> for u64 {
 }
 
 #[repr(u8)]
-#[derive(Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Serialize, Deserialize, Clone, Copy, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Debug,
+    Eq,
+    PartialEq,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Serialize,
+    Deserialize,
+    Clone,
+    Copy,
+    SMBFromBytes,
+    SMBByteSize,
+    SMBToBytes,
+)]
 pub enum LegacySMBCommandCode {
     CreateDirectory,
     DeleteDirectory,
@@ -107,7 +133,7 @@ pub enum LegacySMBCommandCode {
     ClosePrintFile,
     GetPrintQueue,
     ReadBulk = 0xD9,
-    WriteBulkData
+    WriteBulkData,
 }
 
 impl From<LegacySMBCommandCode> for u64 {

@@ -1,6 +1,6 @@
+use nom::IResult;
 use nom::bytes::complete::take;
 use nom::combinator::map;
-use nom::IResult;
 use nom::number::complete::{le_u16, le_u64};
 use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
@@ -38,4 +38,3 @@ impl SMBExtra {
         .concat()
     }
 }
-

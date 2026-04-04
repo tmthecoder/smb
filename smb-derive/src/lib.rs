@@ -69,24 +69,26 @@ use std::fmt::{Debug, Display, Formatter};
 use darling::FromAttributes;
 use proc_macro2::Ident;
 use quote::quote_spanned;
-use syn::{Data, DeriveInput, parse_macro_input};
 use syn::spanned::Spanned;
+use syn::{Data, DeriveInput, parse_macro_input};
 
 use crate::field::SMBFieldType;
-use crate::field_mapping::{enum_repr_type, get_desc_enum_mapping, get_num_enum_mapping, get_struct_field_mapping, SMBFieldMapping};
+use crate::field_mapping::{
+    SMBFieldMapping, enum_repr_type, get_desc_enum_mapping, get_num_enum_mapping,
+    get_struct_field_mapping,
+};
 use crate::smb_byte_size::ByteSizeCreator;
 use crate::smb_enum_from_bytes::EnumFromBytesCreator;
 use crate::smb_from_bytes::FromBytesCreator;
 use crate::smb_to_bytes::ToBytesCreator;
 
 mod attrs;
-mod field_mapping;
 mod field;
-mod smb_from_bytes;
+mod field_mapping;
 mod smb_byte_size;
-mod smb_to_bytes;
 mod smb_enum_from_bytes;
-
+mod smb_from_bytes;
+mod smb_to_bytes;
 
 /// Derive macro that generates an `impl smb_core::SMBFromBytes` for a struct or
 /// `#[repr(uN)]` enum.
@@ -101,7 +103,19 @@ mod smb_enum_from_bytes;
 ///
 /// Emits `compile_error!` if the input type is unsupported or a field is
 /// missing its annotation.
-#[proc_macro_derive(SMBFromBytes, attributes(smb_direct, smb_buffer, smb_vector, smb_string, smb_enum, smb_skip, smb_byte_tag, smb_string_tag))]
+#[proc_macro_derive(
+    SMBFromBytes,
+    attributes(
+        smb_direct,
+        smb_buffer,
+        smb_vector,
+        smb_string,
+        smb_enum,
+        smb_skip,
+        smb_byte_tag,
+        smb_string_tag
+    )
+)]
 pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 
@@ -122,7 +136,20 @@ pub fn smb_from_bytes(input: TokenStream) -> TokenStream {
 ///
 /// The generated `smb_enum_from_bytes(input, discriminator)` matches the
 /// discriminator and delegates to the per-variant parser.
-#[proc_macro_derive(SMBEnumFromBytes, attributes(smb_direct, smb_buffer, smb_vector, smb_string, smb_enum, smb_skip, smb_byte_tag, smb_string_tag, smb_discriminator))]
+#[proc_macro_derive(
+    SMBEnumFromBytes,
+    attributes(
+        smb_direct,
+        smb_buffer,
+        smb_vector,
+        smb_string,
+        smb_enum,
+        smb_skip,
+        smb_byte_tag,
+        smb_string_tag,
+        smb_discriminator
+    )
+)]
 pub fn smb_enum_from_bytes(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 
@@ -137,7 +164,19 @@ pub fn smb_enum_from_bytes(input: TokenStream) -> TokenStream {
 /// Allocates a `Vec<u8>` of the correct size (via `SMBByteSize`) and writes
 /// each field into its wire-format position. Field ordering and placement is
 /// controlled by the same `smb_*` attributes used for parsing.
-#[proc_macro_derive(SMBToBytes, attributes(smb_direct, smb_buffer, smb_vector, smb_string, smb_enum, smb_skip, smb_byte_tag, smb_string_tag))]
+#[proc_macro_derive(
+    SMBToBytes,
+    attributes(
+        smb_direct,
+        smb_buffer,
+        smb_vector,
+        smb_string,
+        smb_enum,
+        smb_skip,
+        smb_byte_tag,
+        smb_string_tag
+    )
+)]
 pub fn smb_to_bytes(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 
@@ -152,7 +191,19 @@ pub fn smb_to_bytes(input: TokenStream) -> TokenStream {
 /// Computes the total on-wire byte size by summing fixed-field sizes, skip
 /// regions, tag bytes, and the dynamic sizes of any buffer/vector/string
 /// fields.
-#[proc_macro_derive(SMBByteSize, attributes(smb_direct, smb_buffer, smb_vector, smb_string, smb_enum, smb_skip, smb_byte_tag, smb_string_tag))]
+#[proc_macro_derive(
+    SMBByteSize,
+    attributes(
+        smb_direct,
+        smb_buffer,
+        smb_vector,
+        smb_string,
+        smb_enum,
+        smb_skip,
+        smb_byte_tag,
+        smb_string_tag
+    )
+)]
 pub fn smb_byte_size(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
 
@@ -160,7 +211,6 @@ pub fn smb_byte_size(input: TokenStream) -> TokenStream {
 
     parse_token.into()
 }
-
 
 /// Central dispatch that maps a [`DeriveInput`] (struct or enum) into the
 /// appropriate [`SMBFieldMapping`] and then delegates to the supplied
@@ -187,39 +237,38 @@ fn derive_impl_creator(input: DeriveInput, creator: impl CreatorFn) -> proc_macr
                     SMBDeriveError::TypeError(f) => quote_spanned! {f.span()=>::std::compile_error!("Invalid field for SMB message parsing")},
                     _ => invalid_token
                 })
-        },
-        Data::Enum(enum_info) => {
-            match enum_repr_type(&input.attrs) {
-                Ok(repr) => {
-                    let mapping = get_num_enum_mapping(&input, parent_attrs, repr)
-                        .map(|r| vec![r]);
-                    creator.call(mapping, name)
-                        .unwrap_or_else(|_e| quote_spanned! {input.span()=>
-                            ::std::compile_error!("Invalid enum for SMB message parsing")
-                        })
-                },
-                Err(_) => {
-                    let mapping = get_desc_enum_mapping(enum_info);
-                    creator.call(mapping, name)
+        }
+        Data::Enum(enum_info) => match enum_repr_type(&input.attrs) {
+            Ok(repr) => {
+                let mapping = get_num_enum_mapping(&input, parent_attrs, repr).map(|r| vec![r]);
+                creator.call(mapping, name).unwrap_or_else(|_e| {
+                    quote_spanned! {input.span()=>
+                        ::std::compile_error!("Invalid enum for SMB message parsing")
+                    }
+                })
+            }
+            Err(_) => {
+                let mapping = get_desc_enum_mapping(enum_info);
+                creator.call(mapping, name)
                         .unwrap_or_else(|e| match e {
                             SMBDeriveError::TypeError(f) => quote_spanned! {f.span()=>::std::compile_error!("Invalid field for SMB message parsing")},
                             _ => invalid_token
                         })
-                }
             }
         },
-        _ => invalid_token
+        _ => invalid_token,
     }
 }
-
 
 /// Extracts any struct-level / enum-level `smb_*` attributes (e.g.
 /// `#[smb_byte_tag(…)]`, `#[smb_string_tag(…)]`) from the top-level
 /// `DeriveInput` and returns them as a sorted list of [`SMBFieldType`]s.
 fn parent_attrs(input: &DeriveInput) -> Vec<SMBFieldType> {
-    input.attrs.iter().filter_map(|attr| {
-        SMBFieldType::from_attributes(std::slice::from_ref(attr)).ok()
-    }).collect()
+    input
+        .attrs
+        .iter()
+        .filter_map(|attr| SMBFieldType::from_attributes(std::slice::from_ref(attr)).ok())
+        .collect()
 }
 
 /// Trait object interface for the four code-generation backends.
@@ -228,7 +277,11 @@ fn parent_attrs(input: &DeriveInput) -> Vec<SMBFieldType> {
 /// [`EnumFromBytesCreator`]) implements this trait so that
 /// [`derive_impl_creator`] can dispatch generically.
 trait CreatorFn {
-    fn call<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(self, mapping: Result<Vec<SMBFieldMapping<T, U>>, SMBDeriveError<U>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>>;
+    fn call<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(
+        self,
+        mapping: Result<Vec<SMBFieldMapping<T, U>>, SMBDeriveError<U>>,
+        name: &Ident,
+    ) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>>;
 }
 
 /// Errors that can occur during derive-macro expansion.
@@ -242,7 +295,11 @@ enum SMBDeriveError<T: Spanned + Debug> {
 impl<T: Spanned + Debug> Display for SMBDeriveError<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TypeError(span) => write!(f, "No type annotation for spannable ${:?} (must be buffer or direct)", span),
+            Self::TypeError(span) => write!(
+                f,
+                "No type annotation for spannable ${:?} (must be buffer or direct)",
+                span
+            ),
             Self::MissingField => write!(f, "Needed attribute for field missing"),
             Self::InvalidType => write!(f, "Unsupported or invalid type"),
         }

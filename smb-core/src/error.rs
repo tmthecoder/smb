@@ -53,7 +53,7 @@ pub struct SMBParseError {
 impl<T: Into<Box<dyn Error + Send + Sync>>> From<T> for SMBParseError {
     fn from(value: T) -> Self {
         Self {
-            error: value.into()
+            error: value.into(),
         }
     }
 }
@@ -72,11 +72,10 @@ pub struct SMBCryptoError {
 impl<T: Into<Box<dyn Error + Send + Sync>>> From<T> for SMBCryptoError {
     fn from(value: T) -> Self {
         Self {
-            message: value.into()
+            message: value.into(),
         }
     }
 }
-
 
 impl Display for SMBCryptoError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -92,14 +91,18 @@ pub struct SMBPreconditionFailedError {
 impl<T: Into<String>> From<T> for SMBPreconditionFailedError {
     fn from(value: T) -> Self {
         Self {
-            message: value.into()
+            message: value.into(),
         }
     }
 }
 
 impl Display for SMBPreconditionFailedError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Operation failed with unmet precondition: {}", self.message)
+        write!(
+            f,
+            "Operation failed with unmet precondition: {}",
+            self.message
+        )
     }
 }
 
@@ -111,7 +114,7 @@ pub struct SMBIOError {
 impl<T: Into<io::Error>> From<T> for SMBIOError {
     fn from(value: T) -> Self {
         Self {
-            error: value.into()
+            error: value.into(),
         }
     }
 }
@@ -136,7 +139,7 @@ impl SMBResponseError {
 impl<T: Into<NTStatus>> From<T> for SMBResponseError {
     fn from(value: T) -> Self {
         Self {
-            status: value.into()
+            status: value.into(),
         }
     }
 }
@@ -164,7 +167,11 @@ impl<T: Into<usize>, U: Into<usize>> From<(T, U)> for SMBPayloadTooSmallError {
 
 impl Display for SMBPayloadTooSmallError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Expected {} bytes, was actually {} bytes", self.expected, self.actual)
+        write!(
+            f,
+            "Expected {} bytes, was actually {} bytes",
+            self.expected, self.actual
+        )
     }
 }
 
@@ -176,7 +183,7 @@ pub struct SMBServerError {
 impl<T: Into<Box<dyn Error + Send + Sync>>> From<T> for SMBServerError {
     fn from(value: T) -> Self {
         Self {
-            error: value.into()
+            error: value.into(),
         }
     }
 }
@@ -196,7 +203,7 @@ impl Display for SMBError {
             Self::IOError(x) => write!(f, "{}", x),
             Self::ResponseError(x) => write!(f, "{}", x),
             Self::PayloadTooSmall(x) => write!(f, "{}", x),
-            Self::ServerError(x) => write!(f, "{}", x)
+            Self::ServerError(x) => write!(f, "{}", x),
         }
     }
 }
@@ -211,7 +218,11 @@ mod tests {
     fn server_error_display_says_server() {
         let err = SMBError::server_error("something broke");
         let msg = format!("{}", err);
-        assert!(msg.contains("Server operation failed"), "ServerError Display should say 'Server operation failed', got: {}", msg);
+        assert!(
+            msg.contains("Server operation failed"),
+            "ServerError Display should say 'Server operation failed', got: {}",
+            msg
+        );
         assert!(msg.contains("something broke"));
     }
 
@@ -219,14 +230,22 @@ mod tests {
     fn parse_error_display_says_parse() {
         let err = SMBError::parse_error("bad bytes");
         let msg = format!("{}", err);
-        assert!(msg.contains("Parse failed"), "ParseError Display should say 'Parse failed', got: {}", msg);
+        assert!(
+            msg.contains("Parse failed"),
+            "ParseError Display should say 'Parse failed', got: {}",
+            msg
+        );
     }
 
     #[test]
     fn crypto_error_display_says_crypto() {
         let err = SMBError::crypto_error("bad key");
         let msg = format!("{}", err);
-        assert!(msg.contains("Crypto operation failed"), "CryptoError Display should say 'Crypto operation failed', got: {}", msg);
+        assert!(
+            msg.contains("Crypto operation failed"),
+            "CryptoError Display should say 'Crypto operation failed', got: {}",
+            msg
+        );
     }
 
     #[test]
@@ -241,6 +260,9 @@ mod tests {
     fn response_error_display() {
         let err = SMBError::response_error(NTStatus::AccessDenied);
         let msg = format!("{}", err);
-        assert!(msg.contains("AccessDenied"), "should mention the NTStatus variant");
+        assert!(
+            msg.contains("AccessDenied"),
+            "should mention the NTStatus variant"
+        );
     }
 }

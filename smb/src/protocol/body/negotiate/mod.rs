@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha512;
 use uuid::Uuid;
 
-use smb_core::{SMBResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_core::nt_status::NTStatus;
+use smb_core::{SMBResult, SMBToBytes};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::protocol::body::capabilities::Capabilities;
@@ -16,8 +16,8 @@ use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::negotiate::context::NegotiateContext;
 use crate::protocol::body::negotiate::security_mode::NegotiateSecurityMode;
-use crate::server::connection::{Connection, SMBConnection, SMBConnectionUpdate};
 use crate::server::Server;
+use crate::server::connection::{Connection, SMBConnection, SMBConnectionUpdate};
 use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
 use crate::util::auth::AuthProvider;
 use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenInitBody};
@@ -26,15 +26,7 @@ pub mod context;
 pub mod security_mode;
 
 #[derive(
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    Debug,
-    SMBFromBytes,
-    SMBByteSize,
-    SMBToBytes,
-    Clone
+    Serialize, Deserialize, PartialEq, Eq, Debug, SMBFromBytes, SMBByteSize, SMBToBytes, Clone,
 )]
 #[smb_byte_tag(value = 36)]
 pub struct SMBNegotiateRequest {
@@ -48,12 +40,21 @@ pub struct SMBNegotiateRequest {
     reserved: PhantomData<Vec<u8>>,
     #[smb_vector(order = 1, count(inner(start = 2, num_type = "u16")))]
     pub(crate) dialects: Vec<SMBDialect>,
-    #[smb_vector(order = 2, align = 8, count(inner(start = 32, num_type = "u16")), offset(inner(start = 28, num_type = "u32", subtract = 64)))]
+    #[smb_vector(
+        order = 2,
+        align = 8,
+        count(inner(start = 32, num_type = "u16")),
+        offset(inner(start = 28, num_type = "u32", subtract = 64))
+    )]
     negotiate_contexts: Vec<NegotiateContext>,
 }
 
 impl SMBNegotiateRequest {
-    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(&self, connection: &SMBConnection<R, W, S>, server: &S) -> SMBResult<(SMBConnectionUpdate<R, W, S>, HashSet<u16>)> {
+    pub fn validate_and_set_state<R: SMBReadStream, W: SMBWriteStream, S: Server>(
+        &self,
+        connection: &SMBConnection<R, W, S>,
+        server: &S,
+    ) -> SMBResult<(SMBConnectionUpdate<R, W, S>, HashSet<u16>)> {
         if connection.negotiate_dialect() != SMBDialect::default() {
             return Err(SMBError::response_error(NTStatus::AccessDenied));
         }
@@ -94,7 +95,10 @@ impl SMBNegotiateRequest {
             if self.capabilities.contains(Capabilities::PERSISTENT_HANDLES) {
                 capabilities |= Capabilities::PERSISTENT_HANDLES;
             }
-            if connection.dialect() != SMBDialect::V3_1_1 && server.encryption_supported() && capabilities.contains(Capabilities::ENCRYPTION) {
+            if connection.dialect() != SMBDialect::V3_1_1
+                && server.encryption_supported()
+                && capabilities.contains(Capabilities::ENCRYPTION)
+            {
                 capabilities |= Capabilities::ENCRYPTION;
             }
         }
@@ -114,7 +118,10 @@ impl SMBNegotiateRequest {
             .client_dialects(dialects)
             .client_capabilities(self.capabilities)
             .client_guid(self.client_uuid)
-            .should_sign(self.security_mode.contains(NegotiateSecurityMode::NEGOTIATE_SIGNING_REQUIRED))
+            .should_sign(
+                self.security_mode
+                    .contains(NegotiateSecurityMode::NEGOTIATE_SIGNING_REQUIRED),
+            )
             .server_capabilites(capabilities)
             .max_read_size(8388608)
             .max_write_size(8388608)
@@ -126,15 +133,7 @@ impl SMBNegotiateRequest {
 }
 
 #[derive(
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    Debug,
-    SMBToBytes,
-    SMBByteSize,
-    SMBFromBytes,
-    Clone
+    Serialize, Deserialize, PartialEq, Eq, Debug, SMBToBytes, SMBByteSize, SMBFromBytes, Clone,
 )]
 #[smb_byte_tag(value = 65)]
 pub struct SMBNegotiateResponse {
@@ -159,10 +158,15 @@ pub struct SMBNegotiateResponse {
     #[smb_buffer(
         offset(inner(start = 56, num_type = "u16", subtract = 64, min_val = 128)),
         length(inner(start = 58, num_type = "u16")),
-        order = 1)
-    ]
+        order = 1
+    )]
     buffer: Vec<u8>,
-    #[smb_vector(order = 2, align = 8, count(inner(start = 6, num_type = "u16")), offset(inner(start = 60, num_type = "u32", subtract = 64)))]
+    #[smb_vector(
+        order = 2,
+        align = 8,
+        count(inner(start = 6, num_type = "u16")),
+        offset(inner(start = 60, num_type = "u32", subtract = 64))
+    )]
     negotiate_contexts: Vec<NegotiateContext>,
 }
 
@@ -183,9 +187,19 @@ impl SMBNegotiateResponse {
         }
     }
 
-    pub fn from_connection_state<A: AuthProvider, R: SMBReadStream, W: SMBWriteStream, S: Server>(connection: &SMBConnection<R, W, S>, server: &S, negotiate_contexts: HashSet<u16>) -> Self {
+    pub fn from_connection_state<
+        A: AuthProvider,
+        R: SMBReadStream,
+        W: SMBWriteStream,
+        S: Server,
+    >(
+        connection: &SMBConnection<R, W, S>,
+        server: &S,
+        negotiate_contexts: HashSet<u16>,
+    ) -> Self {
         let buffer = SPNEGOToken::Init(SPNEGOTokenInitBody::<A>::new()).as_bytes(true);
-        let negotiate_contexts = NegotiateContext::from_connection_state(connection, negotiate_contexts);
+        let negotiate_contexts =
+            NegotiateContext::from_connection_state(connection, negotiate_contexts);
         Self {
             security_mode: connection.server_security_mode(),
             dialect: connection.dialect(),

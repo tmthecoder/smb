@@ -6,7 +6,18 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 use crate::byte_helper::{bytes_to_u32, bytes_to_u64, u32_to_bytes, u64_to_bytes};
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, SMBFromBytes, SMBToBytes, SMBByteSize, Default)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    Clone,
+    SMBFromBytes,
+    SMBToBytes,
+    SMBByteSize,
+    Default,
+)]
 pub struct FileTime {
     #[smb_direct(start(fixed = 0))]
     low_date_time: u32,
@@ -82,7 +93,8 @@ mod tests {
         assert!(
             (back as i64 - unix_ts as i64).abs() < 2,
             "Unix timestamp should round-trip: got {} expected {}",
-            back, unix_ts
+            back,
+            unix_ts
         );
     }
 }

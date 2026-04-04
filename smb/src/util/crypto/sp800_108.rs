@@ -2,7 +2,12 @@ use std::cmp::min;
 
 use digest::Mac;
 
-pub fn derive_key<T: Mac + Clone>(mac: T, label: &[u8], context: &[u8], key_len_bits: u32) -> Vec<u8> {
+pub fn derive_key<T: Mac + Clone>(
+    mac: T,
+    label: &[u8],
+    context: &[u8],
+    key_len_bits: u32,
+) -> Vec<u8> {
     let mut buffer = vec![0_u8; 4 + label.len() + 1 + context.len() + 4];
     buffer[4..(label.len() + 4)].copy_from_slice(label);
 
@@ -25,10 +30,7 @@ pub fn derive_key<T: Mac + Clone>(mac: T, label: &[u8], context: &[u8], key_len_
 
         buffer[..bytes.len()].copy_from_slice(&bytes[..]);
 
-        let k_i = mac.clone()
-            .chain_update(&*buffer)
-            .finalize()
-            .into_bytes();
+        let k_i = mac.clone().chain_update(&*buffer).finalize().into_bytes();
 
         let num_to_copy = min(num_remaining, k_i.len() as u32);
         output[(num_written as usize)..(num_written + num_to_copy) as usize]

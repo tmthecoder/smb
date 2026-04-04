@@ -4,7 +4,19 @@ use serde::{Deserialize, Serialize};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TryFromPrimitive, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    TryFromPrimitive,
+    SMBFromBytes,
+    SMBByteSize,
+    SMBToBytes,
+)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum SMBIoCtlRequestFlags {
     IOCTL = 0x0,

@@ -3,14 +3,17 @@ use std::fmt::Debug;
 use darling::FromAttributes;
 use proc_macro2::Ident;
 use quote::{format_ident, quote, quote_spanned};
-use syn::{AngleBracketedGenericArguments, Attribute, DataEnum, DeriveInput, Field, Fields, GenericArgument, Path, PathArguments, PathSegment, Token, Type, TypePath};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::PathSep;
+use syn::{
+    AngleBracketedGenericArguments, Attribute, DataEnum, DeriveInput, Field, Fields,
+    GenericArgument, Path, PathArguments, PathSegment, Token, Type, TypePath,
+};
 
+use crate::SMBDeriveError;
 use crate::attrs::{AttributeInfo, Direct, Discriminator, Repr};
 use crate::field::{SMBField, SMBFieldType};
-use crate::SMBDeriveError;
 
 /// Maps a single struct or enum variant to its parent-level attributes and
 /// ordered child fields.
@@ -24,7 +27,7 @@ pub struct SMBFieldMapping<'a, T: Spanned + PartialEq + Eq, U: Spanned + Partial
     fields: Vec<SMBField<'a, U>>,
     mapping_type: SMBFieldMappingType,
     discriminators: Vec<u64>,
-    variant_ident: Option<Ident>
+    variant_ident: Option<Ident>,
 }
 
 /// Classifies the shape of the type being derived so that code generation can
@@ -45,43 +48,64 @@ impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug> SMBFieldM
         let parent_size = self.parent.attr_byte_size();
         let variant = self.variant_ident.is_some();
         let size = match &self.mapping_type {
-            SMBFieldMappingType::NamedStruct => self.fields.iter().map(|f| {
-                let token = match variant {
-                    true => f.get_name(),
-                    false => f.get_named_token(),
-                };
-                f.get_smb_message_size(token.clone())
-            }).collect(),
-            SMBFieldMappingType::UnnamedStruct => self.fields.iter().enumerate().map(|(idx, f)| {
-                let token = match variant {
-                    true => f.get_name(),
-                    false => f.get_unnamed_token(idx),
-                };
-                f.get_smb_message_size(token)
-            }).collect(),
-            SMBFieldMappingType::NumEnum => self.fields.iter().map(|f| {
-                let token = match variant {
-                    true => f.get_name(),
-                    false => f.get_num_enum_token(),
-                };
-                f.get_smb_message_size(token)
-            }).collect(),
-            SMBFieldMappingType::DiscriminatedEnum => self.fields.iter().map(|f| {
-                let token = match variant {
-                    true => f.get_name(),
-                    false => f.get_disc_enum_token(),
-                };
-                f.get_smb_message_size(token)
-            }).collect(),
-            SMBFieldMappingType::Unit => vec![quote! {
-
-            }]
+            SMBFieldMappingType::NamedStruct => self
+                .fields
+                .iter()
+                .map(|f| {
+                    let token = match variant {
+                        true => f.get_name(),
+                        false => f.get_named_token(),
+                    };
+                    f.get_smb_message_size(token.clone())
+                })
+                .collect(),
+            SMBFieldMappingType::UnnamedStruct => self
+                .fields
+                .iter()
+                .enumerate()
+                .map(|(idx, f)| {
+                    let token = match variant {
+                        true => f.get_name(),
+                        false => f.get_unnamed_token(idx),
+                    };
+                    f.get_smb_message_size(token)
+                })
+                .collect(),
+            SMBFieldMappingType::NumEnum => self
+                .fields
+                .iter()
+                .map(|f| {
+                    let token = match variant {
+                        true => f.get_name(),
+                        false => f.get_num_enum_token(),
+                    };
+                    f.get_smb_message_size(token)
+                })
+                .collect(),
+            SMBFieldMappingType::DiscriminatedEnum => self
+                .fields
+                .iter()
+                .map(|f| {
+                    let token = match variant {
+                        true => f.get_name(),
+                        false => f.get_disc_enum_token(),
+                    };
+                    f.get_smb_message_size(token)
+                })
+                .collect(),
+            SMBFieldMappingType::Unit => vec![quote! {}],
         };
 
         let names = self.fields.iter().map(|field| field.get_name());
-        let key = self.variant_ident.clone().map(|variant| quote! {
-            Self::#variant(#(#names,)*)
-        }).unwrap_or(quote! {_});
+        let key = self
+            .variant_ident
+            .clone()
+            .map(|variant| {
+                quote! {
+                    Self::#variant(#(#names,)*)
+                }
+            })
+            .unwrap_or(quote! {_});
 
         quote! {
             #key => {
@@ -104,7 +128,11 @@ pub(crate) fn enum_repr_type(attrs: &[Attribute]) -> darling::Result<Repr> {
 ///
 /// The entire enum is treated as a single `Direct` field at offset 0 with the
 /// repr type. Parsing reads the raw integer and converts via `TryFrom`.
-pub(crate) fn get_num_enum_mapping(input: &DeriveInput, parent_attrs: Vec<SMBFieldType>, repr_type: Repr) -> Result<SMBFieldMapping<'_, DeriveInput, DeriveInput>, SMBDeriveError<DeriveInput>> {
+pub(crate) fn get_num_enum_mapping(
+    input: &DeriveInput,
+    parent_attrs: Vec<SMBFieldType>,
+    repr_type: Repr,
+) -> Result<SMBFieldMapping<'_, DeriveInput, DeriveInput>, SMBDeriveError<DeriveInput>> {
     let identity = &repr_type.ident;
     let ty = Type::Path(TypePath {
         qself: None,
@@ -133,12 +161,23 @@ pub(crate) fn get_num_enum_mapping(input: &DeriveInput, parent_attrs: Vec<SMBFie
 ///
 /// Each variant must carry `#[smb_discriminator(value = …)]` and exactly one
 /// `smb_*` field attribute describing how to parse its payload.
-pub(crate) fn get_desc_enum_mapping(info: &DataEnum) -> Result<Vec<SMBFieldMapping<'_, Fields, Field>>, SMBDeriveError<Field>> {
-    info.variants.iter().map(|variant| {
-        let discriminators = Discriminator::from_attributes(&variant.attrs).map(|d| d.values.iter().map(|val| val | d.flag).collect())
-            .map_err(|_e| SMBDeriveError::MissingField)?;
-        get_struct_field_mapping(&variant.fields, vec![SMBFieldType::from_attributes(&variant.attrs).unwrap()], discriminators, Some(variant.ident.clone()))
-    }).collect()
+pub(crate) fn get_desc_enum_mapping(
+    info: &DataEnum,
+) -> Result<Vec<SMBFieldMapping<'_, Fields, Field>>, SMBDeriveError<Field>> {
+    info.variants
+        .iter()
+        .map(|variant| {
+            let discriminators = Discriminator::from_attributes(&variant.attrs)
+                .map(|d| d.values.iter().map(|val| val | d.flag).collect())
+                .map_err(|_e| SMBDeriveError::MissingField)?;
+            get_struct_field_mapping(
+                &variant.fields,
+                vec![SMBFieldType::from_attributes(&variant.attrs).unwrap()],
+                discriminators,
+                Some(variant.ident.clone()),
+            )
+        })
+        .collect()
 }
 
 /// Build the field mapping for a struct (or a single enum variant's fields).
@@ -147,17 +186,27 @@ pub(crate) fn get_desc_enum_mapping(info: &DataEnum) -> Result<Vec<SMBFieldMappi
 /// present, the field is treated as `Direct` at offset 0. Multi-field structs
 /// require each field to carry its own `smb_*` attribute; fields are sorted by
 /// `(weight, start_offset)` to ensure correct parse/serialize ordering.
-pub(crate) fn get_struct_field_mapping(struct_fields: &Fields, parent_attrs: Vec<SMBFieldType>, discriminators: Vec<u64>, variant_ident: Option<Ident>) -> Result<SMBFieldMapping<'_, Fields, Field>, SMBDeriveError<Field>> {
+pub(crate) fn get_struct_field_mapping(
+    struct_fields: &Fields,
+    parent_attrs: Vec<SMBFieldType>,
+    discriminators: Vec<u64>,
+    variant_ident: Option<Ident>,
+) -> Result<SMBFieldMapping<'_, Fields, Field>, SMBDeriveError<Field>> {
     if struct_fields.len() == 1 {
-        let field = struct_fields.iter().next()
+        let field = struct_fields
+            .iter()
+            .next()
             .ok_or(SMBDeriveError::InvalidType)?;
         let (field, val_types) = if !parent_attrs.is_empty() {
             (field, parent_attrs)
         } else {
-            (field, vec![SMBFieldType::Direct(Direct {
-                start: AttributeInfo::Fixed(0),
-                order: 0,
-            })])
+            (
+                field,
+                vec![SMBFieldType::Direct(Direct {
+                    start: AttributeInfo::Fixed(0),
+                    order: 0,
+                })],
+            )
         };
 
         let name = if let Some(x) = &field.ident {
@@ -166,10 +215,14 @@ pub(crate) fn get_struct_field_mapping(struct_fields: &Fields, parent_attrs: Vec
             format_ident!("val_0")
         };
 
-
         let fields = vec![SMBField::new(field, name, field.ty.clone(), val_types)];
 
-        let parent = SMBField::new(struct_fields, format_ident!("single_base"), field.ty.clone(), vec![]);
+        let parent = SMBField::new(
+            struct_fields,
+            format_ident!("single_base"),
+            field.ty.clone(),
+            vec![],
+        );
 
         return if field.ident.is_some() {
             Ok(SMBFieldMapping {
@@ -177,7 +230,7 @@ pub(crate) fn get_struct_field_mapping(struct_fields: &Fields, parent_attrs: Vec
                 fields,
                 mapping_type: SMBFieldMappingType::NamedStruct,
                 discriminators,
-                variant_ident
+                variant_ident,
             })
         } else {
             Ok(SMBFieldMapping {
@@ -185,7 +238,7 @@ pub(crate) fn get_struct_field_mapping(struct_fields: &Fields, parent_attrs: Vec
                 fields,
                 mapping_type: SMBFieldMappingType::UnnamedStruct,
                 discriminators,
-                variant_ident
+                variant_ident,
             })
         };
     }
@@ -200,7 +253,7 @@ pub(crate) fn get_struct_field_mapping(struct_fields: &Fields, parent_attrs: Vec
     let mapping_type = match struct_fields {
         Fields::Named(_) => SMBFieldMappingType::NamedStruct,
         Fields::Unnamed(_) => SMBFieldMappingType::UnnamedStruct,
-        Fields::Unit => SMBFieldMappingType::Unit
+        Fields::Unit => SMBFieldMappingType::Unit,
     };
 
     let spanned_field = struct_fields;
@@ -240,24 +293,30 @@ pub(crate) fn get_struct_field_mapping(struct_fields: &Fields, parent_attrs: Vec
         path: phantom_data_path,
     });
 
-    let parent = SMBField::new(spanned_field, format_ident!("structure_base"), phantom_ty, parent_attrs);
+    let parent = SMBField::new(
+        spanned_field,
+        format_ident!("structure_base"),
+        phantom_ty,
+        parent_attrs,
+    );
 
     Ok(SMBFieldMapping {
         parent,
         fields: mapped_fields,
         mapping_type,
         discriminators,
-        variant_ident
+        variant_ident,
     })
 }
-
 
 /// Generate the body of `SMBFromBytes::smb_from_bytes` for a single mapping.
 ///
 /// Emits code that initializes `current_pos = 0`, processes parent attributes
 /// (tags), then parses each field in order and constructs the final
 /// `Ok((remaining, Self { … }))` return value.
-pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T, U>) -> proc_macro2::TokenStream {
+pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq>(
+    mapping: &SMBFieldMapping<T, U>,
+) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
     let recurse = vector.iter().map(SMBField::smb_from_bytes);
     let parent = mapping.parent.smb_from_bytes();
@@ -287,7 +346,7 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq
                 let value = Self::try_from(vals).map_err(|_e| ::smb_core::error::SMBError::parse_error("Invalid primitive value"))?;
                 Ok((remaining, value))
             }
-        },
+        }
         SMBFieldMappingType::DiscriminatedEnum => {
             quote! {}
         }
@@ -311,7 +370,9 @@ pub(crate) fn smb_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq
 ///
 /// Each discriminator value maps to a block that parses the variant's fields
 /// and returns `Ok((remaining, Self::Variant(…)))`.
-pub(crate) fn smb_enum_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T, U>) -> proc_macro2::TokenStream {
+pub(crate) fn smb_enum_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq>(
+    mapping: &SMBFieldMapping<T, U>,
+) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
     let recurse = vector.iter().map(SMBField::smb_from_bytes);
     let parent = mapping.parent.smb_from_bytes();
@@ -319,7 +380,7 @@ pub(crate) fn smb_enum_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + Part
     if mapping.variant_ident.is_none() {
         return quote_spanned! {mapping.parent.spanned().span() =>
             std::compile_error!("No variant identifier provided for enum field")
-        }
+        };
     }
     let variant_ident = &mapping.variant_ident.clone().unwrap();
 
@@ -331,7 +392,7 @@ pub(crate) fn smb_enum_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + Part
                     #(#names,)*
                 )))
             }
-        },
+        }
         SMBFieldMappingType::NamedStruct => {
             quote! {
                 #(#recurse)*
@@ -339,8 +400,10 @@ pub(crate) fn smb_enum_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + Part
                     #(#names,)*
                 }))
             }
-        },
-        _ => panic!("Only enums with associated types can be used to derive SMBEnumFromBytes, please use SMBFromBytes for other types")
+        }
+        _ => panic!(
+            "Only enums with associated types can be used to derive SMBEnumFromBytes, please use SMBFromBytes for other types"
+        ),
     };
 
     let tokens = quote! {
@@ -352,8 +415,10 @@ pub(crate) fn smb_enum_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + Part
         }
     };
 
-    let recursive_mapping = mapping.discriminators.iter().map(|discriminator| quote! {
-        #discriminator => #tokens,
+    let recursive_mapping = mapping.discriminators.iter().map(|discriminator| {
+        quote! {
+            #discriminator => #tokens,
+        }
     });
 
     quote! {
@@ -365,24 +430,38 @@ pub(crate) fn smb_enum_from_bytes<T: Spanned + PartialEq + Eq, U: Spanned + Part
 ///
 /// Allocates a zeroed `Vec<u8>` of the correct size, writes parent attributes
 /// (tags), then serializes each field into its wire position.
-pub(crate) fn smb_to_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq>(mapping: &SMBFieldMapping<T, U>) -> proc_macro2::TokenStream {
+pub(crate) fn smb_to_bytes<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq>(
+    mapping: &SMBFieldMapping<T, U>,
+) -> proc_macro2::TokenStream {
     let vector = &mapping.fields;
     let variant = mapping.variant_ident.is_some();
     let parent = match mapping.mapping_type {
         SMBFieldMappingType::NumEnum => mapping.parent.smb_to_bytes_enum(),
-        _ => mapping.parent.smb_to_bytes_struct(variant)
+        _ => mapping.parent.smb_to_bytes_struct(variant),
     };
 
     let recurse = match mapping.mapping_type {
-        SMBFieldMappingType::NumEnum => vector.iter().map(SMBField::smb_to_bytes_enum).collect::<Vec<proc_macro2::TokenStream>>(),
-        _ => vector.iter().map(|field| field.smb_to_bytes_struct(variant)).collect()
+        SMBFieldMappingType::NumEnum => vector
+            .iter()
+            .map(SMBField::smb_to_bytes_enum)
+            .collect::<Vec<proc_macro2::TokenStream>>(),
+        _ => vector
+            .iter()
+            .map(|field| field.smb_to_bytes_struct(variant))
+            .collect(),
     };
 
     let names = mapping.fields.iter().map(|field| field.get_name());
 
-    let key = mapping.variant_ident.clone().map(|variant| quote! {
-        Self::#variant(#(#names,)*)
-    }).unwrap_or(quote! {_});
+    let key = mapping
+        .variant_ident
+        .clone()
+        .map(|variant| {
+            quote! {
+                Self::#variant(#(#names,)*)
+            }
+        })
+        .unwrap_or(quote! {_});
     quote! {
         #key => {
             let mut current_pos = 0;

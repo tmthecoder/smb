@@ -5,30 +5,26 @@ use serde::{Deserialize, Serialize};
 
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
-use crate::protocol::body::tree_connect::access_mask::{SMBAccessMask, SMBDirectoryAccessMask, SMBFilePipePrinterAccessMask};
+use crate::protocol::body::tree_connect::access_mask::{
+    SMBAccessMask, SMBDirectoryAccessMask, SMBFilePipePrinterAccessMask,
+};
 use crate::protocol::body::tree_connect::buffer::SMBTreeConnectBuffer;
 use crate::protocol::body::tree_connect::capabilities::SMBTreeConnectCapabilities;
 use crate::protocol::body::tree_connect::context::{LuidAttr, SidAttr};
 use crate::protocol::body::tree_connect::flags::{SMBShareFlags, SMBTreeConnectFlags};
 use crate::server::share::{ResourceType, SharedResource};
-use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
+use crate::util::flags_helper::{
+    impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag,
+};
 
-pub mod context;
-pub mod buffer;
 pub mod access_mask;
-pub mod flags;
+pub mod buffer;
 pub mod capabilities;
+pub mod context;
+pub mod flags;
 
 #[derive(
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    Debug,
-    SMBByteSize,
-    SMBFromBytes,
-    SMBToBytes,
-    Clone
+    Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes, SMBToBytes, Clone,
 )]
 #[smb_byte_tag(value = 09)]
 pub struct SMBTreeConnectRequest {
@@ -45,15 +41,7 @@ impl SMBTreeConnectRequest {
 }
 
 #[derive(
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    Debug,
-    SMBByteSize,
-    SMBFromBytes,
-    SMBToBytes,
-    Clone
+    Serialize, Deserialize, PartialEq, Eq, Debug, SMBByteSize, SMBFromBytes, SMBToBytes, Clone,
 )]
 #[smb_byte_tag(value = 16)]
 pub struct SMBTreeConnectResponse {
@@ -84,7 +72,9 @@ impl Default for SMBTreeConnectResponse {
 impl SMBTreeConnectResponse {
     pub fn ipc() -> Self {
         Self {
-            maximal_access: SMBAccessMask::FilePipePrinter(SMBFilePipePrinterAccessMask::from_bits_truncate(2032127)),
+            maximal_access: SMBAccessMask::FilePipePrinter(
+                SMBFilePipePrinterAccessMask::from_bits_truncate(2032127),
+            ),
             share_type: SMBShareType::Pipe,
             reserved: PhantomData,
             share_flags: SMBShareFlags::NO_CACHING,
@@ -103,7 +93,9 @@ impl SMBTreeConnectResponse {
             reserved: Default::default(),
             share_flags,
             capabilities: SMBTreeConnectCapabilities::empty(),
-            maximal_access: SMBAccessMask::FilePipePrinter(SMBFilePipePrinterAccessMask::from_bits_truncate(0x001f01ff)),
+            maximal_access: SMBAccessMask::FilePipePrinter(
+                SMBFilePipePrinterAccessMask::from_bits_truncate(0x001f01ff),
+            ),
         }
     }
 
@@ -113,7 +105,20 @@ impl SMBTreeConnectResponse {
 }
 
 #[repr(u8)]
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Copy, Clone, SMBByteSize, SMBFromBytes, SMBToBytes, TryFromPrimitive, Default)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Debug,
+    Copy,
+    Clone,
+    SMBByteSize,
+    SMBFromBytes,
+    SMBToBytes,
+    TryFromPrimitive,
+    Default,
+)]
 pub enum SMBShareType {
     #[default]
     Disk = 0x01,
