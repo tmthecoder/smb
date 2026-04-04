@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! # SMB Reader
 //!
 //! A Rust implementation of the **Server Message Block (SMB) Protocol Versions 2 and 3**

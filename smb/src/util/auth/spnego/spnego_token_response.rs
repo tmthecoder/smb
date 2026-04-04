@@ -149,7 +149,6 @@ impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
 }
 
 // Private instance helper methods (writing)
-#[allow(dead_code)]
 impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
     fn negotiate_state_bytes(&self, state: &NegotiateState) -> Vec<u8> {
         [

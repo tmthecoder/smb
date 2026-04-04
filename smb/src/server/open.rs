@@ -153,7 +153,6 @@ pub enum SMBOplockState {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct LockSequence {
     sequence_number: u32,
     valid: bool,
