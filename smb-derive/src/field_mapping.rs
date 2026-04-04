@@ -104,6 +104,7 @@ pub(crate) fn enum_repr_type(attrs: &[Attribute]) -> darling::Result<Repr> {
 ///
 /// The entire enum is treated as a single `Direct` field at offset 0 with the
 /// repr type. Parsing reads the raw integer and converts via `TryFrom`.
+#[allow(clippy::result_large_err)]
 pub(crate) fn get_num_enum_mapping(input: &DeriveInput, parent_attrs: Vec<SMBFieldType>, repr_type: Repr) -> Result<SMBFieldMapping<'_, DeriveInput, DeriveInput>, SMBDeriveError<DeriveInput>> {
     let identity = &repr_type.ident;
     let ty = Type::Path(TypePath {
@@ -133,6 +134,7 @@ pub(crate) fn get_num_enum_mapping(input: &DeriveInput, parent_attrs: Vec<SMBFie
 ///
 /// Each variant must carry `#[smb_discriminator(value = …)]` and exactly one
 /// `smb_*` field attribute describing how to parse its payload.
+#[allow(clippy::result_large_err)]
 pub(crate) fn get_desc_enum_mapping(info: &DataEnum) -> Result<Vec<SMBFieldMapping<'_, Fields, Field>>, SMBDeriveError<Field>> {
     info.variants.iter().map(|variant| {
         let discriminators = Discriminator::from_attributes(&variant.attrs).map(|d| d.values.iter().map(|val| val | d.flag).collect())
@@ -147,6 +149,7 @@ pub(crate) fn get_desc_enum_mapping(info: &DataEnum) -> Result<Vec<SMBFieldMappi
 /// present, the field is treated as `Direct` at offset 0. Multi-field structs
 /// require each field to carry its own `smb_*` attribute; fields are sorted by
 /// `(weight, start_offset)` to ensure correct parse/serialize ordering.
+#[allow(clippy::result_large_err)]
 pub(crate) fn get_struct_field_mapping(struct_fields: &Fields, parent_attrs: Vec<SMBFieldType>, discriminators: Vec<u64>, variant_ident: Option<Ident>) -> Result<SMBFieldMapping<'_, Fields, Field>, SMBDeriveError<Field>> {
     if struct_fields.len() == 1 {
         let field = struct_fields.iter().next()

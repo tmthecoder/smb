@@ -137,12 +137,11 @@ impl FromMeta for AttributeInfo {
     fn from_list(items: &[NestedMeta]) -> darling::Result<Self> {
         for item in items {
             if let NestedMeta::Meta(Meta::NameValue(meta)) = item {
-                if meta.path.is_ident("fixed") {
-                    if let Expr::Lit(lit) = &meta.value {
-                        if let Lit::Int(int) = &lit.lit {
-                            return Ok(AttributeInfo::Fixed(int.base10_parse::<usize>()?))
-                        }
-                    }
+                if meta.path.is_ident("fixed")
+                    && let Expr::Lit(lit) = &meta.value
+                    && let Lit::Int(int) = &lit.lit
+                {
+                    return Ok(AttributeInfo::Fixed(int.base10_parse::<usize>()?))
                 }
             } else if let NestedMeta::Meta(Meta::List(list)) = item {
                 if list.path.is_ident("inner") {
@@ -824,12 +823,12 @@ impl FromAttributes for Repr {
             if attr.path().is_ident("repr") {
                 let nested = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?;
                 for meta in nested {
-                    if let Meta::Path(p) = meta {
-                        if let Some(ident) = p.get_ident() {
-                            return Ok(Self {
-                                ident: ident.clone()
-                            })
-                        }
+                    if let Meta::Path(p) = meta
+                        && let Some(ident) = p.get_ident()
+                    {
+                        return Ok(Self {
+                            ident: ident.clone()
+                        })
                     }
                 }
             }

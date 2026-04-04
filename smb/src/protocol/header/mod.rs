@@ -103,6 +103,7 @@ pub trait Header: SMBFromBytes + SMBToBytes {
     SMBByteSize,
     Clone
 )]
+#[allow(clippy::duplicated_attributes)]
 #[smb_byte_tag(value = 0xFE, order = 0)]
 #[smb_string_tag(value = "SMB", order = 1)]
 #[smb_byte_tag(value = 64, order = 2)]
