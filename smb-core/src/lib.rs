@@ -100,7 +100,7 @@ impl<T: SMBFromBytes> SMBVecFromBytesCnt for Vec<T> {
             remaining = &remaining[extra..];
             let (r, val) = T::smb_from_bytes(remaining)?;
             pos += T::smb_byte_size(&val);
-            extra = if align > 0 && pos % align != 0 {
+            extra = if align > 0 && !pos.is_multiple_of(align) {
                 align - (pos % align)
             } else {
                 0
@@ -125,7 +125,7 @@ impl<T: SMBFromBytes> SMBVecFromBytesLen for Vec<T> {
             let (_, val) = T::smb_from_bytes(remaining)?;
             let size = T::smb_byte_size(&val);
             pos += size; 
-            extra = if align > 0 && pos % align != 0 {
+            extra = if align > 0 && !pos.is_multiple_of(align) {
                 align - (pos % align)
             } else {
                 0

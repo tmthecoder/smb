@@ -387,7 +387,7 @@ impl Vector {
         let _name_str = name.to_string();
         quote_spanned! { spanned.span() =>
             #vec_count_or_len
-            if #align > 0 && current_pos % #align != 0 {
+            if #align > 0 && !current_pos.is_multiple_of(#align) {
                 current_pos += #align - (current_pos % #align);
             }
             #offset
@@ -422,7 +422,7 @@ impl Vector {
         quote_spanned! { spanned.span()=>
             #count_info
             let get_aligned_pos = |align: usize, current_pos: usize| {
-                if align > 0 && current_pos % align != 0 {
+                if align > 0 && !current_pos.is_multiple_of(align) {
                     current_pos + (align - current_pos % align)
                 } else {
                     current_pos
