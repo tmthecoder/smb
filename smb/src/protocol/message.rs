@@ -18,7 +18,7 @@ use hmac::Hmac;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use smb_core::{SMBFromBytes, SMBParseResult, SMBResult, SMBToBytes};
+use smb_core::{SMBParseResult, SMBResult};
 use smb_core::error::SMBError;
 use smb_core::logging::trace;
 
@@ -101,7 +101,7 @@ impl<S: Header + Debug, T: Body<S>> Message for SMBMessage<S, T> {
         Ok((remaining, Self { header, body }))
     }
 
-    fn signature(&self, nonce: &[u8], key: &[u8], algorithm: SigningAlgorithm) -> SMBResult<Vec<u8>> {
+    fn signature(&self, _nonce: &[u8], key: &[u8], algorithm: SigningAlgorithm) -> SMBResult<Vec<u8>> {
         let res = match algorithm {
             SigningAlgorithm::HmacSha256 => {
                 let mut hmac = Hmac::<Sha256>::new_from_slice(key)

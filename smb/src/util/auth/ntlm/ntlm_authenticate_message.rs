@@ -149,7 +149,7 @@ impl NTLMAuthenticateMessageBody {
         {
             if self.lm_challenge_response.len() == 24 && self.lm_challenge_response[0..8] != [0; 8] {
                 // ntlm v1 extended
-                let response = authenticate_v1_extended(&matched_user.password, server_challenge, &self.lm_challenge_response, &self.nt_challenge_response);
+                let _response = authenticate_v1_extended(&matched_user.password, server_challenge, &self.lm_challenge_response, &self.nt_challenge_response);
                 Vec::new()
             } else {
                 // ntlm v2
