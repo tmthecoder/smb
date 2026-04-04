@@ -13,7 +13,7 @@ built from the ground up following the official Microsoft specification.
 
 ## Building
 
-Requires **Rust nightly** (edition 2024).
+Requires **Rust 1.85+** (edition 2024).
 
 ```sh
 # Library check
