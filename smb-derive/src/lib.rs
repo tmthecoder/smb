@@ -234,7 +234,7 @@ trait CreatorFn {
 /// Errors that can occur during derive-macro expansion.
 #[derive(Debug)]
 enum SMBDeriveError<T: Spanned + Debug> {
-    TypeError(T),
+    TypeError(Box<T>),
     MissingField,
     InvalidType,
 }

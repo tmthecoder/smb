@@ -227,7 +227,6 @@ impl<T: Spanned + Debug> SMBField<'_, T> {
 }
 
 impl<'a> SMBField<'a, Field> {
-    #[allow(clippy::result_large_err)]
     pub(crate) fn from_iter<U: Iterator<Item=&'a Field>>(fields: U) -> Result<Vec<Self>, SMBDeriveError<Field>> {
         fields.enumerate().map(|(idx, field)| {
             let val_types = field.attrs.iter().map(|attr| get_field_types(field, std::slice::from_ref(attr))).collect::<Result<Vec<SMBFieldType>, SMBDeriveError<Field>>>()?;
@@ -367,8 +366,7 @@ impl FromAttributes for SMBFieldType {
     }
 }
 
-#[allow(clippy::result_large_err)]
 fn get_field_types(field: &Field, attrs: &[Attribute]) -> Result<SMBFieldType, SMBDeriveError<Field>> {
     SMBFieldType::from_attributes(attrs)
-        .map_err(|_e| SMBDeriveError::TypeError(field.clone()))
+        .map_err(|_e| SMBDeriveError::TypeError(Box::new(field.clone())))
 }
