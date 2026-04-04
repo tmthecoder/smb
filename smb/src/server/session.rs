@@ -36,6 +36,7 @@ use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenResponseBody};
 use crate::util::crypto::sp800_108::derive_key;
 use crate::util::num_limits::{MaxVal, MinVal, One, Zero};
 
+pub type LockedSMBSession<S> = Arc<RwLock<SMBSession<S>>>;
 type SMBMessageType = SMBMessage<SMBSyncHeader, SMBBody>;
 
 const _OUTPUT_SIZE_128: usize = 128;

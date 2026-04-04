@@ -32,8 +32,8 @@ fn extend_des_key(key: &[u8]) -> Vec<u8> {
     result[6] = ((key[5] & 0x3F) << 1) | (key[6] >> 7);
     result[7] = key[6] & 0x7F;
 
-    for i in 0..result.len() {
-        result[i] <<= 1;
+    for item in &mut result {
+        *item <<= 1;
     }
 
     result

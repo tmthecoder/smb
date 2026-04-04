@@ -436,6 +436,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
 }
 
 type LockedSMBConnection<R, W, S> = Arc<RwLock<SMBConnection<R, W, S>>>;
+pub type WeakLockedSMBConnection<R, W, S> = Weak<RwLock<SMBConnection<R, W, S>>>;
 
 impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> InnerGetter for SMBConnection<R, W, S> {
     type Upper = S;

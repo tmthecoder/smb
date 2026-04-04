@@ -11,7 +11,7 @@ use crate::byte_helper::u16_to_bytes;
 pub fn authenticate_v2(domain: &str, account: &str, password: &str, server_challenge: &[u8], lm_response: &[u8], nt_response: &[u8]) -> SMBResult<(bool, Vec<u8>)> {
     // AV-pairs structure
     let server_name = &nt_response[44..(nt_response.len() - 4)];
-    let (nt_exp, lm_exp, nt_proof) = compute_ntlm_v2_response(server_challenge, &nt_response[16..], server_name, password, account, domain)?;
+    let (nt_exp, lm_exp, _nt_proof) = compute_ntlm_v2_response(server_challenge, &nt_response[16..], server_name, password, account, domain)?;
 
     let resp = nt_exp == nt_response || lm_exp == lm_response;
 
@@ -48,7 +48,7 @@ fn compute_ntlm_v2_response(server_challenge: &[u8], client_challenge: &[u8], se
         &[client_challenge[0]][0..],
         &[client_challenge[1]],
         &[0; 6],
-        &time,
+        time,
         // &[0; 8],
         client_challenge,
         &[0; 4],

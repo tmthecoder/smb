@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use smb_core::SMBResult;
@@ -16,6 +17,8 @@ use crate::server::message_handler::{SMBLockedMessageHandler, SMBLockedMessageHa
 use crate::server::Server;
 use crate::server::share::{ResourceHandle, SMBFileMetadata};
 use crate::server::tree_connect::SMBTreeConnect;
+
+pub type LockedSMBOpen<S> = Arc<RwLock<SMBOpen<S>>>;
 
 pub trait Open: Send + Sync {
     type Server: Server;
@@ -145,6 +148,11 @@ impl<S: Server> Open for SMBOpen<S> {
         self.underlying.metadata()
     }
 }
+
+// TODO: From MS-FSCC section 2.6
+#[derive(Debug)]
+struct FileAttributes;
+
 #[derive(Debug)]
 pub enum SMBOplockState {
     Held,
