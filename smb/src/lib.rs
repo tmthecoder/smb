@@ -1,5 +1,7 @@
 // TODO: Remove once protocol implementation consumes all public types
 #![allow(dead_code)]
+// TODO: Reduce generic params on SMBServer to eliminate need for this allow
+#![allow(clippy::type_complexity)]
 //! # SMB Reader
 //!
 //! A Rust implementation of the **Server Message Block (SMB) Protocol Versions 2 and 3**
