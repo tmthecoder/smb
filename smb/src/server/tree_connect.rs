@@ -79,12 +79,12 @@ impl<S: Server> SMBTreeConnect<S> {
         let session_rd = session.read().await;
         let open = session_rd
             .open_table()
-            .get(&file_id.volatile)
+            .get(&file_id.volatile())
             .cloned()
             .ok_or(SMBError::response_error(NTStatus::FileClosed))?;
         // MS-SMB2 §3.3.5.10/12/20: verify Open.DurableFileId == FileId.Persistent
         let open_rd = open.read().await;
-        if open_rd.file_id().persistent != file_id.persistent {
+        if open_rd.file_id().persistent() != file_id.persistent() {
             return Err(SMBError::response_error(NTStatus::FileClosed));
         }
         drop(open_rd);
@@ -93,14 +93,13 @@ impl<S: Server> SMBTreeConnect<S> {
 
     fn build_basic_info(open: &S::Open) -> SMBResult<FileBasicInformation> {
         let metadata = open.file_metadata()?;
-        Ok(FileBasicInformation {
-            creation_time: metadata.creation_time,
-            last_access_time: metadata.last_access_time,
-            last_write_time: metadata.last_write_time,
-            change_time: metadata.last_modification_time,
-            file_attributes: open.file_attributes(),
-            reserved: 0,
-        })
+        Ok(FileBasicInformation::new(
+            metadata.creation_time().clone(),
+            metadata.last_access_time().clone(),
+            metadata.last_write_time().clone(),
+            metadata.last_modification_time().clone(),
+            open.file_attributes(),
+        ))
     }
 
     fn build_standard_info(open: &S::Open) -> SMBResult<FileStandardInformation> {
@@ -108,55 +107,42 @@ impl<S: Server> SMBTreeConnect<S> {
         let is_dir = open
             .file_attributes()
             .contains(SMBFileAttributes::DIRECTORY);
-        Ok(FileStandardInformation {
-            allocation_size: metadata.allocated_size,
-            end_of_file: metadata.actual_size,
-            number_of_links: 1,
-            delete_pending: 0,
-            directory: if is_dir { 1 } else { 0 },
-            reserved: 0,
-        })
+        Ok(FileStandardInformation::new(
+            metadata.allocated_size(),
+            metadata.actual_size(),
+            1,
+            false,
+            is_dir,
+        ))
     }
 
     fn build_network_open_info(open: &S::Open) -> SMBResult<FileNetworkOpenInformation> {
         let metadata = open.file_metadata()?;
-        Ok(FileNetworkOpenInformation {
-            creation_time: metadata.creation_time,
-            last_access_time: metadata.last_access_time,
-            last_write_time: metadata.last_write_time,
-            change_time: metadata.last_modification_time,
-            allocation_size: metadata.allocated_size,
-            end_of_file: metadata.actual_size,
-            file_attributes: open.file_attributes(),
-            reserved: 0,
-        })
+        Ok(FileNetworkOpenInformation::new(
+            metadata.creation_time().clone(),
+            metadata.last_access_time().clone(),
+            metadata.last_write_time().clone(),
+            metadata.last_modification_time().clone(),
+            metadata.allocated_size(),
+            metadata.actual_size(),
+            open.file_attributes(),
+        ))
     }
 
     fn build_all_info(open: &S::Open) -> SMBResult<FileAllInformation> {
         let name = open.file_name();
         let name_byte_len = (name.encode_utf16().count() * 2) as u32;
-        Ok(FileAllInformation {
-            basic: Self::build_basic_info(open)?,
-            standard: Self::build_standard_info(open)?,
-            internal: FileInternalInformation { index_number: 0 },
-            ea: FileEaInformation { ea_size: 0 },
-            access: FileAccessInformation {
-                access_flags: FileAccessFlags::from_bits_truncate(0x001f01ff),
-            },
-            position: FilePositionInformation {
-                current_byte_offset: 0,
-            },
-            mode: FileModeInformation {
-                mode: FileModeFlags::empty(),
-            },
-            alignment: FileAlignmentInformation {
-                alignment_requirement: FileAlignmentRequirement::Byte,
-            },
-            name: FileNameInformation {
-                file_name_length: name_byte_len,
-                file_name: name.into(),
-            },
-        })
+        Ok(FileAllInformation::new(
+            Self::build_basic_info(open)?,
+            Self::build_standard_info(open)?,
+            FileInternalInformation::new(0),
+            FileEaInformation::new(0),
+            FileAccessInformation::new(FileAccessFlags::from_bits_truncate(0x001f01ff)),
+            FilePositionInformation::new(0),
+            FileModeInformation::new(FileModeFlags::empty()),
+            FileAlignmentInformation::new(FileAlignmentRequirement::Byte),
+            FileNameInformation::new(name_byte_len, name.into()),
+        ))
     }
 }
 
@@ -210,14 +196,14 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
             let session_rd = session.read().await;
             session_rd
                 .open_table()
-                .get(&message.file_id().volatile)
+                .get(&message.file_id().volatile())
                 .cloned()
                 .ok_or(SMBError::response_error(NTStatus::FileClosed))?
         };
         let (response, file_id) = {
             let open_rd = open.read().await;
             // MS-SMB2 section 3.3.5.10: verify Open.DurableFileId == FileId.Persistent
-            if open_rd.file_id().persistent != message.file_id().persistent {
+            if open_rd.file_id().persistent() != message.file_id().persistent() {
                 return Err(SMBError::response_error(NTStatus::FileClosed));
             }
             let response = if message
@@ -236,7 +222,10 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
         // Server write first (outermost) — use persistent (global_id) as GlobalOpenTable key
         if let Ok(conn) = session.upper().await {
             if let Ok(server) = conn.upper().await {
-                server.write().await.remove_open(file_id.persistent as u32);
+                server
+                    .write()
+                    .await
+                    .remove_open(file_id.persistent() as u32);
             } else {
                 warn!(file_id = ?file_id, "failed to acquire server lock during close; global open table entry leaked");
             }
@@ -246,7 +235,7 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
         // Session write second (inner relative to server)
         {
             let mut session_wr = session.write().await;
-            session_wr.open_table_mut().remove(&file_id.volatile);
+            session_wr.open_table_mut().remove(&file_id.volatile());
         }
 
         debug!(file_id = ?file_id, "close completed");
@@ -267,6 +256,11 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
         let mut open_wr = open.write().await;
         let data = open_wr.read_data(message.read_offset(), message.read_length())?;
         drop(open_wr);
+
+        // MS-SMB2 §3.3.5.12: if read returns 0 bytes at/past EOF, fail with STATUS_END_OF_FILE
+        if data.is_empty() && message.read_length() > 0 {
+            return Err(SMBError::response_error(NTStatus::EndOfFile));
+        }
 
         if data.len() < message.minimum_count() as usize {
             return Err(SMBError::response_error(NTStatus::EndOfFile));
@@ -291,7 +285,7 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
         let open = self.find_open(message.file_id()).await?;
         let open_rd = open.read().await;
 
-        let data = match message.info_type() {
+        let mut data = match message.info_type() {
             SMBInfoType::File => {
                 // MS-FSCC file information classes
                 match message.file_info_class() {
@@ -313,6 +307,27 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
                 return Err(SMBError::response_error(NTStatus::InvalidInfoClass));
             }
         };
+
+        // MS-SMB2 §3.3.5.20.1: enforce OutputBufferLength — truncate and
+        // return STATUS_BUFFER_OVERFLOW for variable-length info classes
+        let max_output = message.output_buffer_length() as usize;
+        if max_output > 0 && data.len() > max_output {
+            debug!(
+                data_len = data.len(),
+                max_output, "truncating response to output_buffer_length"
+            );
+            data.truncate(max_output);
+            let response = SMBQueryInfoResponse::new(data);
+            let header = header.create_response_header(
+                NTStatus::BufferOverflow as u32,
+                header.session_id,
+                header.tree_id,
+            );
+            return Ok(SMBHandlerState::Finished(SMBMessage::new(
+                header,
+                SMBBody::QueryInfoResponse(response),
+            )));
+        }
 
         debug!(data_len = data.len(), "query_info completed");
         let response = SMBQueryInfoResponse::new(data);

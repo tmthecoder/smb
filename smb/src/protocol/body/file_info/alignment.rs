@@ -66,5 +66,17 @@ impl SMBToBytes for FileAlignmentRequirement {
 )]
 pub struct FileAlignmentInformation {
     #[smb_direct(start(fixed = 0))]
-    pub alignment_requirement: FileAlignmentRequirement,
+    alignment_requirement: FileAlignmentRequirement,
+}
+
+impl FileAlignmentInformation {
+    pub fn new(alignment_requirement: FileAlignmentRequirement) -> Self {
+        Self {
+            alignment_requirement,
+        }
+    }
+
+    pub fn alignment_requirement(&self) -> FileAlignmentRequirement {
+        self.alignment_requirement
+    }
 }

@@ -8,5 +8,17 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 )]
 pub struct FilePositionInformation {
     #[smb_direct(start(fixed = 0))]
-    pub current_byte_offset: u64,
+    current_byte_offset: u64,
+}
+
+impl FilePositionInformation {
+    pub fn new(current_byte_offset: u64) -> Self {
+        Self {
+            current_byte_offset,
+        }
+    }
+
+    pub fn current_byte_offset(&self) -> u64 {
+        self.current_byte_offset
+    }
 }

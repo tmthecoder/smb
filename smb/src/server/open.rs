@@ -141,10 +141,7 @@ impl<S: Server> Open for SMBOpen<S> {
     }
 
     fn file_id(&self) -> SMBFileId {
-        SMBFileId {
-            persistent: self.global_id as u64,
-            volatile: self.session_id as u64,
-        }
+        SMBFileId::new(self.global_id as u64, self.session_id as u64)
     }
 
     fn file_metadata(&self) -> SMBResult<SMBFileMetadata> {

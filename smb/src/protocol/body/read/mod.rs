@@ -148,7 +148,7 @@ mod tests {
         assert_eq!(req.read_length(), 1024);
         assert_eq!(req.read_offset(), 512);
         assert_eq!(req.minimum_count(), 256);
-        assert_eq!(req.file_id().persistent, 10);
-        assert_eq!(req.file_id().volatile, 20);
+        assert_eq!(req.file_id().persistent(), 10);
+        assert_eq!(req.file_id().volatile(), 20);
     }
 }

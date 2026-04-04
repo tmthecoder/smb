@@ -30,5 +30,15 @@ impl_smb_from_bytes_for_bitflag! { FileModeFlags }
 )]
 pub struct FileModeInformation {
     #[smb_direct(start(fixed = 0))]
-    pub mode: FileModeFlags,
+    mode: FileModeFlags,
+}
+
+impl FileModeInformation {
+    pub fn new(mode: FileModeFlags) -> Self {
+        Self { mode }
+    }
+
+    pub fn mode(&self) -> FileModeFlags {
+        self.mode
+    }
 }

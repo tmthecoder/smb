@@ -8,5 +8,15 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 )]
 pub struct FileEaInformation {
     #[smb_direct(start(fixed = 0))]
-    pub ea_size: u32,
+    ea_size: u32,
+}
+
+impl FileEaInformation {
+    pub fn new(ea_size: u32) -> Self {
+        Self { ea_size }
+    }
+
+    pub fn ea_size(&self) -> u32 {
+        self.ea_size
+    }
 }

@@ -47,5 +47,15 @@ impl_smb_from_bytes_for_bitflag! { FileAccessFlags }
 )]
 pub struct FileAccessInformation {
     #[smb_direct(start(fixed = 0))]
-    pub access_flags: FileAccessFlags,
+    access_flags: FileAccessFlags,
+}
+
+impl FileAccessInformation {
+    pub fn new(access_flags: FileAccessFlags) -> Self {
+        Self { access_flags }
+    }
+
+    pub fn access_flags(&self) -> FileAccessFlags {
+        self.access_flags
+    }
 }

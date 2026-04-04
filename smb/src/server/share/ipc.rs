@@ -36,14 +36,14 @@ impl ResourceHandle for SMBIPCHandle {
     }
 
     fn metadata(&self) -> SMBResult<SMBFileMetadata> {
-        Ok(SMBFileMetadata {
-            creation_time: FileTime::default(),
-            last_access_time: FileTime::default(),
-            last_write_time: FileTime::default(),
-            last_modification_time: FileTime::default(),
-            allocated_size: 0,
-            actual_size: 0,
-        })
+        Ok(SMBFileMetadata::new(
+            FileTime::default(),
+            FileTime::default(),
+            FileTime::default(),
+            FileTime::default(),
+            0,
+            0,
+        ))
     }
 
     fn read_data(&mut self, _offset: u64, _length: u32) -> SMBResult<Vec<u8>> {
