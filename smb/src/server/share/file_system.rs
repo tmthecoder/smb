@@ -70,7 +70,7 @@ impl ResourceHandle for SMBFileSystemHandle {
     }
 
     fn metadata(&self) -> SMBResult<SMBFileMetadata> {
-        let metadata = fs::metadata(&self.path())
+        let metadata = fs::metadata(self.path())
             .map_err(|err| SMBError::server_error(format!("Failed to get metadata for path: {}, error: {}", self.path(), err)))?;
         let time_transform = |time: SystemTime| {
             time.duration_since(UNIX_EPOCH)
@@ -173,7 +173,7 @@ impl<UserName: Send + Sync, Handle: From<SMBFileSystemHandle> + ResourceHandle +
         }?;
         let handle = SMBFileSystemHandle {
             resource,
-            path: path.into(),
+            path,
         };
         debug!(?handle, "created filesystem handle");
         Ok(handle.into())

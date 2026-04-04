@@ -22,7 +22,7 @@ impl SMBByteSize for SMBTreeConnectContext {
 
 impl SMBFromBytes for SMBTreeConnectContext {
     fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
-        let (remaining, ctx_type) = u16::smb_from_bytes(input)?;
+        let (_remaining, ctx_type) = u16::smb_from_bytes(input)?;
         match ctx_type {
             0x01 => {
                 let (remaining, identity) = RemotedIdentity::smb_from_bytes(input)?;
