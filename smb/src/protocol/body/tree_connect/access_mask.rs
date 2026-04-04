@@ -49,7 +49,7 @@ impl SMBAccessMask {
     }
 
     pub fn from_desired_access(desired: &SMBAccessMask) -> Self {
-        let mut mask = desired.clone();
+        let mask = desired.clone();
         if mask.includes_maximum_allowed() {
             match mask {
                 SMBAccessMask::FilePipePrinter(mut x) => x |= SMBFilePipePrinterAccessMask::GENERIC_ALL,

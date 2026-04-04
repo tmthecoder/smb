@@ -92,6 +92,7 @@ type DefaultHandle = Box<dyn ResourceHandle>;
 #[derive(Debug, Builder)]
 #[builder(pattern = "owned")]
 #[builder(build_fn(name = "build_inner", private))]
+#[allow(dead_code)]
 pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListener, Auth: AuthProvider = NTLMAuthProvider, Share: SharedResource<UserName=UserName<Auth>, Handle=Handle> = DefaultShare<Auth>, Handle: ResourceHandle = DefaultHandle> {
     #[builder(default = "Default::default()")]
     statistics: Arc<RwLock<SMBServerDiagnostics>>,
@@ -102,14 +103,17 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
     #[builder(field(
         type = "HashMap<u32, Arc<RwLock<SMBOpenType<Addrs, Listener, Auth, Share, Handle>>>>"
     ))]
+    #[allow(clippy::type_complexity)]
     open_table: HashMap<u32, Arc<RwLock<SMBOpenType<Addrs, Listener, Auth, Share, Handle>>>>,
     #[builder(field(
         type = "HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth, Share, Handle>>>>"
     ))]
+    #[allow(clippy::type_complexity)]
     session_table: HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth, Share, Handle>>>>,
     #[builder(field(
         type = "HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth, Share, Handle>>"
     ))]
+    #[allow(clippy::type_complexity)]
     connection_list: HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth, Share, Handle>>,
     #[builder(default = "Uuid::new_v4()")]
     guid: Uuid,
@@ -128,6 +132,7 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
     #[builder(field(
         type = "HashMap<Uuid, SMBLeaseTable<SMBLeaseType<Addrs, Listener, Auth, Share, Handle>>>"
     ))]
+    #[allow(clippy::type_complexity)]
     lease_table_list: HashMap<Uuid, SMBLeaseTable<SMBLeaseType<Addrs, Listener, Auth, Share, Handle>>>,
     #[builder(default = "5000")]
     max_resiliency_timeout: u64,
@@ -187,11 +192,11 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: 
 
     async fn add_open(&mut self, open: Arc<RwLock<Self::Open>>) -> u32 {
         for i in 0..u32::MAX {
-            if self.open_table.get(&i).is_none() {
+            if let std::collections::hash_map::Entry::Vacant(e) = self.open_table.entry(i) {
                 let mut open_wr = open.write().await;
                 open_wr.set_global_id(i);
                 drop(open_wr);
-                self.open_table.insert(i, open);
+                e.insert(open);
                 return i;
             }
         }
@@ -308,6 +313,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: 
         self
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn build(self) -> SMBResult<Arc<RwLock<SMBServer<Addrs, Listener, Auth, Share, Handle>>>> {
         let server = self.build_inner().map_err(SMBError::server_error)?;
         Ok(Arc::new(RwLock::new(server)))
@@ -345,7 +351,7 @@ impl<
     Share: SharedResource<UserName=UserName<Auth>, Handle=Handle> + From<SMBFileSystemShare<UserName<Auth>, Handle>>,
     Handle: ResourceHandle + 'static + From<SMBFileSystemHandle> + TryInto<SMBFileSystemHandle>
 > SMBServerBuilder<Addrs, Listener, Auth, Share, Handle> {
-    pub fn add_fs_share(mut self, name: String, path: String, connect_allowed: ConnectAllowed<UserName<Auth>>, file_perms: FilePerms<UserName<Auth>>) -> Self {
+    pub fn add_fs_share(self, name: String, path: String, connect_allowed: ConnectAllowed<UserName<Auth>>, file_perms: FilePerms<UserName<Auth>>) -> Self {
         let share = SMBFileSystemShare::path(name.clone(), path, connect_allowed, file_perms);
         self.add_share(name, share.into())
     }
@@ -394,7 +400,7 @@ impl<Addrs: Send + Sync + 'static, Listener: SMBSocket<Addrs> + 'static, Auth: A
                 let mut stream = socket.lock().await;
                 match SMBConnection::start_message_handler::<Auth>(&mut stream, wrapped_connection, update_channel).await {
                     Ok(()) => debug!("message handler completed"),
-                    Err(ref e) => warn!(?e, "message handler exited with error"),
+                    Err(_e) => warn!(?e, "message handler exited with error"),
                 }
             });
         }

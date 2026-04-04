@@ -2,7 +2,6 @@ use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 
-use smb_core::error::SMBError;
 use smb_core::SMBResult;
 
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
@@ -58,12 +57,18 @@ pub struct SMBIPCShare<UserName: Send + Sync, Handle: From<SMBIPCHandle> + Resou
     _handle: PhantomData<Handle>,
 }
 
-impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle> SMBIPCShare<UserName, Handle> {
-    pub fn new() -> Self {
+impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle> Default for SMBIPCShare<UserName, Handle> {
+    fn default() -> Self {
         Self {
             _user_name: PhantomData,
             _handle: PhantomData,
         }
+    }
+}
+
+impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle> SMBIPCShare<UserName, Handle> {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 

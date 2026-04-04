@@ -20,7 +20,6 @@ use crate::server::preauth_session::SMBPreauthSession;
 use crate::server::Server;
 use crate::server::session::{Session, SessionState};
 use crate::socket::message_stream::{SMBReadStream, SMBWriteStream};
-use crate::util::auth::AuthProvider;
 
 pub mod security_mode;
 pub mod flags;
@@ -98,7 +97,7 @@ impl SMBSessionSetupRequest {
             if connection.dialect() == SMBDialect::V3_1_1 && !connection.preauth_sessions().contains_key(&session.id()) {
                 let mut sha = Sha512::default();
                 sha.update(connection.preauth_integtiry_hash_value());
-                sha.update(&self.smb_to_bytes());
+                sha.update(self.smb_to_bytes());
                 let bytes = sha.finalize().to_vec();
                 let preauth_session = SMBPreauthSession::new(session.id(), bytes);
                 update = update.preauth_session_table(HashMap::from([(session.id(), preauth_session)]));
@@ -152,7 +151,7 @@ impl SMBSessionSetupResponse {
         }
     }
 
-    pub fn from_request(request: SMBSessionSetupRequest, token: Vec<u8>) -> Option<Self> {
+    pub fn from_request(_request: SMBSessionSetupRequest, token: Vec<u8>) -> Option<Self> {
         Some(Self {
             session_flags: SMBSessionFlags::empty(),
             buffer: token,

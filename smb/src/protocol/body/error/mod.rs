@@ -34,6 +34,16 @@ pub struct SMBErrorResponse {
     error_data: PhantomData<Vec<u8>>,
 }
 
+impl Default for SMBErrorResponse {
+    fn default() -> Self {
+        Self {
+            reserved: PhantomData,
+            byte_count: PhantomData,
+            error_data: PhantomData,
+        }
+    }
+}
+
 impl SMBErrorResponse {
     pub fn new() -> Self {
         Self {
