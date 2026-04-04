@@ -36,8 +36,6 @@
 //! }
 //! ```
 
-#![allow(clippy::manual_is_multiple_of)]
-
 extern crate core;
 
 /// SMB2/3 wire-format protocol types: headers, bodies, and message framing.

@@ -33,7 +33,7 @@ impl<T: SMBByteSize> SMBVecByteSize for Vec<T> {
         let align = std::cmp::max(align, 1);
         self.iter().fold(start, |prev, x| {
             let size = x.smb_byte_size();
-            let aligned_start = if prev % align == 0 {
+            let aligned_start = if prev.is_multiple_of(align) {
                 prev
             } else {
                 prev + (align - prev % align)
