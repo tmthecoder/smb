@@ -2,7 +2,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use derive_builder::Builder;
 use tokio::net::TcpListener;
@@ -17,7 +17,7 @@ use smb_core::SMBResult;
 use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::filetime::FileTime;
 use crate::server::client::SMBClient;
-use crate::server::connection::{Connection, SMBConnection};
+use crate::server::connection::{Connection, SMBConnection, WeakLockedSMBConnection};
 use crate::server::lease::{Lease, SMBLease, SMBLeaseTable, SMBLeaseTableOf};
 use crate::server::open::{LockedSMBOpen, Open, SMBOpen};
 use crate::server::safe_locked_getter::InnerGetter;
@@ -82,7 +82,6 @@ pub trait StartSMBServer {
 }
 
 type SMBConnectionType<Addr, L, A, S, H> = SMBConnection<<L as SMBSocket<Addr>>::ReadStream, <L as SMBSocket<Addr>>::WriteStream, SMBServer<Addr, L, A, S, H>>;
-type WeakLockedSMBConnection<Addr, L, A, S, H> = Weak<RwLock<SMBConnectionType<Addr, L, A, S, H>>>;
 type UserName<Auth> = <<Auth as AuthProvider>::Context as AuthContext>::UserName;
 pub type DefaultShare<Auth> = Box<dyn SharedResource<UserName=<<Auth as AuthProvider>::Context as AuthContext>::UserName, Handle=DefaultHandle>>;
 type DefaultHandle = Box<dyn ResourceHandle>;
@@ -105,9 +104,9 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
     ))]
     session_table: HashMap<u64, LockedSMBSession<SMBServer<Addrs, Listener, Auth, Share, Handle>>>,
     #[builder(field(
-        type = "HashMap<String, WeakLockedSMBConnection<Addrs, Listener, Auth, Share, Handle>>"
+        type = "HashMap<String, WeakLockedSMBConnection<<Listener as SMBSocket<Addrs>>::ReadStream, <Listener as SMBSocket<Addrs>>::WriteStream, SMBServer<Addrs, Listener, Auth, Share, Handle>>>"
     ))]
-    connection_list: HashMap<String, WeakLockedSMBConnection<Addrs, Listener, Auth, Share, Handle>>,
+    connection_list: HashMap<String, WeakLockedSMBConnection<<Listener as SMBSocket<Addrs>>::ReadStream, <Listener as SMBSocket<Addrs>>::WriteStream, SMBServer<Addrs, Listener, Auth, Share, Handle>>>,
     #[builder(default = "Uuid::new_v4()")]
     guid: Uuid,
     #[builder(default = "FileTime::default()")]
