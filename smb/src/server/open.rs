@@ -145,6 +145,11 @@ impl<S: Server> Open for SMBOpen<S> {
         self.underlying.metadata()
     }
 }
+
+// TODO: From MS-FSCC section 2.6
+#[derive(Debug)]
+struct FileAttributes;
+
 #[derive(Debug)]
 pub enum SMBOplockState {
     Held,

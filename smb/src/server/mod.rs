@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
@@ -86,13 +87,16 @@ type LockedWeakSMBConnection<Addr, L, A, S, H> = Weak<RwLock<SMBConnectionType<A
 type SMBSessionType<Addr, L, A, S, H> = SMBSession<SMBServer<Addr, L, A, S, H>>;
 type SMBOpenType<Addr, L, A, S, H> = SMBOpen<SMBServer<Addr, L, A, S, H>>;
 type SMBLeaseType<Addr, L, A, S, H> = SMBLease<SMBServer<Addr, L, A, S, H>>;
+type LockedSMBOpen<Addr, L, A, S, H> = Arc<RwLock<SMBOpenType<Addr, L, A, S, H>>>;
+type LockedSMBSession<Addr, L, A, S, H> = Arc<RwLock<SMBSessionType<Addr, L, A, S, H>>>;
+type LockedSMBServer<Addr, L, A, S, H> = Arc<RwLock<SMBServer<Addr, L, A, S, H>>>;
+type SMBLeaseTableType<Addr, L, A, S, H> = SMBLeaseTable<SMBLeaseType<Addr, L, A, S, H>>;
 type UserName<Auth> = <<Auth as AuthProvider>::Context as AuthContext>::UserName;
 pub type DefaultShare<Auth> = Box<dyn SharedResource<UserName=<<Auth as AuthProvider>::Context as AuthContext>::UserName, Handle=DefaultHandle>>;
 type DefaultHandle = Box<dyn ResourceHandle>;
 #[derive(Debug, Builder)]
 #[builder(pattern = "owned")]
 #[builder(build_fn(name = "build_inner", private))]
-#[allow(dead_code)]
 pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListener, Auth: AuthProvider = NTLMAuthProvider, Share: SharedResource<UserName=UserName<Auth>, Handle=Handle> = DefaultShare<Auth>, Handle: ResourceHandle = DefaultHandle> {
     #[builder(default = "Default::default()")]
     statistics: Arc<RwLock<SMBServerDiagnostics>>,
@@ -101,19 +105,16 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
     #[builder(field(type = "HashMap<String, Arc<Share>>"))]
     share_list: HashMap<String, Arc<Share>>,
     #[builder(field(
-        type = "HashMap<u32, Arc<RwLock<SMBOpenType<Addrs, Listener, Auth, Share, Handle>>>>"
+        type = "HashMap<u32, LockedSMBOpen<Addrs, Listener, Auth, Share, Handle>>"
     ))]
-    #[allow(clippy::type_complexity)]
-    open_table: HashMap<u32, Arc<RwLock<SMBOpenType<Addrs, Listener, Auth, Share, Handle>>>>,
+    open_table: HashMap<u32, LockedSMBOpen<Addrs, Listener, Auth, Share, Handle>>,
     #[builder(field(
-        type = "HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth, Share, Handle>>>>"
+        type = "HashMap<u64, LockedSMBSession<Addrs, Listener, Auth, Share, Handle>>"
     ))]
-    #[allow(clippy::type_complexity)]
-    session_table: HashMap<u64, Arc<RwLock<SMBSessionType<Addrs, Listener, Auth, Share, Handle>>>>,
+    session_table: HashMap<u64, LockedSMBSession<Addrs, Listener, Auth, Share, Handle>>,
     #[builder(field(
         type = "HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth, Share, Handle>>"
     ))]
-    #[allow(clippy::type_complexity)]
     connection_list: HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth, Share, Handle>>,
     #[builder(default = "Uuid::new_v4()")]
     guid: Uuid,
@@ -130,10 +131,9 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
     #[builder(default = "HashLevel::EnableAll")]
     hash_level: HashLevel,
     #[builder(field(
-        type = "HashMap<Uuid, SMBLeaseTable<SMBLeaseType<Addrs, Listener, Auth, Share, Handle>>>"
+        type = "HashMap<Uuid, SMBLeaseTableType<Addrs, Listener, Auth, Share, Handle>>"
     ))]
-    #[allow(clippy::type_complexity)]
-    lease_table_list: HashMap<Uuid, SMBLeaseTable<SMBLeaseType<Addrs, Listener, Auth, Share, Handle>>>,
+    lease_table_list: HashMap<Uuid, SMBLeaseTableType<Addrs, Listener, Auth, Share, Handle>>,
     #[builder(default = "5000")]
     max_resiliency_timeout: u64,
     #[builder(default = "5000")]
@@ -192,7 +192,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: 
 
     async fn add_open(&mut self, open: Arc<RwLock<Self::Open>>) -> u32 {
         for i in 0..u32::MAX {
-            if let std::collections::hash_map::Entry::Vacant(e) = self.open_table.entry(i) {
+            if let Entry::Vacant(e) = self.open_table.entry(i) {
                 let mut open_wr = open.write().await;
                 open_wr.set_global_id(i);
                 drop(open_wr);
@@ -313,8 +313,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: 
         self
     }
 
-    #[allow(clippy::type_complexity)]
-    pub fn build(self) -> SMBResult<Arc<RwLock<SMBServer<Addrs, Listener, Auth, Share, Handle>>>> {
+    pub fn build(self) -> SMBResult<LockedSMBServer<Addrs, Listener, Auth, Share, Handle>> {
         let server = self.build_inner().map_err(SMBError::server_error)?;
         Ok(Arc::new(RwLock::new(server)))
     }
