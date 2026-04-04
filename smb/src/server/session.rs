@@ -2,19 +2,17 @@ use std::cmp::min;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
-use std::io::Read;
 use std::ops::{AddAssign, Deref};
 use std::sync::{Arc, Weak};
 
 use derive_builder::Builder;
 use digest::Mac;
 use hmac::Hmac;
-use nom::AsBytes;
 use sha2::Sha256;
 use tokio::sync::RwLock;
 
 use smb_core::error::SMBError;
-use smb_core::logging::{trace, debug, info, warn};
+use smb_core::logging::{trace, debug, info};
 use smb_core::nt_status::NTStatus;
 use smb_core::SMBResult;
 use crate::protocol::body::create::file_id::SMBFileId;
@@ -25,8 +23,8 @@ use crate::protocol::body::negotiate::context::EncryptionCipher::AES256CCM;
 use crate::protocol::body::session_setup::{SMBSessionSetupRequest, SMBSessionSetupResponse};
 use crate::protocol::body::SMBBody;
 use crate::protocol::body::tree_connect::{SMBTreeConnectRequest, SMBTreeConnectResponse};
-use crate::protocol::header::{Header, SMBSyncHeader};
-use crate::protocol::message::{Message, SMBMessage};
+use crate::protocol::header::SMBSyncHeader;
+use crate::protocol::message::SMBMessage;
 use crate::server::connection::Connection;
 use crate::server::message_handler::{NonEndingHandler, SMBHandlerState, SMBLockedMessageHandlerBase};
 use crate::server::open::Open;
@@ -40,8 +38,8 @@ use crate::util::num_limits::{MaxVal, MinVal, One, Zero};
 
 type SMBMessageType = SMBMessage<SMBSyncHeader, SMBBody>;
 
-const OUTPUT_SIZE_128: usize = 128;
-const OUTPUT_SIZE_256: usize = 256;
+const _OUTPUT_SIZE_128: usize = 128;
+const _OUTPUT_SIZE_256: usize = 256;
 
 
 pub trait Session<C: Connection, A: AuthProvider, O: Open>: Send + Sync {
@@ -64,6 +62,7 @@ pub trait Session<C: Connection, A: AuthProvider, O: Open>: Send + Sync {
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
+#[allow(dead_code)]
 pub struct SMBSession<S: Server> {
     session_id: u64,
     state: SessionState,
@@ -242,7 +241,7 @@ impl<S: Server<Session=SMBSession<S>>> SMBLockedMessageHandlerBase for Arc<RwLoc
         let response = SMBTreeConnectResponse::for_share(share.deref());
         let tree_id = SMBSession::<S>::get_next_map_id(&self_rd.tree_connect_table);
         let tree_connect = SMBTreeConnect::init(tree_id, Arc::downgrade(self), share.clone(), response.access_mask().clone());
-        let header = SMBSyncHeader::create_response_header(&header, 0, self_rd.id(), 1);
+        let header = SMBSyncHeader::create_response_header(header, 0, self_rd.id(), 1);
         drop(self_rd);
         let mut self_wr = self.write().await;
         self_wr.tree_connect_table.insert(tree_id, Arc::new(tree_connect));

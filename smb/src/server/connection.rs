@@ -36,7 +36,7 @@ use crate::server::request::Request;
 use crate::server::safe_locked_getter::{InnerGetter, SafeLockedGetter};
 use crate::server::session::Session;
 use crate::socket::message_stream::{SMBReadStream, SMBSocketConnection, SMBWriteStream};
-use crate::util::auth::{AuthMessage, AuthProvider};
+use crate::util::auth::AuthProvider;
 
 // use tokio::sync::Mutex;
 // use tokio_stream::StreamExt;
@@ -266,7 +266,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
                     debug!(?status, "handler returned response error");
                     Self::build_error_response(&incoming, status)
                 }
-                Err(e) => {
+                Err(_e) => {
                     error!(?e, "non-response error, sending NOT_SUPPORTED");
                     Self::build_error_response(&incoming, NTStatus::NotSupported)
                 }
@@ -459,7 +459,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=Self>> SMBConnect
         let locked_conn = get_locked();
         let mut sha = Sha512::default();
         sha.update(self.preauth_integtiry_hash_value());
-        sha.update(&request.smb_to_bytes());
+        sha.update(request.smb_to_bytes());
         let preauth_val = sha.finalize().to_vec();
         let session = S::Session::init(1, server.encrypt_data(), preauth_val, Arc::downgrade(&locked_conn), server.auth_provider().clone());
         let id = session.id();
@@ -526,7 +526,7 @@ impl<R: SMBReadStream, W: SMBWriteStream, S: Server<Connection=SMBConnection<R, 
         }
     }
 
-    async fn handle_create(&mut self, header: &SMBSyncHeader, message: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+    async fn handle_create(&mut self, _header: &SMBSyncHeader, message: &SMBCreateRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let server = self.upper().await?;
         let server_rd = server.read().await;
         let conn = self.read().await;

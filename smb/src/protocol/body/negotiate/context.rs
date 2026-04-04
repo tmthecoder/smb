@@ -44,16 +44,8 @@ macro_rules! ctx_smb_to_bytes {
 macro_rules! ctx_smb_from_bytes_enumify {
     ($enumType: expr, $bodyType: expr, $data: expr, $len: expr) => {{
         let (_, body) = $bodyType($data)?;
-        let padding = if $len % 8 == 0 || (6 + $len) as usize >= $data.len() {
-            0
-        } else {
-            8 - $len % 8
-        };
+        // TODO: account for 8-byte alignment padding per MS-SMB2 §2.2.3.1
         let remove_size = (6 + $len) as usize;
-        // let remove_size = (6 + $len + padding) as usize;
-        // if remove_size > $data.len() {
-        //     return Err(SMBError::parse_error("Invalid padding block"));
-        // }
         let remaining = &$data[remove_size..];
         Ok((remaining, $enumType(body)))
     }};
@@ -207,7 +199,7 @@ impl NegotiateContext {
             NegotiateContext::PreAuthIntegrityCapabilities(x) => x.validate_and_set_state(connection),
             NegotiateContext::EncryptionCapabilities(x) => x.validate_and_set_state(connection),
             NegotiateContext::CompressionCapabilities(x) => x.validate_and_set_state(connection, server),
-            NegotiateContext::NetnameNegotiateContextID(x) => Ok((connection, false)),
+            NegotiateContext::NetnameNegotiateContextID(_x) => Ok((connection, false)),
             NegotiateContext::TransportCapabilities(x) => x.validate_and_set_state(connection),
             NegotiateContext::RDMATransformCapabilities(x) => x.validate_and_set_state(connection, server),
             NegotiateContext::SigningCapabilities(x) => x.validate_and_set_state(connection),
@@ -496,7 +488,7 @@ impl SigningCapabilities {
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBToBytes, SMBByteSize)]
-struct PosixExtensions {
+pub struct PosixExtensions {
     #[smb_skip(start = 0, length = 6)]
     reserved: PhantomData<Vec<u8>>,
     #[smb_vector(order = 1, count(inner(start = 0, num_type = "u16")))]

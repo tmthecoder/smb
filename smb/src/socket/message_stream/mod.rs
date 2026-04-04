@@ -1,5 +1,3 @@
-use std::future::Future;
-
 use tokio_util::sync::ReusableBoxFuture;
 
 use smb_core::{SMBFromBytes, SMBParseResult, SMBResult};
@@ -8,7 +6,7 @@ use smb_core::logging::{trace, warn};
 
 use crate::protocol::body::{LegacySMBBody, SMBBody};
 use crate::protocol::body::error::SMBErrorResponse;
-use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
+use crate::protocol::header::{LegacySMBHeader, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
 
 #[cfg(not(feature = "async"))]
@@ -18,7 +16,7 @@ mod stream_async;
 
 pub trait SMBReadStream: SMBStream {
     #[cfg(feature = "async")]
-    fn read_message<'a>(&'a mut self, existing: &'a mut Vec<u8>) -> impl Future<Output=SMBParseResult<&[u8], SMBMessage<SMBSyncHeader, SMBBody>>> + Send;
+    fn read_message<'a>(&'a mut self, existing: &'a mut Vec<u8>) -> impl Future<Output=SMBParseResult<&'a [u8], SMBMessage<SMBSyncHeader, SMBBody>>> + Send;
 
     #[cfg(not(feature = "async"))]
     fn read_message<'a>(&'a mut self, existing: &'a mut Vec<u8>) -> SMBParseResult<&[u8], SMBMessage<SMBSyncHeader, SMBBody>>;
@@ -26,11 +24,12 @@ pub trait SMBReadStream: SMBStream {
     fn messages(&mut self) -> SMBMessageIterator<Self> where Self: Sized;
 
     #[cfg(feature = "async")]
-    fn messages(&mut self) -> SMBMessageStream<Self> where Self: Sized;
+    fn messages(&mut self) -> SMBMessageStream<'_, Self> where Self: Sized;
     fn read_message_inner(buffer: &[u8]) -> SMBParseResult<&[u8], SMBMessage<SMBSyncHeader, SMBBody>> {
         trace!(buf_len = buffer.len(), "parsing message from buffer");
-        if let Some(pos) = buffer.iter().position(|x| *x == b'S') {
-            if buffer[(pos)..].starts_with(b"SMB") {
+        if let Some(pos) = buffer.iter().position(|x| *x == b'S')
+            && buffer[pos..].starts_with(b"SMB")
+        {
                 trace!(smb_offset = pos - 1, "found SMB header");
                 let smb_start = pos - 1;
                 let result = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[smb_start..]);
@@ -44,7 +43,7 @@ pub trait SMBReadStream: SMBStream {
                         }
                         // Body parse failed — try header-only parse and return an ErrorResponse
                         // so the connection handler can send a proper error back to the client
-                        if let Ok((remaining, mut header)) = SMBSyncHeader::smb_from_bytes(&buffer[smb_start..]) {
+                        if let Ok((_remaining, mut header)) = SMBSyncHeader::smb_from_bytes(&buffer[smb_start..]) {
                             warn!(command = ?header.command, "body parse failed, returning ErrorResponse");
                             header.channel_sequence = smb_core::nt_status::NTStatus::NotSupported as u32;
                             let body = SMBBody::ErrorResponse(SMBErrorResponse::new());
@@ -54,7 +53,6 @@ pub trait SMBReadStream: SMBStream {
                         }
                     }
                 };
-            }
         }
         Err(SMBError::parse_error("Unknown error occurred while parsing message"))
     }
@@ -94,6 +92,7 @@ impl<'a, R: SMBReadStream> SMBMessageIterator<'a, R> {
 }
 
 #[cfg(feature = "async")]
+#[allow(clippy::type_complexity)]
 pub struct SMBMessageStream<'a, T: SMBReadStream> {
     pub(crate) inner: ReusableBoxFuture<'a, (SMBResult<SMBMessage<SMBSyncHeader, SMBBody>>, SMBMessageIterator<'a, T>)>,
 }
@@ -114,7 +113,7 @@ impl<R: SMBReadStream, W: SMBWriteStream> SMBSocketConnection<R, W> {
         }
     }
 
-    pub fn messages(&mut self) -> SMBMessageIterator<R> {
+    pub fn messages(&mut self) -> SMBMessageIterator<'_, R> {
         SMBMessageIterator::new(self.read())
     }
 

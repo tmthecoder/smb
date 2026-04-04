@@ -35,13 +35,9 @@
 //! }
 //! ```
 
+#![allow(clippy::manual_is_multiple_of)]
+
 extern crate core;
-
-use std::io::{Read, Write};
-use std::net::ToSocketAddrs;
-use std::ops::{Deref, DerefMut};
-
-use crate::protocol::message::Message;
 
 /// SMB2/3 wire-format protocol types: headers, bodies, and message framing.
 pub mod protocol;

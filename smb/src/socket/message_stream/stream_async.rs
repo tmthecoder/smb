@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 
@@ -19,7 +18,7 @@ async fn make_future<T: SMBReadStream>(mut iterator: SMBMessageIterator<'_, T>) 
     let res = loop {
         match iterator.reader.read_message(&mut iterator.buffer).await {
             Ok(msg) => break Ok(msg),
-            Err(SMBError::PayloadTooSmall(x)) => {
+            Err(SMBError::PayloadTooSmall(_x)) => {
                 trace!(buf_len = iterator.buffer.len(), "buffer too small, reading more data");
             }
             Err(e) => {
