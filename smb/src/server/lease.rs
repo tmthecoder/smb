@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use std::fmt::{Debug, Formatter, Pointer};
+use std::fmt::{Debug, Formatter};
 
 use bitflags::bitflags;
 use uuid::Uuid;
 
-use crate::server::connection::Connection;
 use crate::server::open::SMBOpen;
 use crate::server::Server;
 
