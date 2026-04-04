@@ -1,6 +1,4 @@
-use std::fmt::Debug;
 
-use crate::server::connection::Connection;
 use crate::server::open::SMBOpen;
 use crate::server::Server;
 

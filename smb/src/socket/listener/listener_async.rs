@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::pin::Pin;
@@ -56,7 +55,7 @@ pub struct SMBConnectionStream<'a, Addrs: Send + Sync, Socket: SMBSocket<Addrs>>
     inner: ReusableBoxFuture<'a, SMBConnectionStreamResult<'a, Addrs, Socket>>,
 }
 
-async fn make_future<'a, Addrs: Send + Sync, Socket: SMBSocket<Addrs>>(mut iterator: SMBConnectionIterator<'a, Addrs, Socket>) -> SMBConnectionStreamResult<'a, Addrs, Socket> {
+async fn make_future<'a, Addrs: Send + Sync, Socket: SMBSocket<Addrs>>(iterator: SMBConnectionIterator<'a, Addrs, Socket>) -> SMBConnectionStreamResult<'a, Addrs, Socket> {
     let res = iterator.server.new_connection().await;
     (res, iterator)
 }

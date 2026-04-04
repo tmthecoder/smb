@@ -1,3 +1,5 @@
+// TODO: Remove once protocol implementation consumes all public types
+#![allow(dead_code)]
 //! # SMB Reader
 //!
 //! A Rust implementation of the **Server Message Block (SMB) Protocol Versions 2 and 3**
@@ -36,12 +38,6 @@
 //! ```
 
 extern crate core;
-
-use std::io::{Read, Write};
-use std::net::ToSocketAddrs;
-use std::ops::{Deref, DerefMut};
-
-use crate::protocol::message::Message;
 
 /// SMB2/3 wire-format protocol types: headers, bodies, and message framing.
 pub mod protocol;

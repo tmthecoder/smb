@@ -4,12 +4,11 @@ use std::sync::{Arc, Weak};
 
 use tokio::sync::RwLock;
 
-use smb_core::{SMBByteSize, SMBResult};
+use smb_core::SMBResult;
 use smb_core::error::SMBError;
 use smb_core::logging::{debug, trace};
 
 use crate::protocol::body::create::{SMBCreateRequest, SMBCreateResponse};
-use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::SMBBody;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
@@ -51,7 +50,7 @@ impl<S: Server> SMBTreeConnect<S> {
 impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
     type Inner = Arc<SMBOpen<S>>;
 
-    async fn inner(&self, message: &SMBMessageType) -> Option<Self::Inner> {
+    async fn inner(&self, _message: &SMBMessageType) -> Option<Self::Inner> {
         None
     }
 
