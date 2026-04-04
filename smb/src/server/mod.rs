@@ -18,10 +18,10 @@ use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::filetime::FileTime;
 use crate::server::client::SMBClient;
 use crate::server::connection::{Connection, SMBConnection};
-use crate::server::lease::{Lease, SMBLease, SMBLeaseTable};
-use crate::server::open::{Open, SMBOpen};
+use crate::server::lease::{Lease, SMBLease, SMBLeaseTable, SMBLeaseTableOf};
+use crate::server::open::{LockedSMBOpen, Open, SMBOpen};
 use crate::server::safe_locked_getter::InnerGetter;
-use crate::server::session::{Session, SMBSession};
+use crate::server::session::{LockedSMBSession, Session, SMBSession};
 use crate::server::share::{ConnectAllowed, FilePerms, ResourceHandle, SharedResource};
 use crate::server::share::file_system::{SMBFileSystemHandle, SMBFileSystemShare};
 use crate::server::share::ipc::{SMBIPCHandle, SMBIPCShare};
@@ -82,15 +82,7 @@ pub trait StartSMBServer {
 }
 
 type SMBConnectionType<Addr, L, A, S, H> = SMBConnection<<L as SMBSocket<Addr>>::ReadStream, <L as SMBSocket<Addr>>::WriteStream, SMBServer<Addr, L, A, S, H>>;
-
-type LockedWeakSMBConnection<Addr, L, A, S, H> = Weak<RwLock<SMBConnectionType<Addr, L, A, S, H>>>;
-type SMBSessionType<Addr, L, A, S, H> = SMBSession<SMBServer<Addr, L, A, S, H>>;
-type SMBOpenType<Addr, L, A, S, H> = SMBOpen<SMBServer<Addr, L, A, S, H>>;
-type SMBLeaseType<Addr, L, A, S, H> = SMBLease<SMBServer<Addr, L, A, S, H>>;
-type LockedSMBOpen<Addr, L, A, S, H> = Arc<RwLock<SMBOpenType<Addr, L, A, S, H>>>;
-type LockedSMBSession<Addr, L, A, S, H> = Arc<RwLock<SMBSessionType<Addr, L, A, S, H>>>;
-type LockedSMBServer<Addr, L, A, S, H> = Arc<RwLock<SMBServer<Addr, L, A, S, H>>>;
-type SMBLeaseTableType<Addr, L, A, S, H> = SMBLeaseTable<SMBLeaseType<Addr, L, A, S, H>>;
+type WeakLockedSMBConnection<Addr, L, A, S, H> = Weak<RwLock<SMBConnectionType<Addr, L, A, S, H>>>;
 type UserName<Auth> = <<Auth as AuthProvider>::Context as AuthContext>::UserName;
 pub type DefaultShare<Auth> = Box<dyn SharedResource<UserName=<<Auth as AuthProvider>::Context as AuthContext>::UserName, Handle=DefaultHandle>>;
 type DefaultHandle = Box<dyn ResourceHandle>;
@@ -105,17 +97,17 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
     #[builder(field(type = "HashMap<String, Arc<Share>>"))]
     share_list: HashMap<String, Arc<Share>>,
     #[builder(field(
-        type = "HashMap<u32, LockedSMBOpen<Addrs, Listener, Auth, Share, Handle>>"
+        type = "HashMap<u32, LockedSMBOpen<SMBServer<Addrs, Listener, Auth, Share, Handle>>>"
     ))]
-    open_table: HashMap<u32, LockedSMBOpen<Addrs, Listener, Auth, Share, Handle>>,
+    open_table: HashMap<u32, LockedSMBOpen<SMBServer<Addrs, Listener, Auth, Share, Handle>>>,
     #[builder(field(
-        type = "HashMap<u64, LockedSMBSession<Addrs, Listener, Auth, Share, Handle>>"
+        type = "HashMap<u64, LockedSMBSession<SMBServer<Addrs, Listener, Auth, Share, Handle>>>"
     ))]
-    session_table: HashMap<u64, LockedSMBSession<Addrs, Listener, Auth, Share, Handle>>,
+    session_table: HashMap<u64, LockedSMBSession<SMBServer<Addrs, Listener, Auth, Share, Handle>>>,
     #[builder(field(
-        type = "HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth, Share, Handle>>"
+        type = "HashMap<String, WeakLockedSMBConnection<Addrs, Listener, Auth, Share, Handle>>"
     ))]
-    connection_list: HashMap<String, LockedWeakSMBConnection<Addrs, Listener, Auth, Share, Handle>>,
+    connection_list: HashMap<String, WeakLockedSMBConnection<Addrs, Listener, Auth, Share, Handle>>,
     #[builder(default = "Uuid::new_v4()")]
     guid: Uuid,
     #[builder(default = "FileTime::default()")]
@@ -131,9 +123,9 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
     #[builder(default = "HashLevel::EnableAll")]
     hash_level: HashLevel,
     #[builder(field(
-        type = "HashMap<Uuid, SMBLeaseTableType<Addrs, Listener, Auth, Share, Handle>>"
+        type = "HashMap<Uuid, SMBLeaseTableOf<SMBServer<Addrs, Listener, Auth, Share, Handle>>>"
     ))]
-    lease_table_list: HashMap<Uuid, SMBLeaseTableType<Addrs, Listener, Auth, Share, Handle>>,
+    lease_table_list: HashMap<Uuid, SMBLeaseTableOf<SMBServer<Addrs, Listener, Auth, Share, Handle>>>,
     #[builder(default = "5000")]
     max_resiliency_timeout: u64,
     #[builder(default = "5000")]
@@ -175,10 +167,10 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
 
 impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: SharedResource<UserName=UserName<Auth>, Handle=Handle>, Handle: ResourceHandle> Server for SMBServer<Addrs, Listener, Auth, Share, Handle> {
     type Connection = SMBConnectionType<Addrs, Listener, Auth, Share, Handle>;
-    type Session = SMBSessionType<Addrs, Listener, Auth, Share, Handle>;
+    type Session = SMBSession<Self>;
     type Share = Share;
-    type Open = SMBOpenType<Addrs, Listener, Auth, Share, Handle>;
-    type Lease = SMBLeaseType<Addrs, Listener, Auth, Share, Handle>;
+    type Open = SMBOpen<Self>;
+    type Lease = SMBLease<Self>;
     type AuthProvider = Auth;
     type Handle = Handle; 
 
@@ -313,7 +305,7 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: 
         self
     }
 
-    pub fn build(self) -> SMBResult<LockedSMBServer<Addrs, Listener, Auth, Share, Handle>> {
+    pub fn build(self) -> SMBResult<Arc<RwLock<SMBServer<Addrs, Listener, Auth, Share, Handle>>>> {
         let server = self.build_inner().map_err(SMBError::server_error)?;
         Ok(Arc::new(RwLock::new(server)))
     }

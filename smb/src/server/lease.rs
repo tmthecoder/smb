@@ -9,6 +9,8 @@ use crate::server::Server;
 
 pub trait Lease: Send + Sync {}
 
+pub type SMBLeaseTableOf<S> = SMBLeaseTable<SMBLease<S>>;
+
 #[derive(Debug)]
 pub struct SMBLeaseTable<L: Lease> {
     client_guid: Uuid,
