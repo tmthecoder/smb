@@ -155,10 +155,10 @@ impl<T: Spanned + Debug> SMBField<'_, T> {
     pub(crate) fn get_smb_message_size(&self, size_tokens: TokenStream) -> TokenStream {
         let tmp = SMBFieldType::Skip(Skip::new(0, 0));
         let (start_val, ty) = self.val_type.iter().fold((0, &tmp), |prev, val| {
-            if let SMBFieldType::Skip(skip) = val {
-                if skip.length + skip.start > prev.0 {
-                    return (skip.length + skip.start, val);
-                }
+            if let SMBFieldType::Skip(skip) = val
+                && skip.length + skip.start > prev.0
+            {
+                return (skip.length + skip.start, val);
             }
             if val.weight_of_enum() == 2 || val.find_start_val() > prev.0 {
                 (val.find_start_val(), val)
@@ -229,7 +229,7 @@ impl<T: Spanned + Debug> SMBField<'_, T> {
 impl<'a> SMBField<'a, Field> {
     pub(crate) fn from_iter<U: Iterator<Item=&'a Field>>(fields: U) -> Result<Vec<Self>, SMBDeriveError<Field>> {
         fields.enumerate().map(|(idx, field)| {
-            let val_types = field.attrs.iter().map(|attr| get_field_types(field, &[attr.clone()])).collect::<Result<Vec<SMBFieldType>, SMBDeriveError<Field>>>()?;
+            let val_types = field.attrs.iter().map(|attr| get_field_types(field, std::slice::from_ref(attr))).collect::<Result<Vec<SMBFieldType>, SMBDeriveError<Field>>>()?;
             let name = if let Some(x) = &field.ident {
                 x.clone()
             } else {
@@ -368,5 +368,5 @@ impl FromAttributes for SMBFieldType {
 
 fn get_field_types(field: &Field, attrs: &[Attribute]) -> Result<SMBFieldType, SMBDeriveError<Field>> {
     SMBFieldType::from_attributes(attrs)
-        .map_err(|_e| SMBDeriveError::TypeError(field.clone()))
+        .map_err(|_e| SMBDeriveError::TypeError(Box::new(field.clone())))
 }

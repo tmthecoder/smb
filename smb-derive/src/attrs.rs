@@ -137,12 +137,11 @@ impl FromMeta for AttributeInfo {
     fn from_list(items: &[NestedMeta]) -> darling::Result<Self> {
         for item in items {
             if let NestedMeta::Meta(Meta::NameValue(meta)) = item {
-                if meta.path.is_ident("fixed") {
-                    if let Expr::Lit(lit) = &meta.value {
-                        if let Lit::Int(int) = &lit.lit {
-                            return Ok(AttributeInfo::Fixed(int.base10_parse::<usize>()?))
-                        }
-                    }
+                if meta.path.is_ident("fixed")
+                    && let Expr::Lit(lit) = &meta.value
+                    && let Lit::Int(int) = &lit.lit
+                {
+                    return Ok(AttributeInfo::Fixed(int.base10_parse::<usize>()?))
                 }
             } else if let NestedMeta::Meta(Meta::List(list)) = item {
                 if list.path.is_ident("inner") {
@@ -388,7 +387,7 @@ impl Vector {
         let _name_str = name.to_string();
         quote_spanned! { spanned.span() =>
             #vec_count_or_len
-            if #align > 0 && current_pos % #align != 0 {
+            if #align > 0 && !current_pos.is_multiple_of(#align) {
                 current_pos += #align - (current_pos % #align);
             }
             #offset
@@ -423,7 +422,7 @@ impl Vector {
         quote_spanned! { spanned.span()=>
             #count_info
             let get_aligned_pos = |align: usize, current_pos: usize| {
-                if align > 0 && current_pos % align != 0 {
+                if align > 0 && !current_pos.is_multiple_of(align) {
                     current_pos + (align - current_pos % align)
                 } else {
                     current_pos
@@ -824,12 +823,12 @@ impl FromAttributes for Repr {
             if attr.path().is_ident("repr") {
                 let nested = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?;
                 for meta in nested {
-                    if let Meta::Path(p) = meta {
-                        if let Some(ident) = p.get_ident() {
-                            return Ok(Self {
-                                ident: ident.clone()
-                            })
-                        }
+                    if let Meta::Path(p) = meta
+                        && let Some(ident) = p.get_ident()
+                    {
+                        return Ok(Self {
+                            ident: ident.clone()
+                        })
                     }
                 }
             }

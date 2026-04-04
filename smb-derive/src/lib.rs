@@ -178,7 +178,7 @@ fn derive_impl_creator(input: DeriveInput, creator: impl CreatorFn) -> proc_macr
 
     let parent_attrs = parent_attrs(&input);
 
-    let parse_token = match &input.data {
+    match &input.data {
         Data::Struct(structure) => {
             let mapping = get_struct_field_mapping(&structure.fields, parent_attrs, vec![], None)
                 .map(|r| vec![r]);
@@ -209,9 +209,7 @@ fn derive_impl_creator(input: DeriveInput, creator: impl CreatorFn) -> proc_macr
             }
         },
         _ => invalid_token
-    };
-
-    parse_token
+    }
 }
 
 
@@ -220,7 +218,7 @@ fn derive_impl_creator(input: DeriveInput, creator: impl CreatorFn) -> proc_macr
 /// `DeriveInput` and returns them as a sorted list of [`SMBFieldType`]s.
 fn parent_attrs(input: &DeriveInput) -> Vec<SMBFieldType> {
     input.attrs.iter().filter_map(|attr| {
-        SMBFieldType::from_attributes(&[attr.clone()]).ok()
+        SMBFieldType::from_attributes(std::slice::from_ref(attr)).ok()
     }).collect()
 }
 
@@ -236,7 +234,7 @@ trait CreatorFn {
 /// Errors that can occur during derive-macro expansion.
 #[derive(Debug)]
 enum SMBDeriveError<T: Spanned + Debug> {
-    TypeError(T),
+    TypeError(Box<T>),
     MissingField,
     InvalidType,
 }
