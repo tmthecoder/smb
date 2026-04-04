@@ -4,8 +4,8 @@ use proc_macro2::Ident;
 use quote::quote;
 use syn::spanned::Spanned;
 
-use crate::{CreatorFn, SMBDeriveError};
 use crate::field_mapping::SMBFieldMapping;
+use crate::{CreatorFn, SMBDeriveError};
 
 /// Code-generation backend for [`SMBByteSize`].
 ///
@@ -14,12 +14,19 @@ use crate::field_mapping::SMBFieldMapping;
 pub(crate) struct ByteSizeCreator {}
 
 impl CreatorFn for ByteSizeCreator {
-    fn call<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(self, mappings: Result<Vec<SMBFieldMapping<T, U>>, SMBDeriveError<U>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
+    fn call<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(
+        self,
+        mappings: Result<Vec<SMBFieldMapping<T, U>>, SMBDeriveError<U>>,
+        name: &Ident,
+    ) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
         create_byte_size_impl(mappings, name)
     }
 }
 
-fn create_byte_size_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(mappings: Result<Vec<SMBFieldMapping<T, U>>, SMBDeriveError<U>>, name: &Ident) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
+fn create_byte_size_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(
+    mappings: Result<Vec<SMBFieldMapping<T, U>>, SMBDeriveError<U>>,
+    name: &Ident,
+) -> Result<proc_macro2::TokenStream, SMBDeriveError<U>> {
     let mappings = mappings?;
     let size = mappings.iter().map(|mapping| smb_byte_size_impl(mapping));
     Ok(quote! {
@@ -34,6 +41,8 @@ fn create_byte_size_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + E
     })
 }
 
-fn smb_byte_size_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(mapping: &SMBFieldMapping<T, U>) -> proc_macro2::TokenStream {
+fn smb_byte_size_impl<T: Spanned + PartialEq + Eq, U: Spanned + PartialEq + Eq + Debug>(
+    mapping: &SMBFieldMapping<T, U>,
+) -> proc_macro2::TokenStream {
     mapping.get_mapping_size()
 }

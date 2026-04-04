@@ -8,9 +8,9 @@ use smb_core::SMBResult;
 
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
 use crate::protocol::body::filetime::FileTime;
+use crate::protocol::body::tree_connect::SMBShareType;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
-use crate::protocol::body::tree_connect::SMBShareType;
 
 pub mod file_system;
 pub mod ipc;
@@ -63,7 +63,12 @@ pub trait SharedResource: Send + Sync {
     fn name(&self) -> &str;
     fn resource_type(&self) -> ResourceType;
     fn flags(&self) -> SMBShareFlags;
-    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Self::Handle>;
+    fn handle_create(
+        &self,
+        path: &str,
+        disposition: SMBCreateDisposition,
+        directory: bool,
+    ) -> SMBResult<Self::Handle>;
     fn close(&self, handle: Self::Handle) -> SMBResult<()> {
         Box::new(handle).close()
     }
@@ -88,7 +93,12 @@ impl<T: ?Sized + SharedResource> SharedResource for Box<T> {
         T::flags(self)
     }
 
-    fn handle_create(&self, path: &str, disposition: SMBCreateDisposition, directory: bool) -> SMBResult<Self::Handle> {
+    fn handle_create(
+        &self,
+        path: &str,
+        disposition: SMBCreateDisposition,
+        directory: bool,
+    ) -> SMBResult<Self::Handle> {
         T::handle_create(self, path, disposition, directory)
     }
 
@@ -125,7 +135,7 @@ impl From<SMBShareType> for ResourceType {
         match value {
             SMBShareType::Disk => ResourceType::DISK,
             SMBShareType::Pipe => ResourceType::IPC,
-            SMBShareType::Print => ResourceType::PRINT_QUEUE
+            SMBShareType::Print => ResourceType::PRINT_QUEUE,
         }
     }
 }

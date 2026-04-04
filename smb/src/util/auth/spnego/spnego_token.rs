@@ -1,18 +1,23 @@
-use nom::bytes::complete::take;
 use nom::Err::Error;
-use nom::error::ErrorKind;
 use nom::IResult;
+use nom::bytes::complete::take;
+use nom::error::ErrorKind;
 use nom::number::complete::le_u8;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBParseResult, SMBResult};
 use smb_core::error::SMBError;
 use smb_core::logging::trace;
 use smb_core::nt_status::NTStatus;
+use smb_core::{SMBParseResult, SMBResult};
 
+use crate::util::auth::spnego::der_utils::{
+    APPLICATION_TAG, DER_ENCODING_OID_TAG, NEG_TOKEN_INIT_TAG, NEG_TOKEN_RESP_TAG, SPNEGO_ID,
+    get_field_size, get_length, parse_field_with_len,
+};
+use crate::util::auth::spnego::{
+    SPNEGOTokenInit2Body, SPNEGOTokenInitBody, SPNEGOTokenResponseBody,
+};
 use crate::util::auth::{AuthMessage, AuthProvider};
-use crate::util::auth::spnego::{SPNEGOTokenInit2Body, SPNEGOTokenInitBody, SPNEGOTokenResponseBody};
-use crate::util::auth::spnego::der_utils::{APPLICATION_TAG, DER_ENCODING_OID_TAG, get_field_size, get_length, NEG_TOKEN_INIT_TAG, NEG_TOKEN_RESP_TAG, parse_field_with_len, SPNEGO_ID};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum SPNEGOToken<A: AuthProvider> {
@@ -22,21 +27,33 @@ pub enum SPNEGOToken<A: AuthProvider> {
 }
 
 impl<A: AuthProvider> SPNEGOToken<A> {
-    pub fn get_message(&self, auth_provider: &A, ctx: &mut A::Context) -> SMBResult<(NTStatus, A::Message)> {
+    pub fn get_message(
+        &self,
+        auth_provider: &A,
+        ctx: &mut A::Context,
+    ) -> SMBResult<(NTStatus, A::Message)> {
         let result = match self {
             SPNEGOToken::Init(init_msg) => {
-                let mech_token = init_msg.mech_token.as_ref().ok_or(SMBError::parse_error("Parse failure"))?;
-                let ntlm_msg =
-                    A::Message::parse(mech_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
+                let mech_token = init_msg
+                    .mech_token
+                    .as_ref()
+                    .ok_or(SMBError::parse_error("Parse failure"))?;
+                let ntlm_msg = A::Message::parse(mech_token)
+                    .map_err(|_e| SMBError::parse_error("Parse failure"))?
+                    .1;
                 auth_provider.accept_security_context(&ntlm_msg, ctx)
             }
             SPNEGOToken::Response(resp_msg) => {
-                let response_token = resp_msg.response_token.as_ref().ok_or(SMBError::parse_error("Parse failure"))?;
-                let ntlm_msg =
-                    A::Message::parse(response_token).map_err(|_e| SMBError::parse_error("Parse failure"))?.1;
+                let response_token = resp_msg
+                    .response_token
+                    .as_ref()
+                    .ok_or(SMBError::parse_error("Parse failure"))?;
+                let ntlm_msg = A::Message::parse(response_token)
+                    .map_err(|_e| SMBError::parse_error("Parse failure"))?
+                    .1;
                 auth_provider.accept_security_context(&ntlm_msg, ctx)
             }
-            _ => { (NTStatus::StatusSuccess, A::Message::empty()) }
+            _ => (NTStatus::StatusSuccess, A::Message::empty()),
         };
 
         Ok(result)
@@ -48,37 +65,34 @@ impl<A: AuthProvider> SPNEGOToken<A> {
         trace!(buf_len = bytes.len(), "parsing SPNEGO token");
         let (remaining, tag) = le_u8(bytes)?;
         match tag {
-            APPLICATION_TAG => {
-                take(1_usize)(remaining)
-                    .and_then(|(remaining, _)| {
-                        let (remaining, tag) = le_u8(remaining)?;
-                        if tag != DER_ENCODING_OID_TAG {
-                            return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)));
-                        }
-                        let (remaining, oid) = parse_field_with_len(remaining)?;
-                        if oid.len() != SPNEGO_ID.len() || *oid != SPNEGO_ID {
-                            return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)));
-                        }
-                        let (remaining, tag) = le_u8(remaining)?;
-                        trace!(tag, "SPNEGO inner tag");
-                        match tag {
-                            NEG_TOKEN_INIT_TAG => {
-                                let (remaining, body) = SPNEGOTokenInitBody::parse(remaining)?;
-                                Ok((remaining, SPNEGOToken::Init(body)))
-                            },
-                            NEG_TOKEN_RESP_TAG => {
-                                let (remaining, body) = SPNEGOTokenResponseBody::parse(remaining)?;
-                                Ok((remaining, SPNEGOToken::Response(body)))
-                            },
-                            _ => Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)))
-                        }
-                    })
-            },
+            APPLICATION_TAG => take(1_usize)(remaining).and_then(|(remaining, _)| {
+                let (remaining, tag) = le_u8(remaining)?;
+                if tag != DER_ENCODING_OID_TAG {
+                    return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)));
+                }
+                let (remaining, oid) = parse_field_with_len(remaining)?;
+                if oid.len() != SPNEGO_ID.len() || *oid != SPNEGO_ID {
+                    return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)));
+                }
+                let (remaining, tag) = le_u8(remaining)?;
+                trace!(tag, "SPNEGO inner tag");
+                match tag {
+                    NEG_TOKEN_INIT_TAG => {
+                        let (remaining, body) = SPNEGOTokenInitBody::parse(remaining)?;
+                        Ok((remaining, SPNEGOToken::Init(body)))
+                    }
+                    NEG_TOKEN_RESP_TAG => {
+                        let (remaining, body) = SPNEGOTokenResponseBody::parse(remaining)?;
+                        Ok((remaining, SPNEGOToken::Response(body)))
+                    }
+                    _ => Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))),
+                }
+            }),
             NEG_TOKEN_RESP_TAG => {
                 let (remaining, body) = SPNEGOTokenResponseBody::parse(remaining)?;
                 Ok((remaining, SPNEGOToken::Response(body)))
-            },
-            _ => Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)))
+            }
+            _ => Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))),
         }
     }
 
@@ -97,8 +111,9 @@ impl<A: AuthProvider> SPNEGOToken<A> {
                 &[DER_ENCODING_OID_TAG],
                 &get_length(SPNEGO_ID.len()),
                 &SPNEGO_ID,
-                &bytes
-            ].concat()
+                &bytes,
+            ]
+            .concat()
         } else {
             bytes.to_vec()
         }

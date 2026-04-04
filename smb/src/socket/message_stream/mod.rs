@@ -1,66 +1,91 @@
 use tokio_util::sync::ReusableBoxFuture;
 
-use smb_core::{SMBFromBytes, SMBParseResult, SMBResult};
 use smb_core::error::SMBError;
 use smb_core::logging::{trace, warn};
+use smb_core::{SMBFromBytes, SMBParseResult, SMBResult};
 
-use crate::protocol::body::{LegacySMBBody, SMBBody};
 use crate::protocol::body::error::SMBErrorResponse;
+use crate::protocol::body::{LegacySMBBody, SMBBody};
 use crate::protocol::header::{LegacySMBHeader, SMBSyncHeader};
 use crate::protocol::message::{Message, SMBMessage};
 
-#[cfg(not(feature = "async"))]
-mod stream_sync;
 #[cfg(feature = "async")]
 mod stream_async;
+#[cfg(not(feature = "async"))]
+mod stream_sync;
 
 pub trait SMBReadStream: SMBStream {
     #[cfg(feature = "async")]
-    fn read_message<'a>(&'a mut self, existing: &'a mut Vec<u8>) -> impl Future<Output=SMBParseResult<&'a [u8], SMBMessage<SMBSyncHeader, SMBBody>>> + Send;
+    fn read_message<'a>(
+        &'a mut self,
+        existing: &'a mut Vec<u8>,
+    ) -> impl Future<Output = SMBParseResult<&'a [u8], SMBMessage<SMBSyncHeader, SMBBody>>> + Send;
 
     #[cfg(not(feature = "async"))]
-    fn read_message<'a>(&'a mut self, existing: &'a mut Vec<u8>) -> SMBParseResult<&[u8], SMBMessage<SMBSyncHeader, SMBBody>>;
+    fn read_message<'a>(
+        &'a mut self,
+        existing: &'a mut Vec<u8>,
+    ) -> SMBParseResult<&[u8], SMBMessage<SMBSyncHeader, SMBBody>>;
     #[cfg(not(feature = "async"))]
-    fn messages(&mut self) -> SMBMessageIterator<Self> where Self: Sized;
+    fn messages(&mut self) -> SMBMessageIterator<Self>
+    where
+        Self: Sized;
 
     #[cfg(feature = "async")]
-    fn messages(&mut self) -> SMBMessageStream<'_, Self> where Self: Sized;
-    fn read_message_inner(buffer: &[u8]) -> SMBParseResult<&[u8], SMBMessage<SMBSyncHeader, SMBBody>> {
+    fn messages(&mut self) -> SMBMessageStream<'_, Self>
+    where
+        Self: Sized;
+    fn read_message_inner(
+        buffer: &[u8],
+    ) -> SMBParseResult<&[u8], SMBMessage<SMBSyncHeader, SMBBody>> {
         trace!(buf_len = buffer.len(), "parsing message from buffer");
         if let Some(pos) = buffer.iter().position(|x| *x == b'S')
             && buffer[pos..].starts_with(b"SMB")
         {
-                trace!(smb_offset = pos - 1, "found SMB header");
-                let smb_start = pos - 1;
-                let result = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[smb_start..]);
-                return match result {
-                    Ok(r) => Ok(r),
-                    Err(_) => {
-                        // Try legacy parse first
-                        if let Ok((remaining, legacy_msg)) = SMBMessage::<LegacySMBHeader, LegacySMBBody>::parse(&buffer[smb_start..]) {
-                            return Ok((remaining, SMBMessage::<SMBSyncHeader, SMBBody>::from_legacy(legacy_msg)
-                                .ok_or(SMBError::parse_error("Invalid legacy body"))?));
-                        }
-                        // Body parse failed — try header-only parse and return an ErrorResponse
-                        // so the connection handler can send a proper error back to the client
-                        if let Ok((_remaining, mut header)) = SMBSyncHeader::smb_from_bytes(&buffer[smb_start..]) {
-                            warn!(command = ?header.command, "body parse failed, returning ErrorResponse");
-                            header.channel_sequence = smb_core::nt_status::NTStatus::NotSupported as u32;
-                            let body = SMBBody::ErrorResponse(SMBErrorResponse::new());
-                            Ok((&buffer[buffer.len()..], SMBMessage::new(header, body)))
-                        } else {
-                            Err(SMBError::parse_error("Failed to parse header"))
-                        }
+            trace!(smb_offset = pos - 1, "found SMB header");
+            let smb_start = pos - 1;
+            let result = SMBMessage::<SMBSyncHeader, SMBBody>::parse(&buffer[smb_start..]);
+            return match result {
+                Ok(r) => Ok(r),
+                Err(_) => {
+                    // Try legacy parse first
+                    if let Ok((remaining, legacy_msg)) =
+                        SMBMessage::<LegacySMBHeader, LegacySMBBody>::parse(&buffer[smb_start..])
+                    {
+                        return Ok((
+                            remaining,
+                            SMBMessage::<SMBSyncHeader, SMBBody>::from_legacy(legacy_msg)
+                                .ok_or(SMBError::parse_error("Invalid legacy body"))?,
+                        ));
                     }
-                };
+                    // Body parse failed — try header-only parse and return an ErrorResponse
+                    // so the connection handler can send a proper error back to the client
+                    if let Ok((_remaining, mut header)) =
+                        SMBSyncHeader::smb_from_bytes(&buffer[smb_start..])
+                    {
+                        warn!(command = ?header.command, "body parse failed, returning ErrorResponse");
+                        header.channel_sequence =
+                            smb_core::nt_status::NTStatus::NotSupported as u32;
+                        let body = SMBBody::ErrorResponse(SMBErrorResponse::new());
+                        Ok((&buffer[buffer.len()..], SMBMessage::new(header, body)))
+                    } else {
+                        Err(SMBError::parse_error("Failed to parse header"))
+                    }
+                }
+            };
         }
-        Err(SMBError::parse_error("Unknown error occurred while parsing message"))
+        Err(SMBError::parse_error(
+            "Unknown error occurred while parsing message",
+        ))
     }
 }
 
 pub trait SMBWriteStream: SMBStream {
     #[cfg(feature = "async")]
-    fn write_message<T: Message + Sync>(&mut self, message: &T) -> impl Future<Output=SMBResult<usize>> + Send;
+    fn write_message<T: Message + Sync>(
+        &mut self,
+        message: &T,
+    ) -> impl Future<Output = SMBResult<usize>> + Send;
 
     #[cfg(not(feature = "async"))]
     fn write_message<T: Message>(&mut self, message: &T) -> SMBResult<usize>;
@@ -68,7 +93,7 @@ pub trait SMBWriteStream: SMBStream {
 
 pub trait SMBStream: Send + Sync {
     #[cfg(feature = "async")]
-    fn close_stream(&mut self) -> impl Future<Output=SMBResult<()>> + Send;
+    fn close_stream(&mut self) -> impl Future<Output = SMBResult<()>> + Send;
     #[cfg(not(feature = "async"))]
     fn close_stream(&mut self) -> SMBResult<()>;
 }
@@ -92,7 +117,10 @@ impl<'a, R: SMBReadStream> SMBMessageIterator<'a, R> {
 }
 
 #[cfg(feature = "async")]
-type SMBMessageStreamResult<'a, T> = (SMBResult<SMBMessage<SMBSyncHeader, SMBBody>>, SMBMessageIterator<'a, T>);
+type SMBMessageStreamResult<'a, T> = (
+    SMBResult<SMBMessage<SMBSyncHeader, SMBBody>>,
+    SMBMessageIterator<'a, T>,
+);
 
 #[cfg(feature = "async")]
 pub struct SMBMessageStream<'a, T: SMBReadStream> {

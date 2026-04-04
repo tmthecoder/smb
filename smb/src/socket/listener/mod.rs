@@ -3,34 +3,41 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
-use smb_core::error::SMBError;
 use smb_core::SMBResult;
+use smb_core::error::SMBError;
 
 use crate::socket::message_stream::{SMBReadStream, SMBSocketConnection, SMBWriteStream};
 
-#[cfg(not(feature = "async"))]
-mod listener_sync;
 #[cfg(feature = "async")]
 mod listener_async;
+#[cfg(not(feature = "async"))]
+mod listener_sync;
 
 pub trait SMBSocket<T: Send + Sync>: Send + Sync {
     type ReadStream: SMBReadStream + Send + Sync + Debug + 'static;
     type WriteStream: SMBWriteStream + Send + Sync + Debug + 'static;
     #[cfg(not(feature = "async"))]
-    fn new_connection(&self) -> SMBResult<SMBSocketConnection<Self::ReadStream, Self::WriteStream>>;
+    fn new_connection(&self)
+    -> SMBResult<SMBSocketConnection<Self::ReadStream, Self::WriteStream>>;
 
     #[cfg(feature = "async")]
-    fn new_connection(&self) -> impl Future<Output=SMBResult<SMBSocketConnection<Self::ReadStream, Self::WriteStream>>> + Send;
+    fn new_connection(
+        &self,
+    ) -> impl Future<Output = SMBResult<SMBSocketConnection<Self::ReadStream, Self::WriteStream>>> + Send;
     #[cfg(not(feature = "async"))]
-    fn new_socket(addr: T) -> SMBResult<Self> where Self: Sized {
+    fn new_socket(addr: T) -> SMBResult<Self>
+    where
+        Self: Sized,
+    {
         Err(SMBError::precondition_failed("Invalid socket address type"))
     }
 
     #[cfg(feature = "async")]
-    fn new_socket(_addr: T) -> impl Future<Output=SMBResult<Self>> + Send where Self: Sized {
-        async {
-            Err(SMBError::precondition_failed("Invalid socket address type"))
-        }
+    fn new_socket(_addr: T) -> impl Future<Output = SMBResult<Self>> + Send
+    where
+        Self: Sized,
+    {
+        async { Err(SMBError::precondition_failed("Invalid socket address type")) }
     }
 }
 

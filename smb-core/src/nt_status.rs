@@ -1,8 +1,8 @@
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
 
-use crate::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 use crate::error::SMBError;
+use crate::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 
 #[repr(u32)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TryFromPrimitive, Copy)]
@@ -29,13 +29,14 @@ impl SMBByteSize for NTStatus {
 }
 
 impl SMBFromBytes for NTStatus {
-    fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
-        u32::smb_from_bytes(input)
-            .map(|(remaining, underlying)| {
-                let res = Self::try_from_primitive(underlying)
-                    .map_err(SMBError::parse_error)?;
-                Ok((remaining, res))
-            })?
+    fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self>
+    where
+        Self: Sized,
+    {
+        u32::smb_from_bytes(input).map(|(remaining, underlying)| {
+            let res = Self::try_from_primitive(underlying).map_err(SMBError::parse_error)?;
+            Ok((remaining, res))
+        })?
     }
 }
 

@@ -3,16 +3,25 @@ use std::marker::PhantomData;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 use smb_core::error::SMBError;
 use smb_core::logging::trace;
 use smb_core::nt_status::NTStatus;
+use smb_core::{SMBByteSize, SMBFromBytes, SMBParseResult, SMBToBytes};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
-use crate::protocol::body::create::context_helper::{create_ctx_smb_byte_size, create_ctx_smb_from_bytes, create_ctx_smb_to_bytes, CreateContextWrapper, impl_tag_for_ctx};
-use crate::protocol::body::create::request_context::{DURABLE_HANDLE_REQUEST_TAG, DURABLE_HANDLE_REQUEST_V2_TAG, DurableHandleV2Flags, QUERY_MAXIMAL_ACCESS_REQUEST_TAG, QUERY_ON_DISK_ID_TAG, REQUEST_LEASE_TAG, RequestLeaseState, SVHDX_OPEN_DEVICE_CONTEXT_TAG};
+use crate::protocol::body::create::context_helper::{
+    CreateContextWrapper, create_ctx_smb_byte_size, create_ctx_smb_from_bytes,
+    create_ctx_smb_to_bytes, impl_tag_for_ctx,
+};
+use crate::protocol::body::create::request_context::{
+    DURABLE_HANDLE_REQUEST_TAG, DURABLE_HANDLE_REQUEST_V2_TAG, DurableHandleV2Flags,
+    QUERY_MAXIMAL_ACCESS_REQUEST_TAG, QUERY_ON_DISK_ID_TAG, REQUEST_LEASE_TAG, RequestLeaseState,
+    SVHDX_OPEN_DEVICE_CONTEXT_TAG,
+};
 use crate::protocol::body::tree_connect::access_mask::SMBFilePipePrinterAccessMask;
-use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
+use crate::util::flags_helper::{
+    impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag,
+};
 
 const DURABLE_HANDLE_RESPONSE_TAG: &[u8] = DURABLE_HANDLE_REQUEST_TAG;
 const QUERY_MAXIMAL_ACCESS_RESPONSE_TAG: &[u8] = QUERY_MAXIMAL_ACCESS_REQUEST_TAG;
@@ -49,7 +58,10 @@ impl SMBByteSize for CreateResponseContext {
 }
 
 impl SMBFromBytes for CreateResponseContext {
-    fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized {
+    fn smb_from_bytes(input: &[u8]) -> SMBParseResult<&[u8], Self>
+    where
+        Self: Sized,
+    {
         trace!("parsing create response context wrapper");
         let (remaining, wrapper) = CreateContextWrapper::smb_from_bytes(input)?;
 
@@ -90,7 +102,7 @@ impl SMBFromBytes for CreateResponseContext {
                 SVHDXOpenDeviceContext::smb_from_bytes,
                 wrapper.data.as_slice()
             ),
-            _ => Err(SMBError::parse_error("Invalid context tag"))
+            _ => Err(SMBError::parse_error("Invalid context tag")),
         }?;
 
         Ok((remaining, context))
@@ -100,18 +112,34 @@ impl SMBFromBytes for CreateResponseContext {
 impl SMBToBytes for CreateResponseContext {
     fn smb_to_bytes(&self) -> Vec<u8> {
         match self {
-            CreateResponseContext::DurableHandleResponse(x) => create_ctx_smb_to_bytes!(x, DURABLE_HANDLE_REQUEST_TAG),
-            CreateResponseContext::QueryMaximalAccessResponse(x) => create_ctx_smb_to_bytes!(x, QUERY_MAXIMAL_ACCESS_REQUEST_TAG),
-            CreateResponseContext::QueryOnDiskIDResponse(x) => create_ctx_smb_to_bytes!(x, QUERY_ON_DISK_ID_RESPONSE_TAG),
-            CreateResponseContext::ResponseLease(x) => create_ctx_smb_to_bytes!(x, REQUEST_LEASE_TAG),
-            CreateResponseContext::ResponseLeaseV2(x) => create_ctx_smb_to_bytes!(x, REQUEST_LEASE_TAG),
-            CreateResponseContext::DurableHandleResponseV2(x) => create_ctx_smb_to_bytes!(x, DURABLE_HANDLE_REQUEST_V2_TAG),
-            CreateResponseContext::SVHDXOpenDeviceContext(x) => create_ctx_smb_to_bytes!(x, SVHDX_OPEN_DEVICE_CONTEXT_TAG),
+            CreateResponseContext::DurableHandleResponse(x) => {
+                create_ctx_smb_to_bytes!(x, DURABLE_HANDLE_REQUEST_TAG)
+            }
+            CreateResponseContext::QueryMaximalAccessResponse(x) => {
+                create_ctx_smb_to_bytes!(x, QUERY_MAXIMAL_ACCESS_REQUEST_TAG)
+            }
+            CreateResponseContext::QueryOnDiskIDResponse(x) => {
+                create_ctx_smb_to_bytes!(x, QUERY_ON_DISK_ID_RESPONSE_TAG)
+            }
+            CreateResponseContext::ResponseLease(x) => {
+                create_ctx_smb_to_bytes!(x, REQUEST_LEASE_TAG)
+            }
+            CreateResponseContext::ResponseLeaseV2(x) => {
+                create_ctx_smb_to_bytes!(x, REQUEST_LEASE_TAG)
+            }
+            CreateResponseContext::DurableHandleResponseV2(x) => {
+                create_ctx_smb_to_bytes!(x, DURABLE_HANDLE_REQUEST_V2_TAG)
+            }
+            CreateResponseContext::SVHDXOpenDeviceContext(x) => {
+                create_ctx_smb_to_bytes!(x, SVHDX_OPEN_DEVICE_CONTEXT_TAG)
+            }
         }
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes,
+)]
 pub struct DurableHandleResponse {
     #[smb_skip(start = 0, length = 8)]
     reserved: PhantomData<Vec<u8>>,
@@ -119,7 +147,9 @@ pub struct DurableHandleResponse {
     reserved2: PhantomData<Vec<u8>>,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes,
+)]
 pub struct QueryMaximalAccessResponse {
     #[smb_direct(start(fixed = 0))]
     status: NTStatus,
@@ -127,7 +157,9 @@ pub struct QueryMaximalAccessResponse {
     maximal_access: SMBFilePipePrinterAccessMask,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes,
+)]
 pub struct QueryOnDiskIDResponse {
     #[smb_direct(start(fixed = 0))]
     disk_file_id: u64,
@@ -137,7 +169,9 @@ pub struct QueryOnDiskIDResponse {
     reserved: PhantomData<Vec<u8>>,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes,
+)]
 pub struct ResponseLease {
     #[smb_direct(start(fixed = 0))]
     lease_key: [u8; 16],
@@ -151,7 +185,9 @@ pub struct ResponseLease {
 
 pub type ResponseLeaseState = RequestLeaseState;
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes,
+)]
 pub struct ResponseLeaseV2 {
     #[smb_direct(start(fixed = 0))]
     lease_key: [u8; 16],
@@ -176,7 +212,9 @@ bitflags! {
         const PARENT_LEASE_KEY_SET = 0x4;
     }
 }
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes,
+)]
 pub struct DurableHandleResponseV2 {
     #[smb_direct(start(fixed = 0))]
     timeout: u32,
@@ -184,7 +222,9 @@ pub struct DurableHandleResponseV2 {
     flags: DurableHandleV2Flags,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes)]
+#[derive(
+    Debug, Eq, PartialEq, Serialize, Deserialize, Clone, SMBFromBytes, SMBByteSize, SMBToBytes,
+)]
 pub struct SVHDXOpenDeviceContext {}
 
 impl_smb_byte_size_for_bitflag!(ResponseLeaseFlags);
@@ -192,9 +232,15 @@ impl_smb_to_bytes_for_bitflag!(ResponseLeaseFlags);
 impl_smb_from_bytes_for_bitflag!(ResponseLeaseFlags);
 
 impl_tag_for_ctx!(DurableHandleResponse, DURABLE_HANDLE_RESPONSE_TAG);
-impl_tag_for_ctx!(QueryMaximalAccessResponse, QUERY_MAXIMAL_ACCESS_RESPONSE_TAG);
+impl_tag_for_ctx!(
+    QueryMaximalAccessResponse,
+    QUERY_MAXIMAL_ACCESS_RESPONSE_TAG
+);
 impl_tag_for_ctx!(QueryOnDiskIDResponse, QUERY_ON_DISK_ID_RESPONSE_TAG);
 impl_tag_for_ctx!(ResponseLease, RESPONSE_LEASE_TAG);
 impl_tag_for_ctx!(ResponseLeaseV2, RESPONSE_LEASE_TAG);
 impl_tag_for_ctx!(DurableHandleResponseV2, DURABLE_HANDLE_RESPONSE_V2_TAG);
-impl_tag_for_ctx!(SVHDXOpenDeviceContext, SVHDX_OPEN_DEVICE_CONTEXT_RESPONSE_TAG);
+impl_tag_for_ctx!(
+    SVHDXOpenDeviceContext,
+    SVHDX_OPEN_DEVICE_CONTEXT_RESPONSE_TAG
+);

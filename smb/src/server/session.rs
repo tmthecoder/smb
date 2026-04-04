@@ -11,28 +11,30 @@ use hmac::Hmac;
 use sha2::Sha256;
 use tokio::sync::RwLock;
 
-use smb_core::error::SMBError;
-use smb_core::logging::{trace, debug, info};
-use smb_core::nt_status::NTStatus;
-use smb_core::SMBResult;
 use crate::protocol::body::create::file_id::SMBFileId;
+use smb_core::SMBResult;
+use smb_core::error::SMBError;
+use smb_core::logging::{debug, info, trace};
+use smb_core::nt_status::NTStatus;
 
+use crate::protocol::body::SMBBody;
 use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::negotiate::context::EncryptionCipher;
 use crate::protocol::body::negotiate::context::EncryptionCipher::AES256CCM;
 use crate::protocol::body::session_setup::{SMBSessionSetupRequest, SMBSessionSetupResponse};
-use crate::protocol::body::SMBBody;
 use crate::protocol::body::tree_connect::{SMBTreeConnectRequest, SMBTreeConnectResponse};
 use crate::protocol::header::SMBSyncHeader;
 use crate::protocol::message::SMBMessage;
+use crate::server::Server;
 use crate::server::connection::Connection;
-use crate::server::message_handler::{NonEndingHandler, SMBHandlerState, SMBLockedMessageHandlerBase};
+use crate::server::message_handler::{
+    NonEndingHandler, SMBHandlerState, SMBLockedMessageHandlerBase,
+};
 use crate::server::open::Open;
 use crate::server::safe_locked_getter::InnerGetter;
-use crate::server::Server;
 use crate::server::tree_connect::SMBTreeConnect;
-use crate::util::auth::{AuthContext, AuthProvider};
 use crate::util::auth::spnego::{SPNEGOToken, SPNEGOTokenResponseBody};
+use crate::util::auth::{AuthContext, AuthProvider};
 use crate::util::crypto::sp800_108::derive_key;
 use crate::util::num_limits::{MaxVal, MinVal, One, Zero};
 
@@ -42,9 +44,14 @@ type SMBMessageType = SMBMessage<SMBSyncHeader, SMBBody>;
 const _OUTPUT_SIZE_128: usize = 128;
 const _OUTPUT_SIZE_256: usize = 256;
 
-
 pub trait Session<C: Connection, A: AuthProvider, O: Open>: Send + Sync {
-    fn init(id: u64, encrypt_data: bool, preauth_integrity_hash_value: Vec<u8>, conn: Weak<RwLock<C>>, provider: Arc<A>) -> Self;
+    fn init(
+        id: u64,
+        encrypt_data: bool,
+        preauth_integrity_hash_value: Vec<u8>,
+        conn: Weak<RwLock<C>>,
+        provider: Arc<A>,
+    ) -> Self;
     fn id(&self) -> u64;
     fn connection(&self) -> Weak<RwLock<C>>;
     fn connection_res(&self) -> SMBResult<Arc<RwLock<C>>>;
@@ -56,7 +63,7 @@ pub trait Session<C: Connection, A: AuthProvider, O: Open>: Send + Sync {
     fn provider(&self) -> &Arc<A>;
     fn encrypt_data(&self) -> bool;
     fn open_table(&self) -> &HashMap<u64, Arc<RwLock<O>>>;
-    fn add_open(&mut self, open: Arc<RwLock<O>>) -> impl Future<Output=()>;
+    fn add_open(&mut self, open: Arc<RwLock<O>>) -> impl Future<Output = ()>;
     fn set_previous_file_id(&mut self, file_id: SMBFileId);
     fn signing_key(&self) -> &[u8];
 }
@@ -89,7 +96,7 @@ pub struct SMBSession<S: Server> {
     application_key: Vec<u8>,
     preauth_integrity_hash_value: Vec<u8>,
     full_session_key: Vec<u8>,
-    prev_command_id: Option<SMBFileId>
+    prev_command_id: Option<SMBFileId>,
 }
 
 // impl <S: Server> InnerGetter<S> for SMBSession<S> {
@@ -102,13 +109,14 @@ pub struct SMBSession<S: Server> {
 
 impl<S: Server> Debug for SMBSession<S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SMBSession {{}}", )
+        write!(f, "SMBSession {{}}",)
     }
 }
 
 impl<S: Server> SMBSession<S> {
     fn get_connection(&self) -> SMBResult<Arc<RwLock<S::Connection>>> {
-        self.connection.upgrade()
+        self.connection
+            .upgrade()
             .ok_or(SMBError::server_error("Connection not found for session"))
     }
     async fn handle_successful_setup(&mut self, session_key: Vec<u8>) -> SMBResult<()> {
@@ -133,22 +141,24 @@ impl<S: Server> SMBSession<S> {
         debug!(?dialect, ?cipher_id, "generating session keys");
         let key_length = match cipher_id {
             EncryptionCipher::AES256GCM | AES256CCM => 32,
-            _ => 16
+            _ => 16,
         };
 
         let signing_key_len = 16;
 
-        let smb_sign_bytes = [
-            "SmbSign".as_bytes(),
-            &[0],
-        ].concat();
+        let smb_sign_bytes = ["SmbSign".as_bytes(), &[0]].concat();
 
         let (signing_key_label, signing_key_context): (&str, &[u8]) = match dialect {
             SMBDialect::V3_1_1 => ("SMBSigningKey", &self.preauth_integrity_hash_value),
             _ => ("SMB2AESCMAC", &smb_sign_bytes),
         };
         self.signing_key = match dialect {
-            SMBDialect::V3_0_0 | SMBDialect::V3_0_2 | SMBDialect::V3_1_1 => generate_key(&self.session_key, signing_key_label, signing_key_context, signing_key_len),
+            SMBDialect::V3_0_0 | SMBDialect::V3_0_2 | SMBDialect::V3_1_1 => generate_key(
+                &self.session_key,
+                signing_key_label,
+                signing_key_context,
+                signing_key_len,
+            ),
             _ => self.session_key.clone().to_vec(),
         };
 
@@ -156,18 +166,32 @@ impl<S: Server> SMBSession<S> {
 
         let (application_key_label, application_key_context): (&str, &[u8]) = match dialect {
             SMBDialect::V3_1_1 => ("SMBAppKey", &self.preauth_integrity_hash_value),
-            _ => ("SMB2APP", "SmbRpc".as_bytes())
+            _ => ("SMB2APP", "SmbRpc".as_bytes()),
         };
-        self.application_key = generate_key(&self.session_key, application_key_label, application_key_context, key_length);
-        trace!(signing_key_len = self.signing_key.len(), application_key_len = self.application_key.len(), "key generation complete");
+        self.application_key = generate_key(
+            &self.session_key,
+            application_key_label,
+            application_key_context,
+            key_length,
+        );
+        trace!(
+            signing_key_len = self.signing_key.len(),
+            application_key_len = self.application_key.len(),
+            "key generation complete"
+        );
     }
-    fn get_next_map_id<K: MaxVal + MinVal + One + Zero + Eq + PartialEq + AddAssign + PartialOrd + std::hash::Hash, V>(map: &HashMap<K, V>) -> K {
+    fn get_next_map_id<
+        K: MaxVal + MinVal + One + Zero + Eq + PartialEq + AddAssign + PartialOrd + std::hash::Hash,
+        V,
+    >(
+        map: &HashMap<K, V>,
+    ) -> K {
         let mut i = K::min_val();
         while i < K::max_val() {
             if map.get(&i).is_none() {
                 return i;
             }
-            
+
             i += K::one();
         }
         K::zero()
@@ -175,28 +199,40 @@ impl<S: Server> SMBSession<S> {
 }
 
 fn generate_key(secure_key: &[u8], label: &str, context: &[u8], output_len: usize) -> Vec<u8> {
-    trace!(key_len = secure_key.len(), label, context_len = context.len(), output_len, "deriving key via KDF");
+    trace!(
+        key_len = secure_key.len(),
+        label,
+        context_len = context.len(),
+        output_len,
+        "deriving key via KDF"
+    );
     let mac = <Hmac<Sha256>>::new_from_slice(secure_key)
-        .map_err(|_| SMBError::crypto_error("Invalid Key Length")).unwrap();
-    let label_bytes = [
-        label.as_bytes(),
-        &[0]
-    ].concat();
+        .map_err(|_| SMBError::crypto_error("Invalid Key Length"))
+        .unwrap();
+    let label_bytes = [label.as_bytes(), &[0]].concat();
     derive_key(mac, &label_bytes, context, (output_len * 8) as u32)
 }
 
-impl<S: Server<Session=SMBSession<S>>> NonEndingHandler for Arc<RwLock<SMBSession<S>>> {}
+impl<S: Server<Session = SMBSession<S>>> NonEndingHandler for Arc<RwLock<SMBSession<S>>> {}
 
-impl<S: Server<Session=SMBSession<S>>> SMBLockedMessageHandlerBase for Arc<RwLock<SMBSession<S>>> {
+impl<S: Server<Session = SMBSession<S>>> SMBLockedMessageHandlerBase
+    for Arc<RwLock<SMBSession<S>>>
+{
     type Inner = Arc<SMBTreeConnect<S>>;
     async fn inner(&self, message: &SMBMessageType) -> Option<Self::Inner> {
         let write = self.write().await;
         debug!(tid = message.header.tree_id, command = ?message.header.command, "looking up tree connect");
-        write.tree_connect_table.get(&message.header.tree_id)
+        write
+            .tree_connect_table
+            .get(&message.header.tree_id)
             .map(Arc::clone)
     }
 
-    async fn handle_session_setup(&mut self, header: &SMBSyncHeader, request: &SMBSessionSetupRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+    async fn handle_session_setup(
+        &mut self,
+        header: &SMBSyncHeader,
+        request: &SMBSessionSetupRequest,
+    ) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let buffer = request.buffer();
         let (_, token) = SPNEGOToken::<S::AuthProvider>::parse(buffer)?;
         let mut session_write = self.write().await;
@@ -213,7 +249,10 @@ impl<S: Server<Session=SMBSession<S>>> SMBLockedMessageHandlerBase for Arc<RwLoc
         let response = SPNEGOTokenResponseBody::<S::AuthProvider>::new(status, msg);
         let (id, session_setup) = {
             let session_read = self.read().await;
-            let resp = SMBSessionSetupResponse::from_session_state::<S>(&session_read, response.as_bytes());
+            let resp = SMBSessionSetupResponse::from_session_state::<S>(
+                &session_read,
+                response.as_bytes(),
+            );
             (session_read.id(), resp)
         };
         let header = header.create_response_header(status as u32, id, 0);
@@ -221,7 +260,11 @@ impl<S: Server<Session=SMBSession<S>>> SMBLockedMessageHandlerBase for Arc<RwLoc
         Ok(SMBHandlerState::Finished(message))
     }
 
-    async fn handle_tree_connect(&mut self, header: &SMBSyncHeader, request: &SMBTreeConnectRequest) -> SMBResult<SMBHandlerState<Self::Inner>> {
+    async fn handle_tree_connect(
+        &mut self,
+        header: &SMBSyncHeader,
+        request: &SMBTreeConnectRequest,
+    ) -> SMBResult<SMBHandlerState<Self::Inner>> {
         let self_rd = self.read().await;
         let conn = self_rd.get_connection()?;
         drop(self_rd);
@@ -229,22 +272,29 @@ impl<S: Server<Session=SMBSession<S>>> SMBLockedMessageHandlerBase for Arc<RwLoc
         let self_rd = self.read().await;
         let server_ref = conn_rd.server_ref().upgrade();
         if server_ref.is_none() {
-            return Err(SMBError::response_error(NTStatus::BadNetworkName))
+            return Err(SMBError::response_error(NTStatus::BadNetworkName));
         }
         let server_ref = server_ref.unwrap();
         let server_rd = server_ref.read().await;
         let share = server_rd.shares().get(&request.share().to_lowercase());
         if share.is_none() {
-            return Err(SMBError::response_error(NTStatus::BadNetworkName))
+            return Err(SMBError::response_error(NTStatus::BadNetworkName));
         }
         let share = share.unwrap();
         let response = SMBTreeConnectResponse::for_share(share.deref());
         let tree_id = SMBSession::<S>::get_next_map_id(&self_rd.tree_connect_table);
-        let tree_connect = SMBTreeConnect::init(tree_id, Arc::downgrade(self), share.clone(), response.access_mask().clone());
+        let tree_connect = SMBTreeConnect::init(
+            tree_id,
+            Arc::downgrade(self),
+            share.clone(),
+            response.access_mask().clone(),
+        );
         let header = SMBSyncHeader::create_response_header(header, 0, self_rd.id(), 1);
         drop(self_rd);
         let mut self_wr = self.write().await;
-        self_wr.tree_connect_table.insert(tree_id, Arc::new(tree_connect));
+        self_wr
+            .tree_connect_table
+            .insert(tree_id, Arc::new(tree_connect));
         let message = SMBMessage::new(header, SMBBody::TreeConnectResponse(response));
         Ok(SMBHandlerState::Finished(message))
     }
@@ -262,12 +312,17 @@ impl<S: Server> InnerGetter for SMBSession<S> {
 pub enum SessionState {
     InProgress,
     Valid,
-    Expired
+    Expired,
 }
 
-impl<S: Server<Session=Self>> Session<S::Connection, S::AuthProvider, S::Open> for SMBSession<S> {
-    fn init(id: u64, encrypt_data: bool, preauth_integrity_hash_value: Vec<u8>, conn: Weak<RwLock<S::Connection>>, provider: Arc<S::AuthProvider>) -> Self {
-
+impl<S: Server<Session = Self>> Session<S::Connection, S::AuthProvider, S::Open> for SMBSession<S> {
+    fn init(
+        id: u64,
+        encrypt_data: bool,
+        preauth_integrity_hash_value: Vec<u8>,
+        conn: Weak<RwLock<S::Connection>>,
+        provider: Arc<S::AuthProvider>,
+    ) -> Self {
         Self {
             session_id: id,
             state: SessionState::InProgress,
@@ -305,7 +360,8 @@ impl<S: Server<Session=Self>> Session<S::Connection, S::AuthProvider, S::Open> f
     }
 
     fn connection_res(&self) -> SMBResult<Arc<RwLock<S::Connection>>> {
-        self.connection.upgrade()
+        self.connection
+            .upgrade()
             .ok_or(SMBError::server_error("Connection not found for session"))
     }
 
@@ -350,7 +406,7 @@ impl<S: Server<Session=Self>> Session<S::Connection, S::AuthProvider, S::Open> f
     }
 
     fn set_previous_file_id(&mut self, file_id: SMBFileId) {
-       self.prev_command_id = Some(file_id); 
+        self.prev_command_id = Some(file_id);
     }
 
     fn signing_key(&self) -> &[u8] {
@@ -373,7 +429,11 @@ mod tests {
     fn generate_key_is_not_raw_session_key() {
         let session_key = [0xBB; 16];
         let key = generate_key(&session_key, "SMB2AESCMAC", b"SmbSign\0", 16);
-        assert_ne!(key, session_key.to_vec(), "KDF output must differ from raw session key");
+        assert_ne!(
+            key,
+            session_key.to_vec(),
+            "KDF output must differ from raw session key"
+        );
     }
 
     /// Regression test for B3: V3_0_2 must take the KDF branch, not the raw
@@ -392,8 +452,15 @@ mod tests {
         let key_v300 = generate_key(&session_key, label, context, 16);
 
         // Both 3.0 and 3.0.2 use the same KDF path, so keys must match
-        assert_eq!(key_v302, key_v300, "V3_0_2 and V3_0_0 should derive identical signing keys");
+        assert_eq!(
+            key_v302, key_v300,
+            "V3_0_2 and V3_0_0 should derive identical signing keys"
+        );
         // And neither should be the raw session key
-        assert_ne!(key_v302, session_key.to_vec(), "V3_0_2 signing key must not be the raw session key");
+        assert_ne!(
+            key_v302,
+            session_key.to_vec(),
+            "V3_0_2 signing key must not be the raw session key"
+        );
     }
 }

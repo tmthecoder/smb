@@ -14,15 +14,7 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 /// NTStatus is carried in the SMB2 header (channel_sequence field),
 /// not in the error body.
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 9)]
 pub struct SMBErrorResponse {

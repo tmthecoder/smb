@@ -12,15 +12,7 @@ use crate::protocol::body::filetime::FileTime;
 mod flags;
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 24)]
 pub struct SMBCloseRequest {
@@ -33,15 +25,7 @@ pub struct SMBCloseRequest {
 }
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 60)]
 pub struct SMBCloseResponse {

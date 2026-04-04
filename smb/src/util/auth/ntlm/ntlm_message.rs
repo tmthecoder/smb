@@ -1,11 +1,11 @@
 use bitflags::bitflags;
-use nom::bytes::complete::take;
 use nom::IResult;
+use nom::bytes::complete::take;
 use nom::number::complete::{le_u16, le_u32};
 use serde::{Deserialize, Serialize};
 
-use smb_core::error::SMBError;
 use smb_core::SMBParseResult;
+use smb_core::error::SMBError;
 
 use crate::util::auth::AuthMessage;
 use crate::util::auth::ntlm::ntlm_authenticate_message::NTLMAuthenticateMessageBody;
@@ -17,39 +17,31 @@ pub enum NTLMMessage {
     Negotiate(NTLMNegotiateMessageBody),
     Challenge(NTLMChallengeMessageBody),
     Authenticate(NTLMAuthenticateMessageBody),
-    Dummy
+    Dummy,
 }
 
 impl AuthMessage for NTLMMessage {
     fn parse(bytes: &[u8]) -> SMBParseResult<&[u8], Self> {
         let (_, msg_type) = take::<usize, &[u8], nom::error::Error<&[u8]>>(8_usize)(bytes)
             .and_then(|(remaining, _)| le_u32(remaining))
-            .map_err(|e| {
-                SMBError::parse_error(e.to_owned())
-            })?;
+            .map_err(|e| SMBError::parse_error(e.to_owned()))?;
         match msg_type {
             0x01 => {
                 let (remaining, body) = NTLMNegotiateMessageBody::parse(bytes)
-                    .map_err(|e| {
-                        SMBError::parse_error(e.to_owned())
-                    })?;
+                    .map_err(|e| SMBError::parse_error(e.to_owned()))?;
                 Ok((remaining, NTLMMessage::Negotiate(body)))
-            },
+            }
             0x02 => {
                 let (remaining, body) = NTLMChallengeMessageBody::parse(bytes)
-                    .map_err(|e| {
-                        SMBError::parse_error(e.to_owned())
-                    })?;
+                    .map_err(|e| SMBError::parse_error(e.to_owned()))?;
                 Ok((remaining, NTLMMessage::Challenge(body)))
-            },
+            }
             0x03 => {
                 let (remaining, body) = NTLMAuthenticateMessageBody::parse(bytes)
-                    .map_err(|e| {
-                        SMBError::parse_error(e.to_owned())
-                    })?;
+                    .map_err(|e| SMBError::parse_error(e.to_owned()))?;
                 Ok((remaining, NTLMMessage::Authenticate(body)))
-            },
-            _ => Err(SMBError::parse_error("Invalid message type"))
+            }
+            _ => Err(SMBError::parse_error("Invalid message type")),
         }
     }
 
@@ -97,6 +89,7 @@ bitflags! {
 
 pub(crate) fn parse_ntlm_buffer_fields(bytes: &[u8]) -> IResult<&[u8], (u16, u32)> {
     let (remaining, length) = le_u16(bytes)?;
-    let (remaining, buffer_offset) = take(2_usize)(remaining).and_then(|(remaining, _)| le_u32(remaining))?;
+    let (remaining, buffer_offset) =
+        take(2_usize)(remaining).and_then(|(remaining, _)| le_u32(remaining))?;
     Ok((remaining, (length, buffer_offset)))
 }

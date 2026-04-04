@@ -3,10 +3,10 @@ pub(crate) fn u16_to_bytes(num: u16) -> [u8; 2] {
 }
 
 pub(crate) fn bytes_to_u32(bytes: &[u8]) -> u32 {
-    (bytes[0] as u32) |
-    ((bytes[1] as u32) << 8) |
-    ((bytes[2] as u32) << 16) |
-    ((bytes[3] as u32) << 24)
+    (bytes[0] as u32)
+        | ((bytes[1] as u32) << 8)
+        | ((bytes[2] as u32) << 16)
+        | ((bytes[3] as u32) << 24)
 }
 
 pub(crate) fn u32_to_bytes(num: u32) -> [u8; 4] {
@@ -19,14 +19,14 @@ pub(crate) fn u32_to_bytes(num: u32) -> [u8; 4] {
 }
 
 pub(crate) fn bytes_to_u64(bytes: &[u8]) -> u64 {
-    (bytes[0] as u64) |
-    ((bytes[1] as u64) << 8) |
-    ((bytes[2] as u64) << 16) |
-    ((bytes[3] as u64) << 24) |
-    ((bytes[4] as u64) << 32) |
-    ((bytes[5] as u64) << 40) |
-    ((bytes[6] as u64) << 48) |
-    ((bytes[7] as u64) << 56)
+    (bytes[0] as u64)
+        | ((bytes[1] as u64) << 8)
+        | ((bytes[2] as u64) << 16)
+        | ((bytes[3] as u64) << 24)
+        | ((bytes[4] as u64) << 32)
+        | ((bytes[5] as u64) << 40)
+        | ((bytes[6] as u64) << 48)
+        | ((bytes[7] as u64) << 56)
 }
 
 pub(crate) fn u64_to_bytes(num: u64) -> [u8; 8] {
@@ -76,7 +76,11 @@ mod tests {
     fn u64_max_value_round_trip() {
         let val: u64 = u64::MAX;
         let bytes = u64_to_bytes(val);
-        assert_eq!(bytes_to_u64(&bytes), val, "u64::MAX should round-trip correctly");
+        assert_eq!(
+            bytes_to_u64(&bytes),
+            val,
+            "u64::MAX should round-trip correctly"
+        );
     }
 
     #[test]
@@ -84,6 +88,10 @@ mod tests {
         let val: u64 = 0xFF00_0000_0000_0000;
         let bytes = u64_to_bytes(val);
         assert_eq!(bytes[7], 0xFF, "High byte should be 0xFF");
-        assert_eq!(bytes_to_u64(&bytes), val, "High-byte-only u64 should round-trip");
+        assert_eq!(
+            bytes_to_u64(&bytes),
+            val,
+            "High-byte-only u64 should round-trip"
+        );
     }
 }

@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 
 use smb_derive::{SMBByteSize, SMBEnumFromBytes, SMBToBytes};
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize, SMBToBytes, Clone)]
+#[derive(
+    Serialize, Deserialize, PartialEq, Eq, Debug, SMBEnumFromBytes, SMBByteSize, SMBToBytes, Clone,
+)]
 pub enum SMBAccessMask {
     #[smb_discriminator(value = 0x2, value = 0x3, value = 0x0)]
     #[smb_direct(start(fixed = 0))]
@@ -17,7 +19,7 @@ impl SMBAccessMask {
     pub fn raw(&self) -> u32 {
         match self {
             SMBAccessMask::FilePipePrinter(x) => x.bits(),
-            SMBAccessMask::Directory(x) => x.bits()
+            SMBAccessMask::Directory(x) => x.bits(),
         }
     }
     pub fn validate_print(&self) -> bool {
@@ -29,21 +31,29 @@ impl SMBAccessMask {
 
     pub fn includes_maximum_allowed(&self) -> bool {
         match self {
-            SMBAccessMask::FilePipePrinter(x) => x.contains(SMBFilePipePrinterAccessMask::MAXIMUM_ALLOWED),
-            SMBAccessMask::Directory(x) => x.contains(SMBDirectoryAccessMask::MAXIMUM_ALLOWED)
+            SMBAccessMask::FilePipePrinter(x) => {
+                x.contains(SMBFilePipePrinterAccessMask::MAXIMUM_ALLOWED)
+            }
+            SMBAccessMask::Directory(x) => x.contains(SMBDirectoryAccessMask::MAXIMUM_ALLOWED),
         }
     }
 
     pub fn includes_access_system_security(&self) -> bool {
         match self {
-            SMBAccessMask::FilePipePrinter(x) => x.contains(SMBFilePipePrinterAccessMask::ACCESS_SYSTEM_SECURITY),
-            SMBAccessMask::Directory(x) => x.contains(SMBDirectoryAccessMask::ACCESS_SYSTEM_SECURITY)
+            SMBAccessMask::FilePipePrinter(x) => {
+                x.contains(SMBFilePipePrinterAccessMask::ACCESS_SYSTEM_SECURITY)
+            }
+            SMBAccessMask::Directory(x) => {
+                x.contains(SMBDirectoryAccessMask::ACCESS_SYSTEM_SECURITY)
+            }
         }
     }
 
     pub fn access_no_connect_security(is_directory: bool) -> Self {
         match is_directory {
-            true => Self::FilePipePrinter(SMBFilePipePrinterAccessMask::access_no_connect_security()),
+            true => {
+                Self::FilePipePrinter(SMBFilePipePrinterAccessMask::access_no_connect_security())
+            }
             false => Self::Directory(SMBDirectoryAccessMask::access_no_connect_security()),
         }
     }
@@ -52,15 +62,21 @@ impl SMBAccessMask {
         let mask = desired.clone();
         if mask.includes_maximum_allowed() {
             match mask {
-                SMBAccessMask::FilePipePrinter(mut x) => x |= SMBFilePipePrinterAccessMask::GENERIC_ALL,
-                SMBAccessMask::Directory(mut x) => x |= SMBDirectoryAccessMask::GENERIC_ALL
+                SMBAccessMask::FilePipePrinter(mut x) => {
+                    x |= SMBFilePipePrinterAccessMask::GENERIC_ALL
+                }
+                SMBAccessMask::Directory(mut x) => x |= SMBDirectoryAccessMask::GENERIC_ALL,
             };
         }
 
         if mask.includes_access_system_security() {
             match mask {
-                SMBAccessMask::FilePipePrinter(mut x) => x |= SMBFilePipePrinterAccessMask::ACCESS_SYSTEM_SECURITY,
-                SMBAccessMask::Directory(mut x) => x |= SMBDirectoryAccessMask::ACCESS_SYSTEM_SECURITY
+                SMBAccessMask::FilePipePrinter(mut x) => {
+                    x |= SMBFilePipePrinterAccessMask::ACCESS_SYSTEM_SECURITY
+                }
+                SMBAccessMask::Directory(mut x) => {
+                    x |= SMBDirectoryAccessMask::ACCESS_SYSTEM_SECURITY
+                }
             };
         }
         mask
@@ -101,9 +117,19 @@ impl SMBFilePipePrinterAccessMask {
     }
 
     pub fn access_no_connect_security() -> Self {
-        Self::FILE_READ_DATA | Self::FILE_WRITE_DATA | Self::FILE_APPEND_DATA | Self::FILE_READ_EA
-            | Self::FILE_WRITE_EA | Self::FILE_DELETE_CHILD | Self::FILE_EXECUTE | Self::FILE_READ_ATTRIBUTES
-            | Self::FILE_WRITE_ATTRIBUTES | Self::DELETE | Self::READ_CONTROL | Self::WRITE_DAC | Self::WRITE_OWNER
+        Self::FILE_READ_DATA
+            | Self::FILE_WRITE_DATA
+            | Self::FILE_APPEND_DATA
+            | Self::FILE_READ_EA
+            | Self::FILE_WRITE_EA
+            | Self::FILE_DELETE_CHILD
+            | Self::FILE_EXECUTE
+            | Self::FILE_READ_ATTRIBUTES
+            | Self::FILE_WRITE_ATTRIBUTES
+            | Self::DELETE
+            | Self::READ_CONTROL
+            | Self::WRITE_DAC
+            | Self::WRITE_OWNER
             | Self::SYNCHRONIZE
     }
 }
@@ -136,9 +162,19 @@ bitflags! {
 
 impl SMBDirectoryAccessMask {
     pub fn access_no_connect_security() -> Self {
-        Self::FILE_LIST_DIRECTORY | Self::FILE_ADD_FILE | Self::FILE_ADD_SUBDIRECTORY | Self::FILE_READ_EA
-            | Self::FILE_WRITE_EA | Self::FILE_DELETE_CHILD | Self::FILE_TRAVERSE | Self::FILE_READ_ATTRIBUTES
-            | Self::FILE_WRITE_ATTRIBUTES | Self::DELETE | Self::READ_CONTROL | Self::WRITE_DAC | Self::WRITE_OWNER
+        Self::FILE_LIST_DIRECTORY
+            | Self::FILE_ADD_FILE
+            | Self::FILE_ADD_SUBDIRECTORY
+            | Self::FILE_READ_EA
+            | Self::FILE_WRITE_EA
+            | Self::FILE_DELETE_CHILD
+            | Self::FILE_TRAVERSE
+            | Self::FILE_READ_ATTRIBUTES
+            | Self::FILE_WRITE_ATTRIBUTES
+            | Self::DELETE
+            | Self::READ_CONTROL
+            | Self::WRITE_DAC
+            | Self::WRITE_OWNER
             | Self::SYNCHRONIZE
     }
 }

@@ -18,13 +18,19 @@ struct TwoFields {
 
 #[test]
 fn two_fields_byte_size() {
-    let val = TwoFields { field_a: 1, field_b: 2 };
+    let val = TwoFields {
+        field_a: 1,
+        field_b: 2,
+    };
     assert_eq!(val.smb_byte_size(), 6); // 2 + 4
 }
 
 #[test]
 fn two_fields_roundtrip() {
-    let original = TwoFields { field_a: 0x1234, field_b: 0xDEADBEEF };
+    let original = TwoFields {
+        field_a: 0x1234,
+        field_b: 0xDEADBEEF,
+    };
     let bytes = original.smb_to_bytes();
     assert_eq!(bytes.len(), 6);
     // Little-endian checks
@@ -44,7 +50,13 @@ fn two_fields_roundtrip() {
 fn two_fields_from_bytes_with_trailing() {
     let bytes: Vec<u8> = vec![0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0xFF, 0xFF];
     let (remaining, parsed) = TwoFields::smb_from_bytes(&bytes).unwrap();
-    assert_eq!(parsed, TwoFields { field_a: 1, field_b: 2 });
+    assert_eq!(
+        parsed,
+        TwoFields {
+            field_a: 1,
+            field_b: 2
+        }
+    );
     assert_eq!(remaining, &[0xFF, 0xFF]);
 }
 
@@ -126,7 +138,10 @@ struct WithByteTag {
 
 #[test]
 fn byte_tag_to_bytes() {
-    let val = WithByteTag { flags: 0x0001, extra: 0 };
+    let val = WithByteTag {
+        flags: 0x0001,
+        extra: 0,
+    };
     let bytes = val.smb_to_bytes();
     // First byte should be the tag value (9)
     assert_eq!(bytes[0], 9);
@@ -187,8 +202,14 @@ fn buffer_from_bytes() {
 // ---------------------------------------------------------------------------
 
 #[derive(
-    Debug, PartialEq, Eq, Clone, Copy,
-    SMBFromBytes, SMBToBytes, SMBByteSize,
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    SMBFromBytes,
+    SMBToBytes,
+    SMBByteSize,
     num_enum::TryFromPrimitive,
 )]
 #[repr(u16)]
@@ -324,7 +345,10 @@ struct Gapped {
 
 #[test]
 fn gapped_roundtrip() {
-    let original = Gapped { first: 0xAA, second: 0x11223344 };
+    let original = Gapped {
+        first: 0xAA,
+        second: 0x11223344,
+    };
     let bytes = original.smb_to_bytes();
     // Byte 0 = 0xAA, bytes 1-3 = 0 (gap), bytes 4-7 = LE 0x11223344
     assert_eq!(bytes[0], 0xAA);
@@ -368,8 +392,14 @@ fn wrapper_roundtrip() {
 // ---------------------------------------------------------------------------
 
 #[derive(
-    Debug, PartialEq, Eq, Clone, Copy,
-    SMBFromBytes, SMBToBytes, SMBByteSize,
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    SMBFromBytes,
+    SMBToBytes,
+    SMBByteSize,
     num_enum::TryFromPrimitive,
 )]
 #[repr(u8)]
@@ -381,11 +411,7 @@ enum SmallEnum {
 
 #[test]
 fn small_enum_roundtrip() {
-    for (variant, expected_byte) in [
-        (SmallEnum::A, 0u8),
-        (SmallEnum::B, 1),
-        (SmallEnum::C, 255),
-    ] {
+    for (variant, expected_byte) in [(SmallEnum::A, 0u8), (SmallEnum::B, 1), (SmallEnum::C, 255)] {
         let bytes = variant.smb_to_bytes();
         assert_eq!(bytes, vec![expected_byte]);
         let (_rem, parsed) = SmallEnum::smb_from_bytes(&bytes).unwrap();
@@ -409,7 +435,10 @@ struct HeaderLike {
 
 #[test]
 fn header_like_to_bytes() {
-    let val = HeaderLike { value: 0x0040, extra: 0 };
+    let val = HeaderLike {
+        value: 0x0040,
+        extra: 0,
+    };
     let bytes = val.smb_to_bytes();
     assert_eq!(bytes[0], 0xFE);
     assert_eq!(&bytes[1..4], b"SMB");

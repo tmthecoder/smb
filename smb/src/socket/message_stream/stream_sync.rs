@@ -1,15 +1,23 @@
 use std::io::{Read, Write};
 
-use smb_core::{SMBParseResult, SMBResult};
 use smb_core::error::SMBError;
+use smb_core::{SMBParseResult, SMBResult};
 
 use crate::protocol::body::SMBBody;
 use crate::protocol::header::SMBSyncHeader;
 use crate::protocol::message::{Message, SMBMessage};
-use crate::socket::message_stream::{SMBMessageIterator, SMBReadStream, SMBSocketConnection, SMBWriteStream};
+use crate::socket::message_stream::{
+    SMBMessageIterator, SMBReadStream, SMBSocketConnection, SMBWriteStream,
+};
 
-impl<Reader> SMBReadStream for Reader where Reader: Read + Send + Sync {
-    fn read_message<'a>(&'a mut self, existing: &'a mut Vec<u8>) -> SMBParseResult<&[u8], SMBMessage<SMBSyncHeader, SMBBody>> {
+impl<Reader> SMBReadStream for Reader
+where
+    Reader: Read + Send + Sync,
+{
+    fn read_message<'a>(
+        &'a mut self,
+        existing: &'a mut Vec<u8>,
+    ) -> SMBParseResult<&[u8], SMBMessage<SMBSyncHeader, SMBBody>> {
         let mut buffer = [0_u8; 512];
 
         if let Ok(read) = self.read(&mut buffer) {
@@ -19,12 +27,18 @@ impl<Reader> SMBReadStream for Reader where Reader: Read + Send + Sync {
         Self::read_message_inner(existing)
     }
 
-    fn messages(&mut self) -> SMBMessageIterator<Self> where Self: Sized {
+    fn messages(&mut self) -> SMBMessageIterator<Self>
+    where
+        Self: Sized,
+    {
         SMBMessageIterator::new(self)
     }
 }
 
-impl<Writer> SMBWriteStream for Writer where Writer: Write {
+impl<Writer> SMBWriteStream for Writer
+where
+    Writer: Write,
+{
     fn write_message<T: Message>(&mut self, message: &T) -> SMBResult<usize> {
         let bytes = message.as_bytes();
         self.write_all(&bytes).map_err(SMBError::io_error)?;

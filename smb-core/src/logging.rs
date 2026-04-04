@@ -4,55 +4,71 @@
 /// macros from the `tracing` crate. When disabled, they compile to no-ops.
 
 #[cfg(feature = "tracing")]
-pub use tracing::{trace, debug, info, warn, error, info_span, debug_span, trace_span};
+pub use tracing::{debug, debug_span, error, info, info_span, trace, trace_span, warn};
 
 #[cfg(not(feature = "tracing"))]
 #[macro_export]
 macro_rules! trace {
-    ($($t:tt)*) => {()};
+    ($($t:tt)*) => {
+        ()
+    };
 }
 
 #[cfg(not(feature = "tracing"))]
 #[macro_export]
 macro_rules! debug {
-    ($($t:tt)*) => {()};
+    ($($t:tt)*) => {
+        ()
+    };
 }
 
 #[cfg(not(feature = "tracing"))]
 #[macro_export]
 macro_rules! info {
-    ($($t:tt)*) => {()};
+    ($($t:tt)*) => {
+        ()
+    };
 }
 
 #[cfg(not(feature = "tracing"))]
 #[macro_export]
 macro_rules! warn {
-    ($($t:tt)*) => {()};
+    ($($t:tt)*) => {
+        ()
+    };
 }
 
 #[cfg(not(feature = "tracing"))]
 #[macro_export]
 macro_rules! error {
-    ($($t:tt)*) => {()};
+    ($($t:tt)*) => {
+        ()
+    };
 }
 
 #[cfg(not(feature = "tracing"))]
 #[macro_export]
 macro_rules! info_span {
-    ($($t:tt)*) => {()};
+    ($($t:tt)*) => {
+        ()
+    };
 }
 
 #[cfg(not(feature = "tracing"))]
 #[macro_export]
 macro_rules! debug_span {
-    ($($t:tt)*) => {()};
+    ($($t:tt)*) => {
+        ()
+    };
 }
 
 #[cfg(not(feature = "tracing"))]
 #[macro_export]
 macro_rules! trace_span {
-    ($($t:tt)*) => {()};
+    ($($t:tt)*) => {
+        ()
+    };
 }
 
 #[cfg(not(feature = "tracing"))]
-pub use crate::{trace, debug, info, warn, error, info_span, debug_span, trace_span};
+pub use crate::{debug, debug_span, error, info, info_span, trace, trace_span, warn};

@@ -1,18 +1,18 @@
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
 
 use derive_builder::Builder;
 use tokio::net::TcpListener;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio_stream::StreamExt;
 use uuid::Uuid;
 
-use smb_core::error::SMBError;
-use smb_core::logging::{info, debug, warn};
 use smb_core::SMBResult;
+use smb_core::error::SMBError;
+use smb_core::logging::{debug, info, warn};
 
 use crate::protocol::body::dialect::SMBDialect;
 use crate::protocol::body::filetime::FileTime;
@@ -21,38 +21,42 @@ use crate::server::connection::{Connection, SMBConnection, WeakLockedSMBConnecti
 use crate::server::lease::{Lease, SMBLease, SMBLeaseTable};
 use crate::server::open::{LockedSMBOpen, Open, SMBOpen};
 use crate::server::safe_locked_getter::InnerGetter;
-use crate::server::session::{LockedSMBSession, Session, SMBSession};
-use crate::server::share::{ConnectAllowed, FilePerms, ResourceHandle, SharedResource};
+use crate::server::session::{LockedSMBSession, SMBSession, Session};
 use crate::server::share::file_system::{SMBFileSystemHandle, SMBFileSystemShare};
 use crate::server::share::ipc::{SMBIPCHandle, SMBIPCShare};
+use crate::server::share::{ConnectAllowed, FilePerms, ResourceHandle, SharedResource};
 use crate::socket::listener::{SMBListener, SMBSocket};
-use crate::util::auth::{AuthContext, AuthProvider};
 use crate::util::auth::ntlm::NTLMAuthProvider;
+use crate::util::auth::{AuthContext, AuthProvider};
 
-pub mod client;
 pub mod channel;
+pub mod client;
 pub mod connection;
 pub mod lease;
+mod message_handler;
 pub mod open;
 pub mod preauth_session;
 pub mod request;
+mod safe_locked_getter;
 pub mod session;
 pub mod share;
 pub mod tree_connect;
-mod message_handler;
-mod safe_locked_getter;
 
 pub trait Server: Send + Sync {
-    type Connection: Connection<Server=Self> + InnerGetter<Upper=Self>;
-    type Session: Session<Self::Connection, Self::AuthProvider, Self::Open> + InnerGetter<Upper=Self::Connection>;
-    type Share: SharedResource<UserName=<<Self::AuthProvider as AuthProvider>::Context as AuthContext>::UserName, Handle=Self::Handle>;
-    type Open: Open<Server=Self>;
+    type Connection: Connection<Server = Self> + InnerGetter<Upper = Self>;
+    type Session: Session<Self::Connection, Self::AuthProvider, Self::Open>
+        + InnerGetter<Upper = Self::Connection>;
+    type Share: SharedResource<
+            UserName = <<Self::AuthProvider as AuthProvider>::Context as AuthContext>::UserName,
+            Handle = Self::Handle,
+        >;
+    type Open: Open<Server = Self>;
     type Lease: Lease;
     type AuthProvider: AuthProvider;
     type Handle: ResourceHandle;
     fn shares(&self) -> &HashMap<String, Arc<Self::Share>>;
     fn opens(&self) -> &HashMap<u32, Arc<RwLock<Self::Open>>>;
-    fn add_open(&mut self, open: Arc<RwLock<Self::Open>>) -> impl Future<Output=u32>;
+    fn add_open(&mut self, open: Arc<RwLock<Self::Open>>) -> impl Future<Output = u32>;
     fn sessions(&self) -> &HashMap<u64, Arc<RwLock<Self::Session>>>;
     fn sessions_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<Self::Session>>>;
     fn guid(&self) -> Uuid;
@@ -78,17 +82,32 @@ pub trait Server: Send + Sync {
 }
 
 pub trait StartSMBServer {
-    fn start(&self) -> impl Future<Output=SMBResult<()>> + Send;
+    fn start(&self) -> impl Future<Output = SMBResult<()>> + Send;
 }
 
-type SMBConnectionType<Addr, L, A, S, H> = SMBConnection<<L as SMBSocket<Addr>>::ReadStream, <L as SMBSocket<Addr>>::WriteStream, SMBServer<Addr, L, A, S, H>>;
+type SMBConnectionType<Addr, L, A, S, H> = SMBConnection<
+    <L as SMBSocket<Addr>>::ReadStream,
+    <L as SMBSocket<Addr>>::WriteStream,
+    SMBServer<Addr, L, A, S, H>,
+>;
 type UserName<Auth> = <<Auth as AuthProvider>::Context as AuthContext>::UserName;
-pub type DefaultShare<Auth> = Box<dyn SharedResource<UserName=<<Auth as AuthProvider>::Context as AuthContext>::UserName, Handle=DefaultHandle>>;
+pub type DefaultShare<Auth> = Box<
+    dyn SharedResource<
+            UserName = <<Auth as AuthProvider>::Context as AuthContext>::UserName,
+            Handle = DefaultHandle,
+        >,
+>;
 type DefaultHandle = Box<dyn ResourceHandle>;
 #[derive(Debug, Builder)]
 #[builder(pattern = "owned")]
 #[builder(build_fn(name = "build_inner", private))]
-pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListener, Auth: AuthProvider = NTLMAuthProvider, Share: SharedResource<UserName=UserName<Auth>, Handle=Handle> = DefaultShare<Auth>, Handle: ResourceHandle = DefaultHandle> {
+pub struct SMBServer<
+    Addrs: Send + Sync,
+    Listener: SMBSocket<Addrs> = TcpListener,
+    Auth: AuthProvider = NTLMAuthProvider,
+    Share: SharedResource<UserName = UserName<Auth>, Handle = Handle> = DefaultShare<Auth>,
+    Handle: ResourceHandle = DefaultHandle,
+> {
     #[builder(default = "Default::default()")]
     statistics: Arc<RwLock<SMBServerDiagnostics>>,
     #[builder(default = "false")]
@@ -106,7 +125,14 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
     #[builder(field(
         type = "HashMap<String, WeakLockedSMBConnection<<Listener as SMBSocket<Addrs>>::ReadStream, <Listener as SMBSocket<Addrs>>::WriteStream, SMBServer<Addrs, Listener, Auth, Share, Handle>>>"
     ))]
-    connection_list: HashMap<String, WeakLockedSMBConnection<<Listener as SMBSocket<Addrs>>::ReadStream, <Listener as SMBSocket<Addrs>>::WriteStream, SMBServer<Addrs, Listener, Auth, Share, Handle>>>,
+    connection_list: HashMap<
+        String,
+        WeakLockedSMBConnection<
+            <Listener as SMBSocket<Addrs>>::ReadStream,
+            <Listener as SMBSocket<Addrs>>::WriteStream,
+            SMBServer<Addrs, Listener, Auth, Share, Handle>,
+        >,
+    >,
     #[builder(default = "Uuid::new_v4()")]
     guid: Uuid,
     #[builder(default = "FileTime::default()")]
@@ -124,7 +150,8 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
     #[builder(field(
         type = "HashMap<Uuid, SMBLeaseTable<SMBLease<SMBServer<Addrs, Listener, Auth, Share, Handle>>>>"
     ))]
-    lease_table_list: HashMap<Uuid, SMBLeaseTable<SMBLease<SMBServer<Addrs, Listener, Auth, Share, Handle>>>>,
+    lease_table_list:
+        HashMap<Uuid, SMBLeaseTable<SMBLease<SMBServer<Addrs, Listener, Auth, Share, Handle>>>>,
     #[builder(default = "5000")]
     max_resiliency_timeout: u64,
     #[builder(default = "5000")]
@@ -164,14 +191,21 @@ pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListene
     auth_provider: Arc<Auth>,
 }
 
-impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: SharedResource<UserName=UserName<Auth>, Handle=Handle>, Handle: ResourceHandle> Server for SMBServer<Addrs, Listener, Auth, Share, Handle> {
+impl<
+    Addrs: Send + Sync,
+    Listener: SMBSocket<Addrs>,
+    Auth: AuthProvider,
+    Share: SharedResource<UserName = UserName<Auth>, Handle = Handle>,
+    Handle: ResourceHandle,
+> Server for SMBServer<Addrs, Listener, Auth, Share, Handle>
+{
     type Connection = SMBConnectionType<Addrs, Listener, Auth, Share, Handle>;
     type Session = SMBSession<Self>;
     type Share = Share;
     type Open = SMBOpen<Self>;
     type Lease = SMBLease<Self>;
     type AuthProvider = Auth;
-    type Handle = Handle; 
+    type Handle = Handle;
 
     fn shares(&self) -> &HashMap<String, Arc<Self::Share>> {
         &self.share_list
@@ -283,7 +317,14 @@ impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: 
     }
 }
 
-impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider, Share: SharedResource<UserName=UserName<Auth>, Handle=Handle>, Handle: ResourceHandle> SMBServerBuilder<Addrs, Listener, Auth, Share, Handle> {
+impl<
+    Addrs: Send + Sync,
+    Listener: SMBSocket<Addrs>,
+    Auth: AuthProvider,
+    Share: SharedResource<UserName = UserName<Auth>, Handle = Handle>,
+    Handle: ResourceHandle,
+> SMBServerBuilder<Addrs, Listener, Auth, Share, Handle>
+{
     #[cfg(not(feature = "async"))]
     pub fn listener_address(self, addr: Addrs) -> SMBResult<Self> {
         Ok(self.local_listener(SMBListener::new(addr)?))
@@ -318,7 +359,14 @@ pub enum HashLevel {
     EnableShare,
 }
 
-impl<Addrs: Send + Sync, Listener: SMBSocket<Addrs>, Auth: AuthProvider + 'static, Share: SharedResource<UserName=UserName<Auth>, Handle=Handle>, Handle: ResourceHandle + 'static> SMBServer<Addrs, Listener, Auth, Share, Handle> {
+impl<
+    Addrs: Send + Sync,
+    Listener: SMBSocket<Addrs>,
+    Auth: AuthProvider + 'static,
+    Share: SharedResource<UserName = UserName<Auth>, Handle = Handle>,
+    Handle: ResourceHandle + 'static,
+> SMBServer<Addrs, Listener, Auth, Share, Handle>
+{
     pub fn initialize(&mut self) {
         self.statistics = Default::default();
         self.guid = Uuid::new_v4();
@@ -338,10 +386,18 @@ impl<
     Addrs: Send + Sync,
     Listener: SMBSocket<Addrs>,
     Auth: AuthProvider + 'static,
-    Share: SharedResource<UserName=UserName<Auth>, Handle=Handle> + From<SMBFileSystemShare<UserName<Auth>, Handle>>,
-    Handle: ResourceHandle + 'static + From<SMBFileSystemHandle> + TryInto<SMBFileSystemHandle>
-> SMBServerBuilder<Addrs, Listener, Auth, Share, Handle> {
-    pub fn add_fs_share(self, name: String, path: String, connect_allowed: ConnectAllowed<UserName<Auth>>, file_perms: FilePerms<UserName<Auth>>) -> Self {
+    Share: SharedResource<UserName = UserName<Auth>, Handle = Handle>
+        + From<SMBFileSystemShare<UserName<Auth>, Handle>>,
+    Handle: ResourceHandle + 'static + From<SMBFileSystemHandle> + TryInto<SMBFileSystemHandle>,
+> SMBServerBuilder<Addrs, Listener, Auth, Share, Handle>
+{
+    pub fn add_fs_share(
+        self,
+        name: String,
+        path: String,
+        connect_allowed: ConnectAllowed<UserName<Auth>>,
+        file_perms: FilePerms<UserName<Auth>>,
+    ) -> Self {
         let share = SMBFileSystemShare::path(name.clone(), path, connect_allowed, file_perms);
         self.add_share(name, share.into())
     }
@@ -351,29 +407,34 @@ impl<
     Addrs: Send + Sync,
     Listener: SMBSocket<Addrs>,
     Auth: AuthProvider + 'static,
-    Share: SharedResource<UserName=UserName<Auth>, Handle=Handle> + From<SMBIPCShare<UserName<Auth>, Handle>>,
-    Handle: ResourceHandle + 'static + From<SMBIPCHandle>
-> SMBServerBuilder<Addrs, Listener, Auth, Share, Handle> {
+    Share: SharedResource<UserName = UserName<Auth>, Handle = Handle>
+        + From<SMBIPCShare<UserName<Auth>, Handle>>,
+    Handle: ResourceHandle + 'static + From<SMBIPCHandle>,
+> SMBServerBuilder<Addrs, Listener, Auth, Share, Handle>
+{
     pub fn add_ipc_share(self) -> Self {
         let share: SMBIPCShare<UserName<Auth>, Handle> = SMBIPCShare::new();
         self.add_share("ipc$", share.into())
     }
 }
 
-impl<Addrs: Send + Sync + 'static, Listener: SMBSocket<Addrs> + 'static, Auth: AuthProvider + 'static, Share: SharedResource<UserName=UserName<Auth>, Handle=Handle> + 'static, Handle: ResourceHandle + 'static> StartSMBServer for Arc<RwLock<SMBServer<Addrs, Listener, Auth, Share, Handle>>> {
+impl<
+    Addrs: Send + Sync + 'static,
+    Listener: SMBSocket<Addrs> + 'static,
+    Auth: AuthProvider + 'static,
+    Share: SharedResource<UserName = UserName<Auth>, Handle = Handle> + 'static,
+    Handle: ResourceHandle + 'static,
+> StartSMBServer for Arc<RwLock<SMBServer<Addrs, Listener, Auth, Share, Handle>>>
+{
     async fn start(&self) -> SMBResult<()> {
         let (rx, mut tx) = mpsc::channel(10);
-        let diagnostics = {
-            self.read().await.statistics.clone()
-        };
+        let diagnostics = { self.read().await.statistics.clone() };
         tokio::spawn(async move {
             while let Some(update) = tx.recv().await {
                 diagnostics.write().await.update(update);
             }
         });
-        let listener = {
-            self.read().await.local_listener.clone()
-        };
+        let listener = { self.read().await.local_listener.clone() };
         info!("SMB server accepting connections");
         while let Some(connection) = listener.lock().await.connections().next().await {
             let smb_connection = SMBConnection::try_from((connection, Arc::downgrade(self)))?;
@@ -382,13 +443,22 @@ impl<Addrs: Send + Sync + 'static, Listener: SMBSocket<Addrs> + 'static, Auth: A
             let socket = smb_connection.underlying_socket();
             let wrapped_connection = Arc::new(RwLock::new(smb_connection));
             {
-                self.write().await.connection_list.insert(name.clone(), Arc::downgrade(&wrapped_connection));
+                self.write()
+                    .await
+                    .connection_list
+                    .insert(name.clone(), Arc::downgrade(&wrapped_connection));
             }
             let update_channel = rx.clone();
             tokio::spawn(async move {
                 debug!(client = %name, "starting message handler");
                 let mut stream = socket.lock().await;
-                match SMBConnection::start_message_handler::<Auth>(&mut stream, wrapped_connection, update_channel).await {
+                match SMBConnection::start_message_handler::<Auth>(
+                    &mut stream,
+                    wrapped_connection,
+                    update_channel,
+                )
+                .await
+                {
                     Ok(()) => debug!("message handler completed"),
                     Err(_e) => warn!(?e, "message handler exited with error"),
                 }

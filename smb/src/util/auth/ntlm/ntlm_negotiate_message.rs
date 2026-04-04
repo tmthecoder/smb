@@ -1,6 +1,6 @@
+use nom::IResult;
 use nom::bytes::complete::take;
 use nom::combinator::{map, map_res};
-use nom::IResult;
 use nom::number::complete::le_u32;
 use nom::sequence::tuple;
 use serde::{Deserialize, Serialize};
@@ -123,7 +123,9 @@ impl NTLMNegotiateMessageBody {
 
         let target_name = "fakeserver";
 
-        (NTStatus::MoreProcessingRequired, NTLMChallengeMessageBody::new(target_name.into(), negotiate_flags))
+        (
+            NTStatus::MoreProcessingRequired,
+            NTLMChallengeMessageBody::new(target_name.into(), negotiate_flags),
+        )
     }
 }
-

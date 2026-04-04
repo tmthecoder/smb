@@ -18,13 +18,13 @@ use hmac::Hmac;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use smb_core::{SMBParseResult, SMBResult};
 use smb_core::error::SMBError;
 use smb_core::logging::trace;
+use smb_core::{SMBParseResult, SMBResult};
 
 use crate::byte_helper::u16_to_bytes;
-use crate::protocol::body::{Body, LegacySMBBody, SMBBody};
 use crate::protocol::body::negotiate::context::SigningAlgorithm;
+use crate::protocol::body::{Body, LegacySMBBody, SMBBody};
 use crate::protocol::header::{Header, LegacySMBHeader, SMBSyncHeader};
 
 /// Convenience alias for a synchronous SMB2/3 message.
@@ -46,10 +46,7 @@ pub struct SMBMessage<S: Header, T: Body<S>> {
 
 impl<S: Header, T: Body<S>> SMBMessage<S, T> {
     pub fn new(header: S, body: T) -> Self {
-        SMBMessage {
-            header,
-            body
-        }
+        SMBMessage { header, body }
     }
 }
 
@@ -66,11 +63,18 @@ pub trait Message {
     fn as_bytes(&self) -> Vec<u8>;
     /// Parse a message from raw bytes (starting at the SMB2 ProtocolId, **without**
     /// the 4-byte NetBIOS header).
-    fn parse(bytes: &[u8]) -> SMBParseResult<&[u8], Self> where Self: Sized;
+    fn parse(bytes: &[u8]) -> SMBParseResult<&[u8], Self>
+    where
+        Self: Sized;
 
     /// Compute the cryptographic signature for this message using the given
     /// signing key and algorithm ([\[MS-SMB2\] 3.1.5.1]).
-    fn signature(&self, nonce: &[u8], key: &[u8], algorithm: SigningAlgorithm) -> SMBResult<Vec<u8>>;
+    fn signature(
+        &self,
+        nonce: &[u8],
+        key: &[u8],
+        algorithm: SigningAlgorithm,
+    ) -> SMBResult<Vec<u8>>;
 }
 
 impl SMBMessage<SMBSyncHeader, SMBBody> {
@@ -95,29 +99,34 @@ impl<S: Header + Debug, T: Body<S>> Message for SMBMessage<S, T> {
 
     fn parse(bytes: &[u8]) -> SMBParseResult<&[u8], Self> {
         let (remaining, header) = S::smb_from_bytes(bytes)?;
-        trace!(?header, remaining_len = remaining.len(), "parsed message header");
+        trace!(
+            ?header,
+            remaining_len = remaining.len(),
+            "parsed message header"
+        );
         let discriminator_code = (header.command_code().into()) | ((header.sender() as u64) << 16);
         let (remaining, body) = T::smb_enum_from_bytes(remaining, discriminator_code)?;
         Ok((remaining, Self { header, body }))
     }
 
-    fn signature(&self, _nonce: &[u8], key: &[u8], algorithm: SigningAlgorithm) -> SMBResult<Vec<u8>> {
+    fn signature(
+        &self,
+        _nonce: &[u8],
+        key: &[u8],
+        algorithm: SigningAlgorithm,
+    ) -> SMBResult<Vec<u8>> {
         let res = match algorithm {
             SigningAlgorithm::HmacSha256 => {
-                let mut hmac = Hmac::<Sha256>::new_from_slice(key)
-                    .map_err(SMBError::crypto_error)?;
+                let mut hmac =
+                    Hmac::<Sha256>::new_from_slice(key).map_err(SMBError::crypto_error)?;
                 hmac.update(&self.as_bytes());
-                hmac.finalize()
-                    .into_bytes()
-                    .to_vec()
+                hmac.finalize().into_bytes().to_vec()
             }
             SigningAlgorithm::AesCmac => {
-                let mut cmac = Cmac::<Aes128>::new_from_slice(key)
-                    .map_err(SMBError::crypto_error)?;
+                let mut cmac =
+                    Cmac::<Aes128>::new_from_slice(key).map_err(SMBError::crypto_error)?;
                 cmac.update(&self.as_bytes());
-                cmac.finalize()
-                    .into_bytes()
-                    .to_vec()
+                cmac.finalize().into_bytes().to_vec()
             }
             SigningAlgorithm::AesGmac => {
                 todo!();
@@ -140,11 +149,8 @@ mod tests {
     use crate::protocol::header::flags::SMBFlags;
 
     fn echo_request_message() -> SMBSyncMessage {
-        let header = SMBSyncHeader::new(
-            SMBCommandCode::Echo,
-            SMBFlags::empty(),
-            0, 1, 0, 0, [0; 16],
-        );
+        let header =
+            SMBSyncHeader::new(SMBCommandCode::Echo, SMBFlags::empty(), 0, 1, 0, 0, [0; 16]);
         let body = SMBBody::EchoRequest(SMBEmpty);
         SMBMessage::new(header, body)
     }
@@ -196,7 +202,9 @@ mod tests {
     fn hmac_sha256_signature_is_nonempty() {
         let msg = echo_request_message();
         let key = [0xAB; 16];
-        let sig = msg.signature(&[], &key, SigningAlgorithm::HmacSha256).unwrap();
+        let sig = msg
+            .signature(&[], &key, SigningAlgorithm::HmacSha256)
+            .unwrap();
         assert!(!sig.is_empty(), "HMAC-SHA256 signature should not be empty");
         assert_eq!(sig.len(), 32, "HMAC-SHA256 produces 32 bytes");
     }

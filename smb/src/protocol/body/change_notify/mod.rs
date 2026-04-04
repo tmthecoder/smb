@@ -8,19 +8,11 @@ use crate::protocol::body::change_notify::completion_filter::SMBCompletionFilter
 use crate::protocol::body::change_notify::flags::SMBChangeNotifyFlags;
 use crate::protocol::body::create::file_id::SMBFileId;
 
-mod flags;
 mod completion_filter;
+mod flags;
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 32)]
 pub struct SMBChangeNotifyRequest {
@@ -37,21 +29,17 @@ pub struct SMBChangeNotifyRequest {
 }
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 17)]
 pub struct SMBChangeNotifyResponse {
     #[smb_skip(start = 2, length = 6)]
     reserved: PhantomData<Vec<u8>>,
     // TODO make this into a vector of FILE_NOTIFY_INFO structs: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-smb2/14f9d050-27b2-49df-b009-54e08e8bf7b5
-    #[smb_buffer(order = 0, offset(inner(start = 2, num_type = "u16", subtract = 64)), length(inner(start = 4, num_type = "u32")))]
+    #[smb_buffer(
+        order = 0,
+        offset(inner(start = 2, num_type = "u16", subtract = 64)),
+        length(inner(start = 4, num_type = "u32"))
+    )]
     data: Vec<u8>,
 }

@@ -1,7 +1,7 @@
-use nom::combinator::map_res;
 use nom::Err::Error;
-use nom::error::ErrorKind;
 use nom::IResult;
+use nom::combinator::map_res;
+use nom::error::ErrorKind;
 use nom::number::complete::le_u8;
 use num_enum::TryFromPrimitive;
 use serde::{Deserialize, Serialize};
@@ -9,8 +9,13 @@ use serde::{Deserialize, Serialize};
 use smb_core::logging::trace;
 use smb_core::nt_status::NTStatus;
 
+use crate::util::auth::spnego::der_utils::{
+    DER_ENCODING_BYTE_ARRAY_TAG, DER_ENCODING_ENUM_TAG, DER_ENCODING_OID_TAG,
+    DER_ENCODING_SEQUENCE_TAG, MECH_LIST_MIC_TAG, NEG_STATE_TAG, NEG_TOKEN_RESP_TAG,
+    RESPONSE_TOKEN_TAG, SUPPORTED_MECH_TAG, encode_der_bytes, get_array_field_len, get_field_size,
+    get_length, parse_der_byte_array, parse_der_oid, parse_field_with_len, parse_length,
+};
 use crate::util::auth::{AuthMessage, AuthProvider};
-use crate::util::auth::spnego::der_utils::{DER_ENCODING_BYTE_ARRAY_TAG, DER_ENCODING_ENUM_TAG, DER_ENCODING_OID_TAG, DER_ENCODING_SEQUENCE_TAG, encode_der_bytes, get_array_field_len, get_field_size, get_length, MECH_LIST_MIC_TAG, NEG_STATE_TAG, NEG_TOKEN_RESP_TAG, parse_der_byte_array, parse_der_oid, parse_field_with_len, parse_length, RESPONSE_TOKEN_TAG, SUPPORTED_MECH_TAG};
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, TryFromPrimitive, Deserialize, Serialize)]
@@ -35,7 +40,7 @@ impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
         let state = Some(match status {
             NTStatus::StatusSuccess => NegotiateState::AcceptCompleted,
             NTStatus::MoreProcessingRequired => NegotiateState::AcceptIncomplete,
-            _ => NegotiateState::Reject
+            _ => NegotiateState::Reject,
         });
         let (response_token, supported_mech) = if token_content.as_bytes().is_empty() {
             (None, None)
@@ -70,15 +75,30 @@ impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
         }
 
         if let Some(supported_mech) = &self.supported_mech {
-            bytes.append(&mut encode_der_bytes(supported_mech, SUPPORTED_MECH_TAG, DER_ENCODING_OID_TAG, 0));
+            bytes.append(&mut encode_der_bytes(
+                supported_mech,
+                SUPPORTED_MECH_TAG,
+                DER_ENCODING_OID_TAG,
+                0,
+            ));
         }
 
         if let Some(response_token) = &self.response_token {
-            bytes.append(&mut encode_der_bytes(response_token, RESPONSE_TOKEN_TAG, DER_ENCODING_BYTE_ARRAY_TAG, 0));
+            bytes.append(&mut encode_der_bytes(
+                response_token,
+                RESPONSE_TOKEN_TAG,
+                DER_ENCODING_BYTE_ARRAY_TAG,
+                0,
+            ));
         }
 
         if let Some(mech_list_mic) = &self.mech_list_mic {
-            bytes.append(&mut encode_der_bytes(mech_list_mic, MECH_LIST_MIC_TAG, DER_ENCODING_BYTE_ARRAY_TAG, 0));
+            bytes.append(&mut encode_der_bytes(
+                mech_list_mic,
+                MECH_LIST_MIC_TAG,
+                DER_ENCODING_BYTE_ARRAY_TAG,
+                0,
+            ));
         }
 
         bytes
@@ -87,7 +107,9 @@ impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
     pub fn parse(bytes: &[u8]) -> IResult<&[u8], Self> {
         let (remaining, _) = parse_length(bytes)?;
         let (remaining, mut tag) = le_u8(remaining)?;
-        if tag != DER_ENCODING_SEQUENCE_TAG { return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))) }
+        if tag != DER_ENCODING_SEQUENCE_TAG {
+            return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)));
+        }
         let (remaining, mut sequence) = parse_field_with_len(remaining)?;
         let mut state = None;
         let mut supported_mech = None;
@@ -95,34 +117,46 @@ impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
         let mut mech_list_mic = None;
 
         while !sequence.is_empty() {
-            trace!(remaining_len = sequence.len(), "parsing SPNEGO response sequence field");
+            trace!(
+                remaining_len = sequence.len(),
+                "parsing SPNEGO response sequence field"
+            );
             (sequence, tag) = le_u8(sequence)?;
             match tag {
                 NEG_STATE_TAG => {
                     let (s, neg_state) = Self::parse_negotiate_state(sequence)?;
                     sequence = s;
                     state = Some(neg_state);
-                },
+                }
                 SUPPORTED_MECH_TAG => {
                     let (s, mech) = Self::parse_supported_mech(sequence)?;
                     sequence = s;
                     supported_mech = Some(mech);
-                },
+                }
                 RESPONSE_TOKEN_TAG => {
                     let (s, resp) = Self::parse_response_token(sequence)?;
                     sequence = s;
                     response_token = Some(resp);
-                },
+                }
                 MECH_LIST_MIC_TAG => {
                     let (s, mic) = Self::parse_mech_list_mic(sequence)?;
                     sequence = s;
                     mech_list_mic = Some(mic);
-                },
+                }
                 _ => return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))),
             }
         }
 
-        Ok((remaining, SPNEGOTokenResponseBody { mechanism: None, state, supported_mech, response_token, mech_list_mic }))
+        Ok((
+            remaining,
+            SPNEGOTokenResponseBody {
+                mechanism: None,
+                state,
+                supported_mech,
+                response_token,
+                mech_list_mic,
+            },
+        ))
     }
 }
 
@@ -131,7 +165,9 @@ impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
     fn parse_negotiate_state(buffer: &[u8]) -> IResult<&[u8], NegotiateState> {
         let (remaining, _) = parse_length(buffer)?;
         let (remaining, tag) = le_u8(remaining)?;
-        if tag != DER_ENCODING_ENUM_TAG { return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))) }
+        if tag != DER_ENCODING_ENUM_TAG {
+            return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)));
+        }
         map_res(le_u8, NegotiateState::try_from)(remaining)
     }
 
@@ -156,8 +192,9 @@ impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
             &*get_length(3),
             &[DER_ENCODING_ENUM_TAG],
             &*get_length(1),
-            &[*state as u8]
-        ].concat()
+            &[*state as u8],
+        ]
+        .concat()
     }
 
     fn supported_mech_bytes(&self, supported_mech: &[u8]) -> Vec<u8> {
@@ -167,8 +204,9 @@ impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
             &*get_length(construction_len),
             &[DER_ENCODING_OID_TAG],
             &*get_length(supported_mech.len()),
-            supported_mech
-        ].concat()
+            supported_mech,
+        ]
+        .concat()
     }
 
     fn response_token_bytes(&self, response_token: &[u8]) -> Vec<u8> {
@@ -178,10 +216,10 @@ impl<T: AuthProvider> SPNEGOTokenResponseBody<T> {
             &*get_length(construction_len),
             &[DER_ENCODING_BYTE_ARRAY_TAG],
             &*get_length(response_token.len()),
-            response_token
-        ].concat()
+            response_token,
+        ]
+        .concat()
     }
-
 
     fn token_fields_len(&self) -> usize {
         let mut len = 0;

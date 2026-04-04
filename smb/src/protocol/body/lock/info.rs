@@ -7,15 +7,7 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 use crate::protocol::body::lock::flags::SMBLockFlags;
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 pub struct SMBLockInfo {
     #[smb_direct(start(fixed = 0))]

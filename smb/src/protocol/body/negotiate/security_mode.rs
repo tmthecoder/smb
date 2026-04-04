@@ -1,7 +1,9 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use crate::util::flags_helper::{impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag};
+use crate::util::flags_helper::{
+    impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag,
+};
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
@@ -22,8 +24,14 @@ mod tests {
 
     #[test]
     fn security_mode_values() {
-        assert_eq!(NegotiateSecurityMode::NEGOTIATE_SIGNING_ENABLED.bits(), 0x0001);
-        assert_eq!(NegotiateSecurityMode::NEGOTIATE_SIGNING_REQUIRED.bits(), 0x0002);
+        assert_eq!(
+            NegotiateSecurityMode::NEGOTIATE_SIGNING_ENABLED.bits(),
+            0x0001
+        );
+        assert_eq!(
+            NegotiateSecurityMode::NEGOTIATE_SIGNING_REQUIRED.bits(),
+            0x0002
+        );
     }
 
     #[test]

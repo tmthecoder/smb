@@ -6,19 +6,11 @@ use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::empty::SMBEmpty;
 use crate::protocol::body::lock::info::SMBLockInfo;
 
-mod info;
 mod flags;
+mod info;
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 48)]
 pub struct SMBLockRequest {

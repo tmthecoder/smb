@@ -4,16 +4,15 @@ use std::fmt::{Debug, Formatter};
 use bitflags::bitflags;
 use uuid::Uuid;
 
-use crate::server::open::SMBOpen;
 use crate::server::Server;
+use crate::server::open::SMBOpen;
 
 pub trait Lease: Send + Sync {}
-
 
 #[derive(Debug)]
 pub struct SMBLeaseTable<L: Lease> {
     client_guid: Uuid,
-    lease_list: HashMap<u64, L>
+    lease_list: HashMap<u64, L>,
 }
 
 pub struct SMBLease<S: Server> {
@@ -30,10 +29,16 @@ pub struct SMBLease<S: Server> {
     file_delete_on_close: bool,
     epoch: u64,
     parent_lease_key: u128,
-    version: u8
+    version: u8,
 }
 
-impl<S: Server> Debug for SMBLease<S> where S::Handle: Debug, S: Debug, S::Session: Debug, S::Share: Debug {
+impl<S: Server> Debug for SMBLease<S>
+where
+    S::Handle: Debug,
+    S: Debug,
+    S::Session: Debug,
+    S::Share: Debug,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SMBLease")
             .field("lease_key", &self.lease_key)

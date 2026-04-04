@@ -5,7 +5,21 @@ use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
 
 // TODO this needs to be a discrim for an enum based type for here and for QueryInfo
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, SMBFromBytes, SMBToBytes, SMBByteSize, TryFromPrimitive, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    SMBFromBytes,
+    SMBToBytes,
+    SMBByteSize,
+    TryFromPrimitive,
+    Serialize,
+    Deserialize,
+)]
 pub enum SMBInformationClass {
     FileDirectoryInformation = 0x1,
     FullFileificateInformation = 0x2,

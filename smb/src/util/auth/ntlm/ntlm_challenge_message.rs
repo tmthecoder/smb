@@ -40,17 +40,19 @@ impl NTLMChallengeMessageBody {
         }
         [
             self.signature.as_bytes(), // 0 - 8
-            &u32_to_bytes(0x02), // 8 - 12
-            &u16_to_bytes(20), &u16_to_bytes(20), // 12 - 16
-            &u32_to_bytes(56), // 16 - 20
+            &u32_to_bytes(0x02),       // 8 - 12
+            &u16_to_bytes(20),
+            &u16_to_bytes(20),                          // 12 - 16
+            &u32_to_bytes(56),                          // 16 - 20
             &u32_to_bytes(self.negotiate_flags.bits()), // 20 - 24
-            &self.server_challenge, // 24 - 32
-            &[0; 8], // 32 - 40
-            &u16_to_bytes(52), &u16_to_bytes(52), // 40-44
-            &u32_to_bytes(76), // 44 - 48
-            &[6, 1], // NTLM major minor
+            &self.server_challenge,                     // 24 - 32
+            &[0; 8],                                    // 32 - 40
+            &u16_to_bytes(52),
+            &u16_to_bytes(52),   // 40-44
+            &u32_to_bytes(76),   // 44 - 48
+            &[6, 1],             // NTLM major minor
             &u16_to_bytes(7600), // NTLM build
-            &[0, 0, 0, 15], // NTLM current revision
+            &[0, 0, 0, 15],      // NTLM current revision
             &name,
             &u16_to_bytes(1),
             &u16_to_bytes(20),
@@ -59,7 +61,8 @@ impl NTLMChallengeMessageBody {
             &u16_to_bytes(20),
             &name,
             &[0; 4],
-        ].concat()
+        ]
+        .concat()
     }
 }
 

@@ -1,6 +1,5 @@
-
-use crate::server::open::SMBOpen;
 use crate::server::Server;
+use crate::server::open::SMBOpen;
 
 pub trait Request: Send + Sync {}
 
@@ -11,5 +10,5 @@ pub struct SMBRequest<S: Server> {
     open: SMBOpen<S>,
     is_encrypted: bool,
     transform_session_id: u64,
-    compress_reply: bool
+    compress_reply: bool,
 }

@@ -1,8 +1,8 @@
+use nom::Err::Error;
+use nom::IResult;
 use nom::bytes::complete::take;
 use nom::combinator::map;
-use nom::Err::Error;
 use nom::error::ErrorKind;
-use nom::IResult;
 use nom::multi::fold_many_m_n;
 use nom::number::complete::le_u8;
 
@@ -40,21 +40,27 @@ impl AsDerBytes for Vec<u8> {
 
 impl AsDerBytes for Vec<Vec<u8>> {
     fn der_bytes(&self, item_tag: u8) -> Vec<u8> {
-        self.iter().flat_map(|inner_arr| {
-            [
-                &[item_tag][0..],
-                &*get_length(inner_arr.len()),
-                inner_arr
-            ].concat()
-        }).collect::<Vec<u8>>()
+        self.iter()
+            .flat_map(|inner_arr| {
+                [&[item_tag][0..], &*get_length(inner_arr.len()), inner_arr].concat()
+            })
+            .collect::<Vec<u8>>()
     }
 }
 
 pub fn parse_length(buffer: &[u8]) -> IResult<&[u8], usize> {
     let (remaining, len) = le_u8(buffer)?;
-    if len < 0x80 { return Ok((remaining, len as usize)); }
+    if len < 0x80 {
+        return Ok((remaining, len as usize));
+    }
     let field_size = (len & 0x7f) as usize;
-    fold_many_m_n(field_size, field_size, le_u8, || 0_usize, |len, item| len * 256 + item as usize)(remaining)
+    fold_many_m_n(
+        field_size,
+        field_size,
+        le_u8,
+        || 0_usize,
+        |len, item| len * 256 + item as usize,
+    )(remaining)
 }
 
 pub fn parse_field_with_len(buffer: &[u8]) -> IResult<&[u8], &[u8]> {
@@ -72,14 +78,20 @@ pub fn get_array_field_len<T: WithDerLength>(array: &T) -> usize {
     1 + bytes_construction_len_field_size + bytes_construction_len
 }
 
-pub fn encode_der_bytes<T: AsDerBytes + WithDerLength>(bytes: &T, type_tag: u8, encoding_tag: u8, item_tag: u8) -> Vec<u8> {
+pub fn encode_der_bytes<T: AsDerBytes + WithDerLength>(
+    bytes: &T,
+    type_tag: u8,
+    encoding_tag: u8,
+    item_tag: u8,
+) -> Vec<u8> {
     [
         &[type_tag][0..],
         &*get_length(1 + get_field_size(bytes.der_length()) + bytes.der_length()),
         &[encoding_tag],
         &*get_length(bytes.der_length()),
-        &*bytes.der_bytes(item_tag)
-    ].concat()
+        &*bytes.der_bytes(item_tag),
+    ]
+    .concat()
 }
 
 pub fn get_field_size(len: usize) -> usize {
@@ -122,7 +134,9 @@ pub fn parse_der_byte_array(buffer: &[u8]) -> IResult<&[u8], Vec<u8>> {
 
 pub fn parse_der_multibyte(buffer: &[u8], tag: u8) -> IResult<&[u8], Vec<u8>> {
     let (remaining, b_tag) = le_u8(buffer)?;
-    if tag != b_tag { return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail))); }
+    if tag != b_tag {
+        return Err(Error(nom::error::Error::new(remaining, ErrorKind::Fail)));
+    }
     map(parse_field_with_len, |buf| buf.to_vec())(remaining)
 }
 

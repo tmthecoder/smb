@@ -6,9 +6,11 @@ use smb_core::SMBResult;
 
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
 use crate::protocol::body::filetime::FileTime;
-use crate::protocol::body::tree_connect::access_mask::{SMBAccessMask, SMBFilePipePrinterAccessMask};
+use crate::protocol::body::tree_connect::access_mask::{
+    SMBAccessMask, SMBFilePipePrinterAccessMask,
+};
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
-use crate::server::share::{ResourceHandle, ResourceType, SharedResource, SMBFileMetadata};
+use crate::server::share::{ResourceHandle, ResourceType, SMBFileMetadata, SharedResource};
 
 /// A minimal IPC$ named pipe share handle
 #[derive(Debug)]
@@ -57,7 +59,9 @@ pub struct SMBIPCShare<UserName: Send + Sync, Handle: From<SMBIPCHandle> + Resou
     _handle: PhantomData<Handle>,
 }
 
-impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle> Default for SMBIPCShare<UserName, Handle> {
+impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle> Default
+    for SMBIPCShare<UserName, Handle>
+{
     fn default() -> Self {
         Self {
             _user_name: PhantomData,
@@ -66,25 +70,34 @@ impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle> Default
     }
 }
 
-impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle> SMBIPCShare<UserName, Handle> {
+impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle>
+    SMBIPCShare<UserName, Handle>
+{
     pub fn new() -> Self {
         Self::default()
     }
 }
 
-impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle> Debug for SMBIPCShare<UserName, Handle> {
+impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle> Debug
+    for SMBIPCShare<UserName, Handle>
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SMBIPCShare").finish()
     }
 }
 
-impl<UserName: Send + Sync + 'static, Handle: From<SMBIPCHandle> + ResourceHandle + 'static> From<SMBIPCShare<UserName, Handle>> for Box<dyn SharedResource<UserName=UserName, Handle=Handle>> {
+impl<UserName: Send + Sync + 'static, Handle: From<SMBIPCHandle> + ResourceHandle + 'static>
+    From<SMBIPCShare<UserName, Handle>>
+    for Box<dyn SharedResource<UserName = UserName, Handle = Handle>>
+{
     fn from(value: SMBIPCShare<UserName, Handle>) -> Self {
         Box::new(value)
     }
 }
 
-impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle> SharedResource for SMBIPCShare<UserName, Handle> {
+impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle> SharedResource
+    for SMBIPCShare<UserName, Handle>
+{
     type UserName = UserName;
     type Handle = Handle;
 
@@ -100,7 +113,12 @@ impl<UserName: Send + Sync, Handle: From<SMBIPCHandle> + ResourceHandle> SharedR
         SMBShareFlags::default()
     }
 
-    fn handle_create(&self, path: &str, _disposition: SMBCreateDisposition, _directory: bool) -> SMBResult<Self::Handle> {
+    fn handle_create(
+        &self,
+        path: &str,
+        _disposition: SMBCreateDisposition,
+        _directory: bool,
+    ) -> SMBResult<Self::Handle> {
         let handle = SMBIPCHandle {
             path: path.to_string(),
         };

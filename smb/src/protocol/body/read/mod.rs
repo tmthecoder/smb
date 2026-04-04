@@ -8,19 +8,11 @@ use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::read::channel::SMBRWChannel;
 use crate::protocol::body::read::flags::{SMBReadRequestFlags, SMBReadResponseFlags};
 
-mod flags;
 pub mod channel;
+mod flags;
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 49)]
 pub struct SMBReadRequest {
@@ -38,20 +30,15 @@ pub struct SMBReadRequest {
     channel: SMBRWChannel,
     #[smb_direct(start(fixed = 40))]
     remaining_bytes: u32,
-    #[smb_buffer(offset(inner(start = 44, num_type = "u16", subtract = 64)), length(inner(start = 46, num_type = "u16")))]
+    #[smb_buffer(
+        offset(inner(start = 44, num_type = "u16", subtract = 64)),
+        length(inner(start = 46, num_type = "u16"))
+    )]
     channel_information: Vec<u8>,
 }
 
 #[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    SMBByteSize,
-    SMBToBytes,
-    SMBFromBytes,
-    Serialize,
-    Deserialize,
-    Clone
+    Debug, PartialEq, Eq, SMBByteSize, SMBToBytes, SMBFromBytes, Serialize, Deserialize, Clone,
 )]
 #[smb_byte_tag(value = 17)]
 pub struct SMBReadResponse {
@@ -61,6 +48,10 @@ pub struct SMBReadResponse {
     data_remaining: u32,
     #[smb_direct(start(fixed = 12))]
     flags: SMBReadResponseFlags,
-    #[smb_buffer(order = 0, offset(inner(start = 2, num_type = "u8", subtract = 64)), length(inner(start = 4, num_type = "u32")))]
+    #[smb_buffer(
+        order = 0,
+        offset(inner(start = 2, num_type = "u8", subtract = 64)),
+        length(inner(start = 4, num_type = "u32"))
+    )]
     data: Vec<u8>,
 }
