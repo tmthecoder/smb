@@ -92,9 +92,11 @@ impl<'a, R: SMBReadStream> SMBMessageIterator<'a, R> {
 }
 
 #[cfg(feature = "async")]
-#[allow(clippy::type_complexity)]
+type SMBMessageStreamResult<'a, T> = (SMBResult<SMBMessage<SMBSyncHeader, SMBBody>>, SMBMessageIterator<'a, T>);
+
+#[cfg(feature = "async")]
 pub struct SMBMessageStream<'a, T: SMBReadStream> {
-    pub(crate) inner: ReusableBoxFuture<'a, (SMBResult<SMBMessage<SMBSyncHeader, SMBBody>>, SMBMessageIterator<'a, T>)>,
+    pub(crate) inner: ReusableBoxFuture<'a, SMBMessageStreamResult<'a, T>>,
 }
 
 #[derive(Debug)]
