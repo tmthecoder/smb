@@ -22,7 +22,6 @@ use crate::server::session::Session;
 use crate::server::share::SharedResource;
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct SMBTreeConnect<S: Server> {
     tree_id: u32,
     session: Weak<RwLock<S::Session>>,

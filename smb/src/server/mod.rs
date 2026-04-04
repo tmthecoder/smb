@@ -92,7 +92,6 @@ type DefaultHandle = Box<dyn ResourceHandle>;
 #[derive(Debug, Builder)]
 #[builder(pattern = "owned")]
 #[builder(build_fn(name = "build_inner", private))]
-#[allow(dead_code)]
 pub struct SMBServer<Addrs: Send + Sync, Listener: SMBSocket<Addrs> = TcpListener, Auth: AuthProvider = NTLMAuthProvider, Share: SharedResource<UserName=UserName<Auth>, Handle=Handle> = DefaultShare<Auth>, Handle: ResourceHandle = DefaultHandle> {
     #[builder(default = "Default::default()")]
     statistics: Arc<RwLock<SMBServerDiagnostics>>,

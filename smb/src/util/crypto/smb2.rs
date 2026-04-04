@@ -28,7 +28,6 @@ pub fn calculate_signature(signing_key: &[u8], dialect: SMBDialect, buffer: &[u8
     Ok(output)
 }
 
-#[allow(dead_code)]
 pub fn generate_signing_key(session_key: &[u8], dialect: SMBDialect, preauth_integrity_hash_value: &[u8]) -> SMBResult<Vec<u8>> {
     if dialect == SMBDialect::V2_0_2 || dialect == SMBDialect::V2_1_0 {
         return Ok(session_key.into());
