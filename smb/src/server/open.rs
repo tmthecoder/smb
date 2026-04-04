@@ -1,5 +1,4 @@
-use std::fmt::{Debug, Formatter, Pointer};
-use std::future::Future;
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use uuid::Uuid;
@@ -137,19 +136,15 @@ impl<S: Server> Open for SMBOpen<S> {
 
     fn file_id(&self) -> SMBFileId {
         SMBFileId {
-            persistent: self.session_id as u64,
-            volatile: self.session_id as u64,
+            persistent: self.session_id,
+            volatile: self.session_id,
         }
     }
 
     fn file_metadata(&self) -> SMBResult<SMBFileMetadata> {
-        return self.underlying.metadata()
+        self.underlying.metadata()
     }
 }
-// TODO: From MS-FSCC section 2.6
-#[derive(Debug)]
-struct FileAttributes;
-
 #[derive(Debug)]
 pub enum SMBOplockState {
     Held,
@@ -158,6 +153,7 @@ pub enum SMBOplockState {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct LockSequence {
     sequence_number: u32,
     valid: bool,
@@ -210,7 +206,7 @@ impl<S: Server> Debug for SMBOpen<S> where S: Debug, S::Session: Debug, S::Handl
 impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBOpen<S>> {
     type Inner = ();
 
-    async fn inner(&self, message: &SMBMessageType) -> Option<Self::Inner> {
+    async fn inner(&self, _message: &SMBMessageType) -> Option<Self::Inner> {
         todo!()
     }
 }

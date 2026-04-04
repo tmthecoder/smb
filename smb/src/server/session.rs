@@ -62,6 +62,7 @@ pub trait Session<C: Connection, A: AuthProvider, O: Open>: Send + Sync {
 
 #[derive(Builder)]
 #[builder(pattern = "owned")]
+#[allow(dead_code)]
 pub struct SMBSession<S: Server> {
     session_id: u64,
     state: SessionState,

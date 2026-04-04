@@ -10,11 +10,13 @@ use crate::server::Server;
 pub trait Lease: Send + Sync {}
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct SMBLeaseTable<L: Lease> {
     client_guid: Uuid,
     lease_list: HashMap<u64, L>
 }
 
+#[allow(dead_code)]
 pub struct SMBLease<S: Server> {
     lease_key: u128,
     client_lease_id: u64,
@@ -57,6 +59,7 @@ impl<S: Server> Debug for SMBLease<S> where S::Handle: Debug, S: Debug, S::Sessi
 impl<S: Server> Lease for SMBLease<S> {}
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct SMBLeaseBreakNotification {
     new_epoch: u16,
     flags: SMBLeaseBreakNotificationFlags,
