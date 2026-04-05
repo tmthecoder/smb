@@ -7,7 +7,7 @@ use tokio::sync::RwLock;
 use smb_core::error::SMBError;
 use smb_core::logging::{debug, trace, warn};
 use smb_core::nt_status::NTStatus;
-use smb_core::{SMBByteSize, SMBResult, SMBToBytes};
+use smb_core::{SMBResult, SMBToBytes};
 
 use crate::protocol::body::SMBBody;
 use crate::protocol::body::close::{SMBCloseRequest, SMBCloseResponse};

@@ -7,11 +7,11 @@ use crate::util::flags_helper::{
     impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag,
 };
 
-/// ACCESS_MASK flags for FILE_ACCESS_INFORMATION (MS-FSCC 2.4.1).
-///
-/// These are the same ACCESS_MASK values defined in [MS-DTYP] §2.4.3 /
-/// [MS-SMB2] §2.2.13.1, representing the access rights granted on the open.
 bitflags! {
+    /// ACCESS_MASK flags for FILE_ACCESS_INFORMATION (MS-FSCC 2.4.1).
+    ///
+    /// These are the same ACCESS_MASK values defined in [MS-DTYP] §2.4.3 /
+    /// [MS-SMB2] §2.2.13.1, representing the access rights granted on the open.
     #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
     pub struct FileAccessFlags: u32 {
         const FILE_READ_DATA         = 0x00000001;

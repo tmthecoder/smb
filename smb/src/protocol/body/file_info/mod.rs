@@ -59,6 +59,7 @@ pub struct FileAllInformation {
 }
 
 impl FileAllInformation {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         basic: FileBasicInformation,
         standard: FileStandardInformation,

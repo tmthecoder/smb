@@ -141,7 +141,7 @@ impl<S: Server> Open for SMBOpen<S> {
     }
 
     fn file_id(&self) -> SMBFileId {
-        SMBFileId::new(self.global_id as u64, self.session_id as u64)
+        SMBFileId::new(self.global_id as u64, self.session_id)
     }
 
     fn file_metadata(&self) -> SMBResult<SMBFileMetadata> {

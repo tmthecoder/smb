@@ -3,6 +3,7 @@ use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 
 use smb_core::SMBResult;
+use smb_core::error::SMBError;
 
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
 use crate::protocol::body::filetime::FileTime;

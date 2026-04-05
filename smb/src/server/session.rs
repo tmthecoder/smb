@@ -290,7 +290,7 @@ impl<S: Server<Session = SMBSession<S>>> SMBLockedMessageHandlerBase
             share.clone(),
             response.access_mask().clone(),
         );
-        let header = SMBSyncHeader::create_response_header(&header, 0, self_rd.id(), tree_id);
+        let header = SMBSyncHeader::create_response_header(header, 0, self_rd.id(), tree_id);
         drop(self_rd);
         let mut self_wr = self.write().await;
         self_wr

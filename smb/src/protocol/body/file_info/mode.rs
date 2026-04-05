@@ -7,8 +7,8 @@ use crate::util::flags_helper::{
     impl_smb_byte_size_for_bitflag, impl_smb_from_bytes_for_bitflag, impl_smb_to_bytes_for_bitflag,
 };
 
-/// Mode flags for FILE_MODE_INFORMATION (MS-FSCC 2.4.26).
 bitflags! {
+    /// Mode flags for FILE_MODE_INFORMATION (MS-FSCC 2.4.26).
     #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
     pub struct FileModeFlags: u32 {
         const FILE_WRITE_THROUGH            = 0x00000002;
