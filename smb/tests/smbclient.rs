@@ -73,7 +73,6 @@ fn run_smbclient(args: &[&str]) -> (bool, String, String) {
 /// should succeed — indicated by smbclient progressing past the initial
 /// connection phase.
 #[test]
-#[ignore]
 fn negotiate_completes() {
     let port = free_port();
     let mut server = spawn_server(port);
@@ -106,7 +105,6 @@ fn negotiate_completes() {
 /// Verify that the server rejects connections with an unsupported dialect
 /// gracefully (no crash).
 #[test]
-#[ignore]
 fn server_does_not_crash_on_smb1_only() {
     let port = free_port();
     let mut server = spawn_server(port);
@@ -146,7 +144,6 @@ fn server_does_not_crash_on_smb1_only() {
 /// succeeds depends on the auth configuration, but the server should not
 /// crash.
 #[test]
-#[ignore]
 fn session_setup_with_credentials() {
     let port = free_port();
     let mut server = spawn_server(port);
@@ -178,7 +175,6 @@ fn session_setup_with_credentials() {
 
 /// Verify that anonymous (no-auth) session setup is handled.
 #[test]
-#[ignore]
 fn session_setup_anonymous() {
     let port = free_port();
     let mut server = spawn_server(port);
@@ -217,7 +213,6 @@ fn session_setup_anonymous() {
 /// reject it (e.g. due to signing issues) but should respond with a
 /// proper NT status, not crash.
 #[test]
-#[ignore]
 fn tree_connect_to_share() {
     let port = free_port();
     let mut server = spawn_server(port);
@@ -249,7 +244,6 @@ fn tree_connect_to_share() {
 
 /// Verify that tree connect to a nonexistent share returns an error.
 #[test]
-#[ignore]
 fn tree_connect_nonexistent_share() {
     let port = free_port();
     let mut server = spawn_server(port);
@@ -286,7 +280,6 @@ fn tree_connect_nonexistent_share() {
 /// Expected: The server handles Create, Read, QueryInfo, and Close
 /// without crashing. smbclient should be able to retrieve file contents.
 #[test]
-#[ignore]
 fn file_read_does_not_crash_server() {
     use std::io::Write;
 
@@ -365,7 +358,6 @@ fn file_read_does_not_crash_server() {
 
 /// Verify that smbclient can list files (which triggers QueryInfo).
 #[test]
-#[ignore]
 fn directory_listing_does_not_crash_server() {
     use std::io::Write;
 
@@ -425,7 +417,6 @@ fn directory_listing_does_not_crash_server() {
 
 /// Verify that reading a nonexistent file returns an error without crashing.
 #[test]
-#[ignore]
 fn read_nonexistent_file_returns_error() {
     let port = free_port();
 
@@ -490,7 +481,6 @@ fn read_nonexistent_file_returns_error() {
 /// Verify that smbclient can write (upload) a file to the share and that
 /// the contents match what was written.
 #[test]
-#[ignore]
 fn file_write_uploads_file() {
     use std::io::Write;
 
@@ -571,7 +561,6 @@ fn file_write_uploads_file() {
 /// Verify that smbclient can write a file and then read it back, and the
 /// contents round-trip correctly.
 #[test]
-#[ignore]
 fn file_write_then_read_round_trip() {
     use std::io::Write;
 
@@ -663,7 +652,6 @@ fn file_write_then_read_round_trip() {
 /// Note: smbclient doesn't have a direct "echo" command, but we can
 /// verify the server stays alive through multiple operations.
 #[test]
-#[ignore]
 fn server_survives_multiple_connections() {
     let port = free_port();
     let mut server = spawn_server(port);
