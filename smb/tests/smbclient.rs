@@ -13,6 +13,9 @@
 //! without the server binary. Use `cargo test --test smbclient --features server -- --ignored`
 //! to run them explicitly.
 
+// Tests spawn the server and kill it at the end; we don't need to wait on exit status.
+#![allow(clippy::zombie_processes)]
+
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -323,7 +326,7 @@ fn file_read_does_not_crash_server() {
     let download_str = download_path.to_str().unwrap().to_string();
     let get_cmd = format!("get testfile.txt {}", download_str);
     let (success, stdout, stderr) = run_smbclient(&[
-        &format!("//127.0.0.1/test"),
+        "//127.0.0.1/test",
         "-p",
         &port_str,
         "-U",
@@ -396,7 +399,7 @@ fn directory_listing_does_not_crash_server() {
 
     let port_str = port.to_string();
     let (_success, _stdout, stderr) = run_smbclient(&[
-        &format!("//127.0.0.1/test"),
+        "//127.0.0.1/test",
         "-p",
         &port_str,
         "-U",
@@ -448,7 +451,7 @@ fn read_nonexistent_file_returns_error() {
 
     let port_str = port.to_string();
     let (success, stdout, stderr) = run_smbclient(&[
-        &format!("//127.0.0.1/test"),
+        "//127.0.0.1/test",
         "-p",
         &port_str,
         "-U",
@@ -474,6 +477,177 @@ fn read_nonexistent_file_returns_error() {
         status.is_none(),
         "Server should still be running after failed file read. stderr: {}",
         stderr
+    );
+
+    server.kill().ok();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+// ---------------------------------------------------------------------------
+// File Write Tests
+// ---------------------------------------------------------------------------
+
+/// Verify that smbclient can write (upload) a file to the share and that
+/// the contents match what was written.
+#[test]
+#[ignore]
+fn file_write_uploads_file() {
+    use std::io::Write;
+
+    let port = free_port();
+
+    let tmp_dir = std::env::temp_dir().join(format!("smb_test_write_{}", port));
+    std::fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+
+    // Create a source file for smbclient to upload
+    let source_file = tmp_dir.join("upload_source.txt");
+    let source_contents = b"hello written to smb server";
+    {
+        let mut f = std::fs::File::create(&source_file).expect("Failed to create source file");
+        f.write_all(source_contents)
+            .expect("Failed to write source file");
+    }
+
+    let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
+    let mut server = std::process::Command::new(server_bin)
+        .env("SMB_PORT", port.to_string())
+        .env("SMB_SHARE_PATH", tmp_dir.to_str().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn SMB server binary");
+
+    let addr = format!("127.0.0.1:{}", port);
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let port_str = port.to_string();
+    let source_str = source_file.to_str().unwrap().to_string();
+    let put_cmd = format!("put {} uploaded.txt", source_str);
+    let (success, stdout, stderr) = run_smbclient(&[
+        "//127.0.0.1/test",
+        "-p",
+        &port_str,
+        "-U",
+        "tejasmehta%password",
+        "-m",
+        "SMB2",
+        "-c",
+        &put_cmd,
+    ]);
+
+    // Server should not crash
+    std::thread::sleep(Duration::from_millis(200));
+    let status = server.try_wait().expect("Failed to check server status");
+    assert!(
+        status.is_none(),
+        "Server should still be running after file write. stdout: {} stderr: {}",
+        stdout,
+        stderr
+    );
+
+    assert!(
+        success,
+        "smbclient put should succeed. stdout: {} stderr: {}",
+        stdout, stderr
+    );
+
+    // Verify the uploaded file exists on the server side and contents match
+    let uploaded_path = tmp_dir.join("uploaded.txt");
+    let uploaded = std::fs::read(&uploaded_path).expect("Uploaded file should exist on server");
+    assert_eq!(
+        uploaded, source_contents,
+        "Uploaded file contents should match the source"
+    );
+
+    server.kill().ok();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+/// Verify that smbclient can write a file and then read it back, and the
+/// contents round-trip correctly.
+#[test]
+#[ignore]
+fn file_write_then_read_round_trip() {
+    use std::io::Write;
+
+    let port = free_port();
+
+    let tmp_dir = std::env::temp_dir().join(format!("smb_test_rw_{}", port));
+    std::fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+
+    // Create a source file for smbclient to upload
+    let source_file = tmp_dir.join("rw_source.txt");
+    let source_contents = b"round-trip test data";
+    {
+        let mut f = std::fs::File::create(&source_file).expect("Failed to create source file");
+        f.write_all(source_contents)
+            .expect("Failed to write source file");
+    }
+
+    let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
+    let mut server = std::process::Command::new(server_bin)
+        .env("SMB_PORT", port.to_string())
+        .env("SMB_SHARE_PATH", tmp_dir.to_str().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn SMB server binary");
+
+    let addr = format!("127.0.0.1:{}", port);
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let port_str = port.to_string();
+    let source_str = source_file.to_str().unwrap().to_string();
+    let download_path = tmp_dir.join("rw_downloaded.txt");
+    let download_str = download_path.to_str().unwrap().to_string();
+
+    // Upload, then download in a single smbclient session
+    let cmd = format!(
+        "put {} rw_remote.txt; get rw_remote.txt {}",
+        source_str, download_str
+    );
+    let (success, stdout, stderr) = run_smbclient(&[
+        "//127.0.0.1/test",
+        "-p",
+        &port_str,
+        "-U",
+        "tejasmehta%password",
+        "-m",
+        "SMB2",
+        "-c",
+        &cmd,
+    ]);
+
+    // Server should not crash
+    std::thread::sleep(Duration::from_millis(200));
+    let status = server.try_wait().expect("Failed to check server status");
+    assert!(
+        status.is_none(),
+        "Server should still be running after put+get. stdout: {} stderr: {}",
+        stdout,
+        stderr
+    );
+
+    assert!(
+        success,
+        "smbclient put+get should succeed. stdout: {} stderr: {}",
+        stdout, stderr
+    );
+
+    let downloaded = std::fs::read(&download_path).expect("Downloaded file should exist");
+    assert_eq!(
+        downloaded, source_contents,
+        "Downloaded file contents should match the originally written data"
     );
 
     server.kill().ok();

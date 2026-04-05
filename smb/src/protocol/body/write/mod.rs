@@ -136,7 +136,7 @@ mod tests {
                 buf.push(0);
             }
             // data (100 bytes)
-            buf.extend_from_slice(&vec![0xAB; 100]);
+            buf.extend_from_slice(&[0xAB; 100]);
             buf
         };
         let (_, req) = SMBWriteRequest::smb_from_bytes(&bytes).unwrap();
