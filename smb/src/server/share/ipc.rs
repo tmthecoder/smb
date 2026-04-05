@@ -52,6 +52,12 @@ impl ResourceHandle for SMBIPCHandle {
             smb_core::nt_status::NTStatus::InvalidDeviceRequest,
         ))
     }
+
+    fn write_data(&mut self, _offset: u64, _data: &[u8]) -> SMBResult<u32> {
+        Err(SMBError::response_error(
+            smb_core::nt_status::NTStatus::InvalidDeviceRequest,
+        ))
+    }
 }
 
 impl From<SMBIPCHandle> for Box<dyn ResourceHandle> {

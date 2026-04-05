@@ -33,6 +33,7 @@ pub trait Open: Send + Sync {
     fn file_id(&self) -> SMBFileId;
     fn file_metadata(&self) -> SMBResult<SMBFileMetadata>;
     fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>>;
+    fn write_data(&mut self, offset: u64, data: &[u8]) -> SMBResult<u32>;
 }
 
 pub struct SMBOpen<S: Server> {
@@ -150,6 +151,10 @@ impl<S: Server> Open for SMBOpen<S> {
 
     fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>> {
         self.underlying.read_data(offset, length)
+    }
+
+    fn write_data(&mut self, offset: u64, data: &[u8]) -> SMBResult<u32> {
+        self.underlying.write_data(offset, data)
     }
 }
 

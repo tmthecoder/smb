@@ -2,7 +2,7 @@ use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::fs;
 use std::fs::{File, OpenOptions, ReadDir};
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,6 +22,7 @@ use crate::server::share::{
 
 /// Maximum single read size (8 MB), per MS-SMB2 §3.3.5.12 recommendation for SMB 3.x.
 const MAX_READ_SIZE: u32 = 8 * 1024 * 1024;
+const MAX_WRITE_SIZE: u32 = 8 * 1024 * 1024;
 
 /// Normalize a path by resolving `.` and `..` components lexically (without
 /// touching the filesystem). Returns `None` if the normalized path would
@@ -143,6 +144,21 @@ impl ResourceHandle for SMBFileSystemHandle {
             SMBFileSystemResourceHandle::Directory(_) => Err(SMBError::response_error(
                 smb_core::nt_status::NTStatus::InvalidDeviceRequest,
             )),
+        }
+    }
+
+    fn write_data(&mut self, offset: u64, data: &[u8]) -> SMBResult<u32> {
+        match &mut self.resource {
+            SMBFileSystemResourceHandle::File(file) => {
+                let capped = &data[..data.len().min(MAX_WRITE_SIZE as usize)];
+                file.seek(SeekFrom::Start(offset))
+                    .map_err(SMBError::io_error)?;
+                let bytes_written = file.write(capped).map_err(SMBError::io_error)?;
+                Ok(bytes_written as u32)
+            }
+            SMBFileSystemResourceHandle::Directory(_) => {
+                Err(SMBError::response_error(NTStatus::InvalidDeviceRequest))
+            }
         }
     }
 }

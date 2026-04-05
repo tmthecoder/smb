@@ -27,6 +27,7 @@ use crate::protocol::body::query_info::info_type::SMBInfoType;
 use crate::protocol::body::query_info::{SMBQueryInfoRequest, SMBQueryInfoResponse};
 use crate::protocol::body::read::{SMBReadRequest, SMBReadResponse};
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
+use crate::protocol::body::write::{SMBWriteRequest, SMBWriteResponse};
 use crate::protocol::header::SMBSyncHeader;
 use crate::protocol::message::SMBMessage;
 use crate::server::Server;
@@ -265,6 +266,26 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
         Ok(SMBHandlerState::Finished(SMBMessage::new(
             header,
             SMBBody::ReadResponse(response),
+        )))
+    }
+
+    async fn handle_write(
+        &mut self,
+        header: &SMBSyncHeader,
+        message: &SMBWriteRequest,
+    ) -> SMBResult<SMBHandlerState<Self::Inner>> {
+        debug!(file_id = ?message.file_id(), offset = message.write_offset(), length = message.write_length(), "handling write request");
+        let open = self.find_open(message.file_id()).await?;
+        let mut open_wr = open.write().await;
+        let bytes_written = open_wr.write_data(message.write_offset(), message.data_to_write())?;
+        drop(open_wr);
+
+        debug!(bytes_written, "write completed");
+        let response = SMBWriteResponse::new(bytes_written);
+        let header = header.create_response_header(0, header.session_id, header.tree_id);
+        Ok(SMBHandlerState::Finished(SMBMessage::new(
+            header,
+            SMBBody::WriteResponse(response),
         )))
     }
 

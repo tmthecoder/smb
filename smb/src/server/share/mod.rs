@@ -25,6 +25,7 @@ pub trait ResourceHandle: Send + Sync {
     fn path(&self) -> &str;
     fn metadata(&self) -> SMBResult<SMBFileMetadata>;
     fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>>;
+    fn write_data(&mut self, offset: u64, data: &[u8]) -> SMBResult<u32>;
 }
 
 pub struct SMBFileMetadata {
@@ -103,6 +104,10 @@ impl<H: ?Sized + ResourceHandle + 'static> ResourceHandle for Box<H> {
 
     fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>> {
         H::read_data(self, offset, length)
+    }
+
+    fn write_data(&mut self, offset: u64, data: &[u8]) -> SMBResult<u32> {
+        H::write_data(self, offset, data)
     }
 }
 
