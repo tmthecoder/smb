@@ -275,7 +275,7 @@ mod tests {
             FilePositionInformation::new(0),
             FileModeInformation::new(FileModeFlags::empty()),
             FileAlignmentInformation::new(FileAlignmentRequirement::Byte),
-            FileNameInformation::new(24, "testfile.txt".into()),
+            FileNameInformation::from_name("testfile.txt".into()),
         );
         let bytes = all.smb_to_bytes();
         // 40 + 24 + 8 + 4 + 4 + 8 + 4 + 4 + (4 + 24) = 124
@@ -300,7 +300,7 @@ mod tests {
             FilePositionInformation::new(0),
             FileModeInformation::new(FileModeFlags::empty()),
             FileAlignmentInformation::new(FileAlignmentRequirement::Byte),
-            FileNameInformation::new(0, String::new()),
+            FileNameInformation::from_name(String::new()),
         );
         let all_bytes = all.smb_to_bytes();
         let basic_bytes = basic.smb_to_bytes();
@@ -324,7 +324,7 @@ mod tests {
             FilePositionInformation::new(256),
             FileModeInformation::new(FileModeFlags::empty()),
             FileAlignmentInformation::new(FileAlignmentRequirement::Byte),
-            FileNameInformation::new(24, "testfile.txt".into()),
+            FileNameInformation::from_name("testfile.txt".into()),
         );
         let bytes = all.smb_to_bytes();
         let (_, parsed) = FileAllInformation::smb_from_bytes(&bytes).unwrap();
@@ -348,7 +348,7 @@ mod tests {
             FilePositionInformation::new(50),
             FileModeInformation::new(FileModeFlags::empty()),
             FileAlignmentInformation::new(FileAlignmentRequirement::Byte),
-            FileNameInformation::new(8, "test".into()),
+            FileNameInformation::from_name("test".into()),
         );
         assert_eq!(all.basic().file_attributes(), SMBFileAttributes::NORMAL);
         assert_eq!(all.standard().allocation_size(), 4096);

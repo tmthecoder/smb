@@ -130,12 +130,14 @@ impl ResourceHandle for SMBFileSystemHandle {
         match &mut self.resource {
             SMBFileSystemResourceHandle::File(file) => {
                 // Cap to MAX_READ_SIZE to prevent OOM from malicious clients
-                let capped_length = length.min(MAX_READ_SIZE) as usize;
+                let capped_length = length.min(MAX_READ_SIZE) as u64;
                 file.seek(SeekFrom::Start(offset))
                     .map_err(SMBError::io_error)?;
-                let mut buf = vec![0u8; capped_length];
-                let bytes_read = file.read(&mut buf).map_err(SMBError::io_error)?;
-                buf.truncate(bytes_read);
+                // Use take() + read_to_end() to handle short reads correctly
+                let mut buf = Vec::with_capacity(capped_length as usize);
+                file.take(capped_length)
+                    .read_to_end(&mut buf)
+                    .map_err(SMBError::io_error)?;
                 Ok(buf)
             }
             SMBFileSystemResourceHandle::Directory(_) => Err(SMBError::response_error(
@@ -381,5 +383,102 @@ mod tests {
             normalize_path("subdir/file.txt"),
             Some(PathBuf::from("subdir/file.txt"))
         );
+    }
+
+    #[test]
+    fn read_data_returns_full_contents() {
+        let dir = std::env::temp_dir().join("smb_test_read_full");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("read_test.bin");
+        let data: Vec<u8> = (0..4096).map(|i| (i % 256) as u8).collect();
+        std::fs::write(&path, &data).unwrap();
+
+        let mut handle = SMBFileSystemHandle {
+            path: path.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::file(
+                path.to_str().unwrap(),
+                SMBCreateDisposition::Open,
+            )
+            .unwrap(),
+        };
+
+        let result = handle.read_data(0, 4096).unwrap();
+        assert_eq!(
+            result.len(),
+            4096,
+            "read_data must return all requested bytes when available"
+        );
+        assert_eq!(result, data);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn read_data_at_offset_returns_remaining() {
+        let dir = std::env::temp_dir().join("smb_test_read_offset");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("offset_test.bin");
+        let data = vec![0xAA; 100];
+        std::fs::write(&path, &data).unwrap();
+
+        let mut handle = SMBFileSystemHandle {
+            path: path.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::file(
+                path.to_str().unwrap(),
+                SMBCreateDisposition::Open,
+            )
+            .unwrap(),
+        };
+
+        // Read past end of file — should return only remaining bytes
+        let result = handle.read_data(90, 50).unwrap();
+        assert_eq!(result.len(), 10);
+
+        // Read at exact EOF — should return empty
+        let result = handle.read_data(100, 50).unwrap();
+        assert!(result.is_empty());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn read_data_capped_at_max_read_size() {
+        let dir = std::env::temp_dir().join("smb_test_read_cap");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cap_test.bin");
+        // Write a small file but request more than MAX_READ_SIZE
+        let data = vec![0xBB; 64];
+        std::fs::write(&path, &data).unwrap();
+
+        let mut handle = SMBFileSystemHandle {
+            path: path.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::file(
+                path.to_str().unwrap(),
+                SMBCreateDisposition::Open,
+            )
+            .unwrap(),
+        };
+
+        // Request u32::MAX bytes — should be capped and not OOM
+        let result = handle.read_data(0, u32::MAX).unwrap();
+        assert_eq!(result.len(), 64);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn read_data_directory_returns_error() {
+        let dir = std::env::temp_dir().join("smb_test_read_dir");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut handle = SMBFileSystemHandle {
+            path: dir.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::directory(dir.to_str().unwrap()).unwrap(),
+        };
+
+        let result = handle.read_data(0, 100);
+        assert!(result.is_err());
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

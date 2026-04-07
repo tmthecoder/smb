@@ -7,7 +7,7 @@ use tokio::sync::RwLock;
 use smb_core::error::SMBError;
 use smb_core::logging::{debug, trace, warn};
 use smb_core::nt_status::NTStatus;
-use smb_core::{SMBResult, SMBToBytes};
+use smb_core::{SMBByteSize, SMBResult, SMBToBytes};
 
 use crate::protocol::body::SMBBody;
 use crate::protocol::body::close::{SMBCloseRequest, SMBCloseResponse};
@@ -130,8 +130,6 @@ impl<S: Server> SMBTreeConnect<S> {
     }
 
     fn build_all_info(open: &S::Open) -> SMBResult<FileAllInformation> {
-        let name = open.file_name();
-        let name_byte_len = (name.encode_utf16().count() * 2) as u32;
         Ok(FileAllInformation::new(
             Self::build_basic_info(open)?,
             Self::build_standard_info(open)?,
@@ -141,7 +139,7 @@ impl<S: Server> SMBTreeConnect<S> {
             FilePositionInformation::new(0),
             FileModeInformation::new(FileModeFlags::empty()),
             FileAlignmentInformation::new(FileAlignmentRequirement::Byte),
-            FileNameInformation::new(name_byte_len, name.into()),
+            FileNameInformation::from_name(open.file_name().into()),
         ))
     }
 }
@@ -161,7 +159,6 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
         let (path, disposition, directory) = message.validate(self.share.deref())?;
         let handle = self.share.handle_create(path, disposition, directory)?;
         let open_raw = Open::init(handle, message);
-        let response = SMBBody::CreateResponse(SMBCreateResponse::for_open::<S>(&open_raw)?);
         let open = Arc::new(RwLock::new(open_raw));
         let session = self.get_session()?;
         // Register with server first (outermost), then session (inner)
@@ -170,10 +167,13 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
             server.write().await.add_open(open.clone()).await;
         }
         session.write().await.add_open(open.clone()).await;
-        {
-            let file_id = open.read().await.file_id();
-            session.write().await.set_previous_file_id(file_id);
-        }
+        // Build response AFTER registration so file_id reflects assigned IDs
+        let (response, file_id) = {
+            let open_rd = open.read().await;
+            let resp = SMBBody::CreateResponse(SMBCreateResponse::for_open::<S>(&*open_rd)?);
+            (resp, open_rd.file_id())
+        };
+        session.write().await.set_previous_file_id(file_id);
         debug!("tree connect create handled");
         let header = header.create_response_header(0, header.session_id, header.tree_id);
         trace!(
@@ -190,22 +190,10 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
     ) -> SMBResult<SMBHandlerState<Self::Inner>> {
         debug!(file_id = ?message.file_id(), "handling close request");
 
-        // Phase 1: Read open data (session_rd → open_rd, outer before inner)
-        let session = self.get_session()?;
-        let open = {
-            let session_rd = session.read().await;
-            session_rd
-                .open_table()
-                .get(&message.file_id().volatile())
-                .cloned()
-                .ok_or(SMBError::response_error(NTStatus::FileClosed))?
-        };
+        // Phase 1: Validate and read open data via shared find_open logic
+        let open = self.find_open(message.file_id()).await?;
         let (response, file_id) = {
             let open_rd = open.read().await;
-            // MS-SMB2 section 3.3.5.10: verify Open.DurableFileId == FileId.Persistent
-            if open_rd.file_id().persistent() != message.file_id().persistent() {
-                return Err(SMBError::response_error(NTStatus::FileClosed));
-            }
             let response = if message
                 .flags()
                 .contains(crate::protocol::body::close::flags::SMBCloseFlags::POSTQUERY_ATTRIB)
@@ -219,13 +207,15 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
         };
 
         // Phase 2: Cleanup — acquire locks outer to inner (server_wr, then session_wr)
-        // Server write first (outermost) — use persistent (global_id) as GlobalOpenTable key
+        let session = self.get_session()?;
+        let global_id: u32 = file_id
+            .persistent()
+            .try_into()
+            .expect("global_id fits in u32");
+        // Server write first (outermost)
         if let Ok(conn) = session.upper().await {
             if let Ok(server) = conn.upper().await {
-                server
-                    .write()
-                    .await
-                    .remove_open(file_id.persistent() as u32);
+                server.write().await.remove_open(global_id);
             } else {
                 warn!(file_id = ?file_id, "failed to acquire server lock during close; global open table entry leaked");
             }

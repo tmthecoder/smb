@@ -465,7 +465,7 @@ impl<
                 .await
                 {
                     Ok(()) => debug!("message handler completed"),
-                    Err(_e) => warn!(?e, "message handler exited with error"),
+                    Err(e) => warn!(?e, "message handler exited with error"),
                 }
             });
         }
