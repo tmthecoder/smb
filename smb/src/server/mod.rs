@@ -457,15 +457,17 @@ impl<
             tokio::spawn(async move {
                 debug!(client = %name, "starting message handler");
                 let mut stream = socket.lock().await;
-                match SMBConnection::start_message_handler::<Auth>(
+                #[allow(unused_variables)]
+                if let Err(e) = SMBConnection::start_message_handler::<Auth>(
                     &mut stream,
                     wrapped_connection,
                     update_channel,
                 )
                 .await
                 {
-                    Ok(()) => debug!("message handler completed"),
-                    Err(e) => warn!(?e, "message handler exited with error"),
+                    warn!(?e, "message handler exited with error");
+                } else {
+                    debug!("message handler completed");
                 }
             });
         }
