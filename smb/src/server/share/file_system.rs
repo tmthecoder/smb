@@ -2,12 +2,15 @@ use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::fs;
 use std::fs::{File, OpenOptions, ReadDir};
+use std::io::{Read, Seek, SeekFrom};
 use std::marker::PhantomData;
+use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use smb_core::SMBResult;
 use smb_core::error::SMBError;
-use smb_core::logging::debug;
+use smb_core::logging::{debug, warn};
+use smb_core::nt_status::NTStatus;
 
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
 use crate::protocol::body::filetime::FileTime;
@@ -16,6 +19,31 @@ use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::server::share::{
     ConnectAllowed, FilePerms, ResourceHandle, ResourceType, SMBFileMetadata, SharedResource,
 };
+
+/// Maximum single read size (8 MB), per MS-SMB2 §3.3.5.12 recommendation for SMB 3.x.
+const MAX_READ_SIZE: u32 = 8 * 1024 * 1024;
+
+/// Normalize a path by resolving `.` and `..` components lexically (without
+/// touching the filesystem). Returns `None` if the normalized path would
+/// escape the root (i.e., more `..` than preceding components).
+fn normalize_path(path: &str) -> Option<PathBuf> {
+    let mut components = Vec::new();
+    for component in Path::new(path).components() {
+        match component {
+            Component::ParentDir => {
+                if components.is_empty() {
+                    // Attempting to go above root — reject
+                    return None;
+                }
+                components.pop();
+            }
+            Component::Normal(c) => components.push(c),
+            Component::CurDir => {}                         // skip "."
+            Component::RootDir | Component::Prefix(_) => {} // skip absolute prefixes
+        }
+    }
+    Some(components.iter().collect())
+}
 
 #[derive(Debug)]
 pub struct SMBFileSystemHandle {
@@ -88,20 +116,34 @@ impl ResourceHandle for SMBFileSystemHandle {
             ))
         })?;
         let time_transform = |time: SystemTime| time.duration_since(UNIX_EPOCH).unwrap().as_secs();
-        Ok(SMBFileMetadata {
-            creation_time: FileTime::from_unix(metadata.created().map(time_transform).unwrap_or(0)),
-            last_access_time: FileTime::from_unix(
-                metadata.accessed().map(time_transform).unwrap_or(0),
-            ),
-            last_write_time: FileTime::from_unix(
-                metadata.modified().map(time_transform).unwrap_or(0),
-            ),
-            last_modification_time: FileTime::from_unix(
-                metadata.modified().map(time_transform).unwrap_or(0),
-            ),
-            allocated_size: metadata.len(),
-            actual_size: metadata.len(),
-        })
+        Ok(SMBFileMetadata::new(
+            FileTime::from_unix(metadata.created().map(time_transform).unwrap_or(0)),
+            FileTime::from_unix(metadata.accessed().map(time_transform).unwrap_or(0)),
+            FileTime::from_unix(metadata.modified().map(time_transform).unwrap_or(0)),
+            FileTime::from_unix(metadata.modified().map(time_transform).unwrap_or(0)),
+            metadata.len(),
+            metadata.len(),
+        ))
+    }
+
+    fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>> {
+        match &mut self.resource {
+            SMBFileSystemResourceHandle::File(file) => {
+                // Cap to MAX_READ_SIZE to prevent OOM from malicious clients
+                let capped_length = length.min(MAX_READ_SIZE) as u64;
+                file.seek(SeekFrom::Start(offset))
+                    .map_err(SMBError::io_error)?;
+                // Use take() + read_to_end() to handle short reads correctly
+                let mut buf = Vec::with_capacity(capped_length as usize);
+                file.take(capped_length)
+                    .read_to_end(&mut buf)
+                    .map_err(SMBError::io_error)?;
+                Ok(buf)
+            }
+            SMBFileSystemResourceHandle::Directory(_) => Err(SMBError::response_error(
+                smb_core::nt_status::NTStatus::InvalidDeviceRequest,
+            )),
+        }
     }
 }
 
@@ -180,7 +222,17 @@ impl<
         disposition: SMBCreateDisposition,
         directory: bool,
     ) -> SMBResult<Handle> {
-        let path = format!("{}/{}", self.local_path, path);
+        // Sanitize: strip NUL terminators from UTF-16LE wire encoding,
+        // convert Windows backslashes to forward slashes
+        let sanitized = path.trim_end_matches('\0').replace('\\', "/");
+
+        // Normalize and reject path traversal attempts (e.g. "../../etc/passwd")
+        let relative = normalize_path(&sanitized).ok_or_else(|| {
+            warn!(path = %sanitized, "rejected path traversal attempt");
+            SMBError::response_error(NTStatus::AccessDenied)
+        })?;
+        let path = format!("{}/{}", self.local_path, relative.display());
+
         let resource = match directory {
             true => SMBFileSystemResourceHandle::directory(&path),
             false => SMBFileSystemResourceHandle::file(&path, disposition),
@@ -279,5 +331,154 @@ impl<UserName: Send + Sync, Handle: TryFrom<SMBFileSystemHandle>> Debug
             )
             .field("compress_data", &self.compress_data)
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_path_simple() {
+        assert_eq!(
+            normalize_path("foo/bar.txt"),
+            Some(PathBuf::from("foo/bar.txt"))
+        );
+    }
+
+    #[test]
+    fn normalize_path_strips_current_dir() {
+        assert_eq!(
+            normalize_path("./foo/./bar.txt"),
+            Some(PathBuf::from("foo/bar.txt"))
+        );
+    }
+
+    #[test]
+    fn normalize_path_resolves_parent_within_subtree() {
+        assert_eq!(
+            normalize_path("foo/bar/../baz.txt"),
+            Some(PathBuf::from("foo/baz.txt"))
+        );
+    }
+
+    #[test]
+    fn normalize_path_rejects_traversal_above_root() {
+        assert_eq!(normalize_path("../etc/passwd"), None);
+    }
+
+    #[test]
+    fn normalize_path_rejects_deep_traversal() {
+        assert_eq!(normalize_path("foo/../../etc/passwd"), None);
+    }
+
+    #[test]
+    fn normalize_path_empty() {
+        assert_eq!(normalize_path(""), Some(PathBuf::from("")));
+    }
+
+    #[test]
+    fn normalize_path_backslash_after_sanitize() {
+        assert_eq!(
+            normalize_path("subdir/file.txt"),
+            Some(PathBuf::from("subdir/file.txt"))
+        );
+    }
+
+    #[test]
+    fn read_data_returns_full_contents() {
+        let dir = std::env::temp_dir().join("smb_test_read_full");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("read_test.bin");
+        let data: Vec<u8> = (0..4096).map(|i| (i % 256) as u8).collect();
+        std::fs::write(&path, &data).unwrap();
+
+        let mut handle = SMBFileSystemHandle {
+            path: path.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::file(
+                path.to_str().unwrap(),
+                SMBCreateDisposition::Open,
+            )
+            .unwrap(),
+        };
+
+        let result = handle.read_data(0, 4096).unwrap();
+        assert_eq!(
+            result.len(),
+            4096,
+            "read_data must return all requested bytes when available"
+        );
+        assert_eq!(result, data);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn read_data_at_offset_returns_remaining() {
+        let dir = std::env::temp_dir().join("smb_test_read_offset");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("offset_test.bin");
+        let data = vec![0xAA; 100];
+        std::fs::write(&path, &data).unwrap();
+
+        let mut handle = SMBFileSystemHandle {
+            path: path.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::file(
+                path.to_str().unwrap(),
+                SMBCreateDisposition::Open,
+            )
+            .unwrap(),
+        };
+
+        // Read past end of file — should return only remaining bytes
+        let result = handle.read_data(90, 50).unwrap();
+        assert_eq!(result.len(), 10);
+
+        // Read at exact EOF — should return empty
+        let result = handle.read_data(100, 50).unwrap();
+        assert!(result.is_empty());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn read_data_capped_at_max_read_size() {
+        let dir = std::env::temp_dir().join("smb_test_read_cap");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cap_test.bin");
+        // Write a small file but request more than MAX_READ_SIZE
+        let data = vec![0xBB; 64];
+        std::fs::write(&path, &data).unwrap();
+
+        let mut handle = SMBFileSystemHandle {
+            path: path.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::file(
+                path.to_str().unwrap(),
+                SMBCreateDisposition::Open,
+            )
+            .unwrap(),
+        };
+
+        // Request u32::MAX bytes — should be capped and not OOM
+        let result = handle.read_data(0, u32::MAX).unwrap();
+        assert_eq!(result.len(), 64);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn read_data_directory_returns_error() {
+        let dir = std::env::temp_dir().join("smb_test_read_dir");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut handle = SMBFileSystemHandle {
+            path: dir.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::directory(dir.to_str().unwrap()).unwrap(),
+        };
+
+        let result = handle.read_data(0, 100);
+        assert!(result.is_err());
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

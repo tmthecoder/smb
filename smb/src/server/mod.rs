@@ -57,6 +57,7 @@ pub trait Server: Send + Sync {
     fn shares(&self) -> &HashMap<String, Arc<Self::Share>>;
     fn opens(&self) -> &HashMap<u32, Arc<RwLock<Self::Open>>>;
     fn add_open(&mut self, open: Arc<RwLock<Self::Open>>) -> impl Future<Output = u32>;
+    fn remove_open(&mut self, global_id: u32);
     fn sessions(&self) -> &HashMap<u64, Arc<RwLock<Self::Session>>>;
     fn sessions_mut(&mut self) -> &mut HashMap<u64, Arc<RwLock<Self::Session>>>;
     fn guid(&self) -> Uuid;
@@ -226,6 +227,10 @@ impl<
             }
         }
         0
+    }
+
+    fn remove_open(&mut self, global_id: u32) {
+        self.open_table.remove(&global_id);
     }
 
     fn sessions(&self) -> &HashMap<u64, Arc<RwLock<Self::Session>>> {
@@ -452,15 +457,17 @@ impl<
             tokio::spawn(async move {
                 debug!(client = %name, "starting message handler");
                 let mut stream = socket.lock().await;
-                match SMBConnection::start_message_handler::<Auth>(
+                #[allow(unused_variables)]
+                if let Err(e) = SMBConnection::start_message_handler::<Auth>(
                     &mut stream,
                     wrapped_connection,
                     update_channel,
                 )
                 .await
                 {
-                    Ok(()) => debug!("message handler completed"),
-                    Err(_e) => warn!(?e, "message handler exited with error"),
+                    warn!(?e, "message handler exited with error");
+                } else {
+                    debug!("message handler completed");
                 }
             });
         }

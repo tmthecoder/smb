@@ -32,6 +32,7 @@ pub trait Open: Send + Sync {
     fn file_attributes(&self) -> SMBFileAttributes;
     fn file_id(&self) -> SMBFileId;
     fn file_metadata(&self) -> SMBResult<SMBFileMetadata>;
+    fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>>;
 }
 
 pub struct SMBOpen<S: Server> {
@@ -140,14 +141,15 @@ impl<S: Server> Open for SMBOpen<S> {
     }
 
     fn file_id(&self) -> SMBFileId {
-        SMBFileId {
-            persistent: self.session_id,
-            volatile: self.session_id,
-        }
+        SMBFileId::new(self.global_id as u64, self.session_id)
     }
 
     fn file_metadata(&self) -> SMBResult<SMBFileMetadata> {
         self.underlying.metadata()
+    }
+
+    fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>> {
+        self.underlying.read_data(offset, length)
     }
 }
 
@@ -234,7 +236,7 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBOpen<S>> {
     type Inner = ();
 
     async fn inner(&self, _message: &SMBMessageType) -> Option<Self::Inner> {
-        todo!()
+        None
     }
 }
 

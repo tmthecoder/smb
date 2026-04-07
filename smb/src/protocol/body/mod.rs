@@ -56,6 +56,7 @@ pub mod create;
 pub mod echo;
 pub mod empty;
 pub mod error;
+pub mod file_info;
 pub mod flush;
 pub mod ioctl;
 pub mod lock;

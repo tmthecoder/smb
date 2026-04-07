@@ -19,6 +19,12 @@ pub enum NTStatus {
     UserSessionDeleted = 0xC0000203,
     NetworkSessionExpired = 0xC000035C,
     FileNotAvailable = 0xC0000467,
+    FileClosed = 0xC0000128,
+    EndOfFile = 0xC0000011,
+    InvalidInfoClass = 0xC0000003,
+    InvalidDeviceRequest = 0xC0000010,
+    BufferOverflow = 0x80000005,
+    InfoLengthMismatch = 0xC0000004,
     UnknownError = 0xFFFFFFFF,
 }
 
