@@ -25,12 +25,17 @@ pub struct FileTime {
     high_date_time: u32,
 }
 
-const TIME_SINCE_1601_AND_EPOCH: u64 = 11644473600000;
+/// Seconds between the FILETIME epoch (1601-01-01) and the Unix epoch (1970-01-01)
+const SECS_BETWEEN_1601_AND_UNIX_EPOCH: u64 = 11_644_473_600;
+/// FILETIME resolution: 100-nanosecond intervals per second (MS-DTYP §2.3.3)
+const INTERVALS_PER_SEC: u64 = 10_000_000;
 
 impl FileTime {
     pub fn from_unix(unix_timestamp: u64) -> Self {
-        let filetype_normalized = unix_timestamp + TIME_SINCE_1601_AND_EPOCH;
-        let bytes = u64_to_bytes(filetype_normalized);
+        // MS-DTYP §2.3.3: FILETIME counts 100-nanosecond intervals since 1601-01-01
+        let intervals =
+            (unix_timestamp + SECS_BETWEEN_1601_AND_UNIX_EPOCH).saturating_mul(INTERVALS_PER_SEC);
+        let bytes = u64_to_bytes(intervals);
         FileTime {
             low_date_time: bytes_to_u32(&bytes[0..4]),
             high_date_time: bytes_to_u32(&bytes[4..]),
@@ -51,7 +56,7 @@ impl FileTime {
 
     pub fn to_unix(&self) -> u64 {
         let bytes = self.as_bytes();
-        bytes_to_u64(&bytes) - TIME_SINCE_1601_AND_EPOCH
+        (bytes_to_u64(&bytes) / INTERVALS_PER_SEC).saturating_sub(SECS_BETWEEN_1601_AND_UNIX_EPOCH)
     }
 
     pub fn as_bytes(&self) -> Vec<u8> {
@@ -96,5 +101,22 @@ mod tests {
             back,
             unix_ts
         );
+    }
+
+    /// MS-DTYP §2.3.3: FILETIME is the count of 100-ns intervals since
+    /// 1601-01-01. Verify against a known reference value:
+    /// 2023-11-14T22:13:20Z (unix 1700000000) = 133444736000000000 intervals.
+    #[test]
+    fn from_unix_produces_correct_filetime_intervals() {
+        let ft = FileTime::from_unix(1700000000);
+        let raw = bytes_to_u64(&ft.as_bytes());
+        assert_eq!(raw, 133_444_736_000_000_000);
+    }
+
+    #[test]
+    fn unix_epoch_maps_to_1601_offset() {
+        let ft = FileTime::from_unix(0);
+        let raw = bytes_to_u64(&ft.as_bytes());
+        assert_eq!(raw, 11_644_473_600 * 10_000_000);
     }
 }
