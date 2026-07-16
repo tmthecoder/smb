@@ -11,7 +11,9 @@ use crate::protocol::body::tree_connect::access_mask::{
     SMBAccessMask, SMBFilePipePrinterAccessMask,
 };
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
-use crate::server::share::{ResourceHandle, ResourceType, SMBFileMetadata, SharedResource};
+use crate::server::share::{
+    ResourceHandle, ResourceType, SMBDirectoryEntry, SMBFileMetadata, SharedResource,
+};
 
 /// A minimal IPC$ named pipe share handle
 #[derive(Debug)]
@@ -58,6 +60,18 @@ impl ResourceHandle for SMBIPCHandle {
             smb_core::nt_status::NTStatus::InvalidDeviceRequest,
         ))
     }
+
+    fn query_directory(
+        &mut self,
+        _pattern: &str,
+        _restart: bool,
+    ) -> SMBResult<Vec<SMBDirectoryEntry>> {
+        Err(SMBError::response_error(
+            smb_core::nt_status::NTStatus::InvalidDeviceRequest,
+        ))
+    }
+
+    fn consume_directory_entries(&mut self, _count: usize) {}
 }
 
 impl From<SMBIPCHandle> for Box<dyn ResourceHandle> {

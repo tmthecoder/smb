@@ -7,6 +7,8 @@ mod access;
 mod alignment;
 mod basic;
 mod ea;
+mod fs_size;
+mod id_both_directory;
 mod internal;
 mod mode;
 mod name;
@@ -18,6 +20,8 @@ pub use access::{FileAccessFlags, FileAccessInformation};
 pub use alignment::{FileAlignmentInformation, FileAlignmentRequirement};
 pub use basic::FileBasicInformation;
 pub use ea::FileEaInformation;
+pub use fs_size::FileFsSizeInformation;
+pub use id_both_directory::FileIdBothDirectoryInformation;
 pub use internal::FileInternalInformation;
 pub use mode::{FileModeFlags, FileModeInformation};
 pub use name::FileNameInformation;
@@ -27,7 +31,54 @@ pub use standard::FileStandardInformation;
 
 use serde::{Deserialize, Serialize};
 
+use smb_core::{SMBByteSize as SMBByteSizeTrait, SMBToBytes as SMBToBytesTrait};
 use smb_derive::{SMBByteSize, SMBFromBytes, SMBToBytes};
+
+/// A directory information class entry that can be chained into a
+/// QueryDirectory response buffer (MS-FSCC 2.4 directory information
+/// classes all begin with a `NextEntryOffset` field).
+pub trait DirectoryInformationEntry: SMBToBytesTrait + SMBByteSizeTrait {
+    fn set_next_entry_offset(&mut self, offset: u32);
+}
+
+/// Serialize as many `entries` as fit within `max_output_len` bytes into a
+/// single chained buffer, per MS-SMB2 §3.3.5.18 / MS-FSCC 2.4.
+///
+/// Each entry's `NextEntryOffset` is set to the 8-byte-aligned distance to
+/// the next entry; the final included entry's offset is 0. Returns the buffer
+/// and how many entries were consumed (0 if even the first doesn't fit).
+pub fn chain_directory_entries<E: DirectoryInformationEntry>(
+    entries: Vec<E>,
+    max_output_len: usize,
+) -> (Vec<u8>, usize) {
+    // Determine how many entries fit: every entry except the last occupies
+    // its 8-byte-aligned size; the last occupies its exact size.
+    let mut fitting = 0;
+    let mut aligned_total = 0;
+    for entry in &entries {
+        let size = entry.smb_byte_size();
+        if aligned_total + size > max_output_len {
+            break;
+        }
+        fitting += 1;
+        aligned_total += size.div_ceil(8) * 8;
+    }
+
+    let mut buffer = Vec::new();
+    for (i, mut entry) in entries.into_iter().take(fitting).enumerate() {
+        let size = entry.smb_byte_size();
+        let aligned = size.div_ceil(8) * 8;
+        if i + 1 == fitting {
+            entry.set_next_entry_offset(0);
+            buffer.extend_from_slice(&entry.smb_to_bytes());
+        } else {
+            entry.set_next_entry_offset(aligned as u32);
+            buffer.extend_from_slice(&entry.smb_to_bytes());
+            buffer.resize(buffer.len() + (aligned - size), 0);
+        }
+    }
+    (buffer, fitting)
+}
 
 /// FILE_ALL_INFORMATION (MS-FSCC 2.4.2) — composite structure
 ///
@@ -356,5 +407,89 @@ mod tests {
         assert_eq!(all.internal().index_number(), 5);
         assert_eq!(all.position().current_byte_offset(), 50);
         assert_eq!(all.name().file_name(), "test");
+    }
+
+    fn directory_entry(name: &str) -> FileIdBothDirectoryInformation {
+        FileIdBothDirectoryInformation::new(
+            FileTime::zero(),
+            FileTime::zero(),
+            FileTime::zero(),
+            FileTime::zero(),
+            0,
+            0,
+            SMBFileAttributes::ARCHIVE,
+            1,
+            name.into(),
+        )
+    }
+
+    #[test]
+    fn chain_single_entry_has_zero_next_offset() {
+        let (buffer, consumed) = chain_directory_entries(vec![directory_entry("a.txt")], 4096);
+        assert_eq!(consumed, 1);
+        // "a.txt" = 5 UTF-16 code units → 104 + 10 bytes, no trailing padding
+        assert_eq!(buffer.len(), 114);
+        assert_eq!(u32::from_le_bytes(buffer[0..4].try_into().unwrap()), 0);
+    }
+
+    #[test]
+    fn chain_multiple_entries_are_eight_byte_aligned() {
+        let (buffer, consumed) =
+            chain_directory_entries(vec![directory_entry("a"), directory_entry("bb.txt")], 4096);
+        assert_eq!(consumed, 2);
+        // First entry: 104 + 2 = 106 → aligned to 112
+        let first_next = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
+        assert_eq!(first_next, 112);
+        // Second entry begins at the aligned offset with next_entry_offset 0
+        let second_next = u32::from_le_bytes(buffer[112..116].try_into().unwrap());
+        assert_eq!(second_next, 0);
+        // Total: 112 (aligned first) + 104 + 12 (second, unpadded)
+        assert_eq!(buffer.len(), 112 + 104 + 12);
+    }
+
+    #[test]
+    fn chain_respects_max_output_len() {
+        let entries = vec![
+            directory_entry("first"),
+            directory_entry("second"),
+            directory_entry("third"),
+        ];
+        // Only the first entry (104 + 10 = 114 bytes) fits in 200 bytes
+        let (buffer, consumed) = chain_directory_entries(entries, 200);
+        assert_eq!(consumed, 1);
+        assert_eq!(buffer.len(), 114);
+    }
+
+    #[test]
+    fn chain_returns_zero_consumed_when_nothing_fits() {
+        let (buffer, consumed) = chain_directory_entries(vec![directory_entry("file.txt")], 50);
+        assert_eq!(consumed, 0);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn chained_entries_parse_back_via_next_offsets() {
+        use smb_core::SMBFromBytes;
+        let (buffer, consumed) = chain_directory_entries(
+            vec![
+                directory_entry("one.bin"),
+                directory_entry("two.bin"),
+                directory_entry("three.bin"),
+            ],
+            65536,
+        );
+        assert_eq!(consumed, 3);
+        let mut names = Vec::new();
+        let mut offset = 0usize;
+        loop {
+            let (_, entry) =
+                FileIdBothDirectoryInformation::smb_from_bytes(&buffer[offset..]).unwrap();
+            names.push(entry.file_name().to_string());
+            if entry.next_entry_offset() == 0 {
+                break;
+            }
+            offset += entry.next_entry_offset() as usize;
+        }
+        assert_eq!(names, vec!["one.bin", "two.bin", "three.bin"]);
     }
 }

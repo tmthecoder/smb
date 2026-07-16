@@ -18,11 +18,15 @@ use crate::protocol::body::create::file_id::SMBFileId;
 use crate::protocol::body::create::{SMBCreateRequest, SMBCreateResponse};
 use crate::protocol::body::file_info::{
     FileAccessFlags, FileAccessInformation, FileAlignmentInformation, FileAlignmentRequirement,
-    FileAllInformation, FileBasicInformation, FileEaInformation, FileInternalInformation,
-    FileModeFlags, FileModeInformation, FileNameInformation, FileNetworkOpenInformation,
-    FilePositionInformation, FileStandardInformation,
+    FileAllInformation, FileBasicInformation, FileEaInformation, FileFsSizeInformation,
+    FileIdBothDirectoryInformation, FileInternalInformation, FileModeFlags, FileModeInformation,
+    FileNameInformation, FileNetworkOpenInformation, FilePositionInformation,
+    FileStandardInformation, chain_directory_entries,
 };
 use crate::protocol::body::filetime::FileTime;
+use crate::protocol::body::query_directory::flags::SMBQueryDirectoryFlags;
+use crate::protocol::body::query_directory::information_class::SMBInformationClass;
+use crate::protocol::body::query_directory::{SMBQueryDirectoryRequest, SMBQueryDirectoryResponse};
 use crate::protocol::body::query_info::info_type::SMBInfoType;
 use crate::protocol::body::query_info::{SMBQueryInfoRequest, SMBQueryInfoResponse};
 use crate::protocol::body::read::{SMBReadRequest, SMBReadResponse};
@@ -289,6 +293,85 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
         )))
     }
 
+    async fn handle_query_directory(
+        &mut self,
+        header: &SMBSyncHeader,
+        message: &SMBQueryDirectoryRequest,
+    ) -> SMBResult<SMBHandlerState<Self::Inner>> {
+        debug!(
+            file_id = ?message.file_id(),
+            class = ?message.information_class(),
+            pattern = message.search_pattern(),
+            "handling query_directory request"
+        );
+        let open = self.find_open(message.file_id()).await?;
+        let mut open_wr = open.write().await;
+
+        // MS-SMB2 §3.3.5.18: RESTART_SCANS and REOPEN both restart the
+        // enumeration from the beginning with the supplied pattern
+        let restart = message
+            .flags()
+            .intersects(SMBQueryDirectoryFlags::RESTART_SCANS | SMBQueryDirectoryFlags::REOPEN);
+        let mut remaining = open_wr.query_directory(message.search_pattern(), restart)?;
+        if remaining.is_empty() {
+            // Enumeration previously started and fully drained
+            return Err(SMBError::response_error(NTStatus::NoMoreFiles));
+        }
+        if message
+            .flags()
+            .contains(SMBQueryDirectoryFlags::RETURN_SINGLE_ENTRY)
+        {
+            remaining.truncate(1);
+        }
+
+        let max_output = message.max_output_len() as usize;
+        let (buffer, consumed) = match message.information_class() {
+            SMBInformationClass::FileIdBothDirectoryInformation => {
+                let entries = remaining
+                    .iter()
+                    .map(|entry| {
+                        let metadata = entry.metadata();
+                        FileIdBothDirectoryInformation::new(
+                            metadata.creation_time().clone(),
+                            metadata.last_access_time().clone(),
+                            metadata.last_write_time().clone(),
+                            metadata.last_modification_time().clone(),
+                            metadata.actual_size(),
+                            metadata.allocated_size(),
+                            entry.attributes(),
+                            entry.file_id(),
+                            entry.name().into(),
+                        )
+                    })
+                    .collect();
+                chain_directory_entries(entries, max_output)
+            }
+            _ => {
+                debug!(class = ?message.information_class(), "unsupported directory information class");
+                return Err(SMBError::response_error(NTStatus::InvalidInfoClass));
+            }
+        };
+
+        if consumed == 0 {
+            // Not even a single entry fits in the client's output buffer
+            return Err(SMBError::response_error(NTStatus::InfoLengthMismatch));
+        }
+        open_wr.consume_directory_entries(consumed);
+        drop(open_wr);
+
+        debug!(
+            entries = consumed,
+            buffer_len = buffer.len(),
+            "query_directory completed"
+        );
+        let response = SMBQueryDirectoryResponse::new(buffer);
+        let header = header.create_response_header(0, header.session_id, header.tree_id);
+        Ok(SMBHandlerState::Finished(SMBMessage::new(
+            header,
+            SMBBody::QueryDirectoryResponse(response),
+        )))
+    }
+
     async fn handle_query_info(
         &mut self,
         header: &SMBSyncHeader,
@@ -310,6 +393,22 @@ impl<S: Server> SMBLockedMessageHandlerBase for Arc<SMBTreeConnect<S>> {
                         debug!(
                             class = message.file_info_class(),
                             "unsupported file info class"
+                        );
+                        return Err(SMBError::response_error(NTStatus::InvalidInfoClass));
+                    }
+                }
+            }
+            SMBInfoType::Filesystem => {
+                // MS-FSCC filesystem information classes
+                match message.file_info_class() {
+                    // FileFsSizeInformation (MS-FSCC 2.5.8). Reported as a
+                    // nominal 4 KiB-cluster volume until real filesystem
+                    // statistics are plumbed through the share layer.
+                    3 => FileFsSizeInformation::new(1 << 28, 1 << 27, 8, 512).smb_to_bytes(),
+                    _ => {
+                        debug!(
+                            class = message.file_info_class(),
+                            "unsupported filesystem info class"
                         );
                         return Err(SMBError::response_error(NTStatus::InvalidInfoClass));
                     }

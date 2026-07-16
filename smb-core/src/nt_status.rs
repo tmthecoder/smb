@@ -25,6 +25,8 @@ pub enum NTStatus {
     InvalidDeviceRequest = 0xC0000010,
     BufferOverflow = 0x80000005,
     InfoLengthMismatch = 0xC0000004,
+    NoMoreFiles = 0x80000006,
+    NoSuchFile = 0xC000000F,
     UnknownError = 0xFFFFFFFF,
 }
 

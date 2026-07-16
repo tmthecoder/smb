@@ -396,9 +396,10 @@ fn file_read_does_not_crash_server() {
     let _ = std::fs::remove_dir_all(&tmp_dir);
 }
 
-/// Verify that smbclient can list files (which triggers QueryInfo).
+/// Verify that smbclient can list files (Create → QueryDirectory → Close)
+/// and that the listing contains the share's actual entries.
 #[test]
-fn directory_listing_does_not_crash_server() {
+fn directory_listing_shows_share_contents() {
     require_e2e_prereqs!();
     use std::io::Write;
 
@@ -412,6 +413,8 @@ fn directory_listing_does_not_crash_server() {
         f.write_all(b"test content")
             .expect("Failed to write test file");
     }
+    std::fs::write(tmp_dir.join("second_file.log"), b"log data").expect("Failed to write file");
+    std::fs::create_dir(tmp_dir.join("subdir")).expect("Failed to create subdir");
 
     let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
     let mut server = std::process::Command::new(server_bin)
@@ -431,7 +434,7 @@ fn directory_listing_does_not_crash_server() {
     }
 
     let port_str = port.to_string();
-    let (_success, _stdout, stderr) = run_smbclient(&[
+    let (success, stdout, stderr) = run_smbclient(&[
         "//127.0.0.1/test",
         "-p",
         &port_str,
@@ -450,6 +453,83 @@ fn directory_listing_does_not_crash_server() {
         status.is_none(),
         "Server should still be running after directory listing. stderr: {}",
         stderr
+    );
+
+    assert!(
+        success,
+        "smbclient ls should succeed. stdout: {} stderr: {}",
+        stdout, stderr
+    );
+    for expected in ["listing_test.txt", "second_file.log", "subdir"] {
+        assert!(
+            stdout.contains(expected),
+            "listing should contain {}. stdout: {}",
+            expected,
+            stdout
+        );
+    }
+
+    server.kill().ok();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+/// Verify that QueryDirectory honors wildcard search patterns.
+#[test]
+fn directory_listing_filters_by_pattern() {
+    require_e2e_prereqs!();
+
+    let port = free_port();
+
+    let tmp_dir = std::env::temp_dir().join(format!("smb_test_ls_pattern_{}", port));
+    std::fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+    std::fs::write(tmp_dir.join("match_one.txt"), b"1").expect("Failed to write file");
+    std::fs::write(tmp_dir.join("match_two.txt"), b"2").expect("Failed to write file");
+    std::fs::write(tmp_dir.join("other.log"), b"3").expect("Failed to write file");
+
+    let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
+    let mut server = std::process::Command::new(server_bin)
+        .env("SMB_PORT", port.to_string())
+        .env("SMB_SHARE_PATH", tmp_dir.to_str().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn SMB server binary");
+
+    let addr = format!("127.0.0.1:{}", port);
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let port_str = port.to_string();
+    let (success, stdout, stderr) = run_smbclient(&[
+        "//127.0.0.1/test",
+        "-p",
+        &port_str,
+        "-U",
+        "tejasmehta%password",
+        "-m",
+        "SMB2",
+        "-c",
+        "ls *.txt",
+    ]);
+
+    assert!(
+        success,
+        "smbclient ls with pattern should succeed. stdout: {} stderr: {}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("match_one.txt") && stdout.contains("match_two.txt"),
+        "pattern listing should contain both .txt files. stdout: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("other.log"),
+        "pattern listing should not contain non-matching files. stdout: {}",
+        stdout
     );
 
     server.kill().ok();

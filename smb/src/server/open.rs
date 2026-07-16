@@ -17,7 +17,7 @@ use crate::server::lease::SMBLease;
 use crate::server::message_handler::{
     SMBLockedMessageHandler, SMBLockedMessageHandlerBase, SMBMessageType,
 };
-use crate::server::share::{ResourceHandle, SMBFileMetadata};
+use crate::server::share::{ResourceHandle, SMBDirectoryEntry, SMBFileMetadata};
 use crate::server::tree_connect::SMBTreeConnect;
 
 pub type LockedSMBOpen<S> = Arc<RwLock<SMBOpen<S>>>;
@@ -34,6 +34,12 @@ pub trait Open: Send + Sync {
     fn file_metadata(&self) -> SMBResult<SMBFileMetadata>;
     fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>>;
     fn write_data(&mut self, offset: u64, data: &[u8]) -> SMBResult<u32>;
+    fn query_directory(
+        &mut self,
+        pattern: &str,
+        restart: bool,
+    ) -> SMBResult<Vec<SMBDirectoryEntry>>;
+    fn consume_directory_entries(&mut self, count: usize);
 }
 
 pub struct SMBOpen<S: Server> {
@@ -155,6 +161,18 @@ impl<S: Server> Open for SMBOpen<S> {
 
     fn write_data(&mut self, offset: u64, data: &[u8]) -> SMBResult<u32> {
         self.underlying.write_data(offset, data)
+    }
+
+    fn query_directory(
+        &mut self,
+        pattern: &str,
+        restart: bool,
+    ) -> SMBResult<Vec<SMBDirectoryEntry>> {
+        self.underlying.query_directory(pattern, restart)
+    }
+
+    fn consume_directory_entries(&mut self, count: usize) {
+        self.underlying.consume_directory_entries(count)
     }
 }
 

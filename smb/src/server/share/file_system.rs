@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::fs;
-use std::fs::{File, OpenOptions, ReadDir};
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::path::{Component, Path, PathBuf};
@@ -13,11 +13,13 @@ use smb_core::logging::{debug, warn};
 use smb_core::nt_status::NTStatus;
 
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
+use crate::protocol::body::create::file_attributes::SMBFileAttributes;
 use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
 use crate::protocol::body::tree_connect::flags::SMBShareFlags;
 use crate::server::share::{
-    ConnectAllowed, FilePerms, ResourceHandle, ResourceType, SMBFileMetadata, SharedResource,
+    ConnectAllowed, FilePerms, ResourceHandle, ResourceType, SMBDirectoryEntry, SMBFileMetadata,
+    SharedResource,
 };
 
 /// Maximum single read size (8 MB), per MS-SMB2 §3.3.5.12 recommendation for SMB 3.x.
@@ -55,7 +57,17 @@ pub struct SMBFileSystemHandle {
 #[derive(Debug)]
 pub enum SMBFileSystemResourceHandle {
     File(File),
-    Directory(ReadDir),
+    Directory(SMBDirectoryEnumeration),
+}
+
+/// Enumeration state for an open directory handle, backing QueryDirectory
+/// (MS-SMB2 §3.3.5.18). The first query (or a RESTART_SCANS query) snapshots
+/// the matching entries; subsequent queries drain the snapshot from
+/// `position` until no entries remain.
+#[derive(Debug, Default)]
+pub struct SMBDirectoryEnumeration {
+    snapshot: Option<Vec<SMBDirectoryEntry>>,
+    position: usize,
 }
 
 impl From<SMBFileSystemHandle> for Box<dyn ResourceHandle> {
@@ -116,15 +128,7 @@ impl ResourceHandle for SMBFileSystemHandle {
                 err
             ))
         })?;
-        let time_transform = |time: SystemTime| time.duration_since(UNIX_EPOCH).unwrap().as_secs();
-        Ok(SMBFileMetadata::new(
-            FileTime::from_unix(metadata.created().map(time_transform).unwrap_or(0)),
-            FileTime::from_unix(metadata.accessed().map(time_transform).unwrap_or(0)),
-            FileTime::from_unix(metadata.modified().map(time_transform).unwrap_or(0)),
-            FileTime::from_unix(metadata.modified().map(time_transform).unwrap_or(0)),
-            metadata.len(),
-            metadata.len(),
-        ))
+        Ok(fs_metadata_to_smb(&metadata))
     }
 
     fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>> {
@@ -161,6 +165,152 @@ impl ResourceHandle for SMBFileSystemHandle {
             }
         }
     }
+
+    fn query_directory(
+        &mut self,
+        pattern: &str,
+        restart: bool,
+    ) -> SMBResult<Vec<SMBDirectoryEntry>> {
+        match &mut self.resource {
+            // MS-SMB2 §3.3.5.18: QueryDirectory on a non-directory open fails
+            // with STATUS_INVALID_PARAMETER
+            SMBFileSystemResourceHandle::File(_) => {
+                Err(SMBError::response_error(NTStatus::InvalidParameter))
+            }
+            SMBFileSystemResourceHandle::Directory(enumeration) => {
+                if restart || enumeration.snapshot.is_none() {
+                    let entries = scan_directory(&self.path, pattern)?;
+                    if entries.is_empty() {
+                        // MS-SMB2 §3.3.5.18: a fresh scan matching nothing
+                        // fails with STATUS_NO_SUCH_FILE
+                        return Err(SMBError::response_error(NTStatus::NoSuchFile));
+                    }
+                    enumeration.snapshot = Some(entries);
+                    enumeration.position = 0;
+                }
+                let snapshot = enumeration
+                    .snapshot
+                    .as_ref()
+                    .expect("snapshot populated above");
+                Ok(snapshot[enumeration.position.min(snapshot.len())..].to_vec())
+            }
+        }
+    }
+
+    fn consume_directory_entries(&mut self, count: usize) {
+        if let SMBFileSystemResourceHandle::Directory(enumeration) = &mut self.resource
+            && let Some(snapshot) = &enumeration.snapshot
+        {
+            enumeration.position = (enumeration.position + count).min(snapshot.len());
+        }
+    }
+}
+
+/// Convert filesystem metadata into the SMB metadata representation.
+fn fs_metadata_to_smb(metadata: &fs::Metadata) -> SMBFileMetadata {
+    let time_transform =
+        |time: SystemTime| time.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    SMBFileMetadata::new(
+        FileTime::from_unix(metadata.created().map(time_transform).unwrap_or(0)),
+        FileTime::from_unix(metadata.accessed().map(time_transform).unwrap_or(0)),
+        FileTime::from_unix(metadata.modified().map(time_transform).unwrap_or(0)),
+        FileTime::from_unix(metadata.modified().map(time_transform).unwrap_or(0)),
+        metadata.len(),
+        metadata.len(),
+    )
+}
+
+/// Map filesystem metadata to SMB file attributes (MS-FSCC 2.6).
+fn fs_metadata_to_attributes(metadata: &fs::Metadata) -> SMBFileAttributes {
+    let mut attributes = if metadata.is_dir() {
+        SMBFileAttributes::DIRECTORY
+    } else {
+        SMBFileAttributes::ARCHIVE
+    };
+    if metadata.permissions().readonly() {
+        attributes |= SMBFileAttributes::READONLY;
+    }
+    attributes
+}
+
+/// The 8-byte file reference number for a directory entry (MS-FSCC 2.4.17
+/// FileId). Uses the inode number where available.
+#[cfg(unix)]
+fn fs_metadata_file_id(metadata: &fs::Metadata) -> u64 {
+    use std::os::unix::fs::MetadataExt;
+    metadata.ino()
+}
+
+#[cfg(not(unix))]
+fn fs_metadata_file_id(_metadata: &fs::Metadata) -> u64 {
+    0
+}
+
+fn directory_entry_from_metadata(name: &str, metadata: &fs::Metadata) -> SMBDirectoryEntry {
+    SMBDirectoryEntry::new(
+        name.into(),
+        fs_metadata_to_smb(metadata),
+        fs_metadata_to_attributes(metadata),
+        fs_metadata_file_id(metadata),
+    )
+}
+
+/// Scan `path` for entries matching `pattern`, sorted by name. Includes the
+/// `.` and `..` entries when they match, per MS-FSCC 2.4.17. Entries whose
+/// metadata cannot be read are skipped rather than failing the whole scan.
+fn scan_directory(path: &str, pattern: &str) -> SMBResult<Vec<SMBDirectoryEntry>> {
+    let mut entries = Vec::new();
+    let dir_metadata = fs::metadata(path).map_err(SMBError::io_error)?;
+    for dot in [".", ".."] {
+        if matches_search_pattern(dot, pattern) {
+            entries.push(directory_entry_from_metadata(dot, &dir_metadata));
+        }
+    }
+    for dir_entry in fs::read_dir(path).map_err(SMBError::io_error)? {
+        let dir_entry = dir_entry.map_err(SMBError::io_error)?;
+        let name = dir_entry.file_name().to_string_lossy().into_owned();
+        if !matches_search_pattern(&name, pattern) {
+            continue;
+        }
+        let Ok(metadata) = dir_entry.metadata() else {
+            warn!(name = %name, "skipping directory entry with unreadable metadata");
+            continue;
+        };
+        entries.push(directory_entry_from_metadata(&name, &metadata));
+    }
+    entries.sort_by(|a, b| a.name().cmp(b.name()));
+    Ok(entries)
+}
+
+/// Case-insensitive wildcard match for QueryDirectory search patterns
+/// (MS-SMB2 §2.2.33): `*` matches any run of characters, `?` matches exactly
+/// one. An empty pattern is treated as `*`.
+fn matches_search_pattern(name: &str, pattern: &str) -> bool {
+    let pattern = pattern.trim_end_matches('\0');
+    if pattern.is_empty() || pattern == "*" {
+        return true;
+    }
+    let name: Vec<char> = name.to_lowercase().chars().collect();
+    let pattern: Vec<char> = pattern.to_lowercase().chars().collect();
+    let (mut n, mut p) = (0usize, 0usize);
+    let mut backtrack: Option<(usize, usize)> = None;
+    while n < name.len() {
+        if p < pattern.len() && (pattern[p] == '?' || pattern[p] == name[n]) {
+            n += 1;
+            p += 1;
+        } else if p < pattern.len() && pattern[p] == '*' {
+            backtrack = Some((p, n));
+            p += 1;
+        } else if let Some((star_p, star_n)) = backtrack {
+            // Let the last `*` absorb one more character and retry
+            backtrack = Some((star_p, star_n + 1));
+            p = star_p + 1;
+            n = star_n + 1;
+        } else {
+            return false;
+        }
+    }
+    pattern[p..].iter().all(|c| *c == '*')
 }
 
 impl SMBFileSystemResourceHandle {
@@ -182,8 +332,10 @@ impl SMBFileSystemResourceHandle {
     }
 
     fn directory(path: &str) -> SMBResult<Self> {
-        let res = std::fs::read_dir(path).map_err(SMBError::io_error)?;
-        Ok(Self::Directory(res))
+        // Validate that the directory exists and is readable up front;
+        // enumeration itself is driven lazily by QueryDirectory
+        std::fs::read_dir(path).map_err(SMBError::io_error)?;
+        Ok(Self::Directory(SMBDirectoryEnumeration::default()))
     }
 }
 
@@ -645,6 +797,108 @@ mod tests {
 
         let contents = std::fs::read(&path).unwrap();
         assert_eq!(contents, b"short");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn matches_search_pattern_wildcards() {
+        assert!(matches_search_pattern("anything", "*"));
+        assert!(matches_search_pattern("anything", ""));
+        assert!(matches_search_pattern("file.txt", "*.txt"));
+        assert!(!matches_search_pattern("file.log", "*.txt"));
+        assert!(matches_search_pattern("file.txt", "file.???"));
+        assert!(!matches_search_pattern("file.txt", "file.??"));
+        assert!(matches_search_pattern("abc", "a*c"));
+        assert!(!matches_search_pattern("abd", "a*c"));
+        assert!(matches_search_pattern("a", "*a*"));
+        // Case-insensitive per SMB naming conventions
+        assert!(matches_search_pattern("FILE.TXT", "file.txt"));
+        assert!(matches_search_pattern("file.txt", "FILE.*"));
+        // Wire strings may carry trailing NULs
+        assert!(matches_search_pattern("file.txt", "*.txt\0"));
+        // Literal (no wildcard) patterns are exact matches
+        assert!(matches_search_pattern("exact.txt", "exact.txt"));
+        assert!(!matches_search_pattern("exact.txt", "exact"));
+    }
+
+    #[test]
+    fn query_directory_lists_matching_entries_and_drains() {
+        let dir = std::env::temp_dir().join("smb_test_query_dir");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("alpha.txt"), b"a").unwrap();
+        std::fs::write(dir.join("beta.log"), b"b").unwrap();
+        std::fs::create_dir(dir.join("subdir")).unwrap();
+
+        let mut handle = SMBFileSystemHandle {
+            path: dir.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::directory(dir.to_str().unwrap()).unwrap(),
+        };
+
+        let entries = handle.query_directory("*", false).unwrap();
+        let names: Vec<&str> = entries.iter().map(|e| e.name()).collect();
+        assert_eq!(names, vec![".", "..", "alpha.txt", "beta.log", "subdir"]);
+        assert!(
+            entries[4]
+                .attributes()
+                .contains(SMBFileAttributes::DIRECTORY)
+        );
+        assert!(entries[2].attributes().contains(SMBFileAttributes::ARCHIVE));
+
+        // Consume the first three; a follow-up query returns the remainder
+        handle.consume_directory_entries(3);
+        let entries = handle.query_directory("*", false).unwrap();
+        let names: Vec<&str> = entries.iter().map(|e| e.name()).collect();
+        assert_eq!(names, vec!["beta.log", "subdir"]);
+
+        // Drain fully — enumeration is exhausted but not restarted
+        handle.consume_directory_entries(2);
+        assert!(handle.query_directory("*", false).unwrap().is_empty());
+
+        // Restart rescans from the beginning with the new pattern
+        let entries = handle.query_directory("*.txt", true).unwrap();
+        let names: Vec<&str> = entries.iter().map(|e| e.name()).collect();
+        assert_eq!(names, vec!["alpha.txt"]);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn query_directory_no_match_returns_error() {
+        let dir = std::env::temp_dir().join("smb_test_query_dir_nomatch");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut handle = SMBFileSystemHandle {
+            path: dir.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::directory(dir.to_str().unwrap()).unwrap(),
+        };
+
+        // Pattern matching nothing on a fresh scan → STATUS_NO_SUCH_FILE
+        assert!(handle.query_directory("missing.txt", false).is_err());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn query_directory_on_file_returns_error() {
+        let dir = std::env::temp_dir().join("smb_test_query_dir_on_file");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("plain.txt");
+        std::fs::write(&path, b"x").unwrap();
+
+        let mut handle = SMBFileSystemHandle {
+            path: path.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::file(
+                path.to_str().unwrap(),
+                SMBCreateDisposition::Open,
+            )
+            .unwrap(),
+        };
+
+        assert!(handle.query_directory("*", false).is_err());
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

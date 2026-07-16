@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use smb_core::SMBResult;
 
 use crate::protocol::body::create::disposition::SMBCreateDisposition;
+use crate::protocol::body::create::file_attributes::SMBFileAttributes;
 use crate::protocol::body::filetime::FileTime;
 use crate::protocol::body::tree_connect::SMBShareType;
 use crate::protocol::body::tree_connect::access_mask::SMBAccessMask;
@@ -26,8 +27,65 @@ pub trait ResourceHandle: Send + Sync {
     fn metadata(&self) -> SMBResult<SMBFileMetadata>;
     fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>>;
     fn write_data(&mut self, offset: u64, data: &[u8]) -> SMBResult<u32>;
+    /// Return the directory entries matching `pattern` that have not yet been
+    /// consumed by this enumeration (MS-SMB2 §3.3.5.18). A fresh scan is taken
+    /// when `restart` is set or no enumeration has been started; a fresh scan
+    /// matching nothing fails with `STATUS_NO_SUCH_FILE`. Entries are only
+    /// removed from the enumeration via `consume_directory_entries`.
+    fn query_directory(
+        &mut self,
+        pattern: &str,
+        restart: bool,
+    ) -> SMBResult<Vec<SMBDirectoryEntry>>;
+    /// Advance the enumeration past `count` entries previously returned by
+    /// `query_directory`, so they are not returned again.
+    fn consume_directory_entries(&mut self, count: usize);
 }
 
+/// A single directory entry produced by [`ResourceHandle::query_directory`],
+/// carrying everything needed to build the MS-FSCC directory information
+/// classes returned by QueryDirectory.
+#[derive(Debug, Clone)]
+pub struct SMBDirectoryEntry {
+    name: String,
+    metadata: SMBFileMetadata,
+    attributes: SMBFileAttributes,
+    file_id: u64,
+}
+
+impl SMBDirectoryEntry {
+    pub fn new(
+        name: String,
+        metadata: SMBFileMetadata,
+        attributes: SMBFileAttributes,
+        file_id: u64,
+    ) -> Self {
+        Self {
+            name,
+            metadata,
+            attributes,
+            file_id,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn metadata(&self) -> &SMBFileMetadata {
+        &self.metadata
+    }
+
+    pub fn attributes(&self) -> SMBFileAttributes {
+        self.attributes
+    }
+
+    pub fn file_id(&self) -> u64 {
+        self.file_id
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SMBFileMetadata {
     creation_time: FileTime,
     last_access_time: FileTime,
@@ -108,6 +166,18 @@ impl<H: ?Sized + ResourceHandle + 'static> ResourceHandle for Box<H> {
 
     fn write_data(&mut self, offset: u64, data: &[u8]) -> SMBResult<u32> {
         H::write_data(self, offset, data)
+    }
+
+    fn query_directory(
+        &mut self,
+        pattern: &str,
+        restart: bool,
+    ) -> SMBResult<Vec<SMBDirectoryEntry>> {
+        H::query_directory(self, pattern, restart)
+    }
+
+    fn consume_directory_entries(&mut self, count: usize) {
+        H::consume_directory_entries(self, count)
     }
 }
 
