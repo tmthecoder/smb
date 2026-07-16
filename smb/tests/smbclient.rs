@@ -7,11 +7,12 @@
 //! The test harness spawns the server on a random port, runs smbclient commands
 //! against it, and asserts on the output / exit codes.
 //!
-//! Run with: `cargo test --test smbclient --features server`
+//! Run with: `cargo test --test smbclient --features server,anyhow`
 //!
-//! These tests are `#[ignore]`d by default so they don't run in normal CI
-//! without the server binary. Use `cargo test --test smbclient --features server -- --ignored`
-//! to run them explicitly.
+//! Each test skips itself (passing trivially) when the prerequisites are
+//! missing — i.e. when the `spin_server_up` binary was not built (it requires
+//! the `anyhow` feature) or `smbclient` is not on `$PATH` — so plain
+//! `cargo test --workspace --features server` stays green everywhere.
 
 // Tests spawn the server and kill it at the end; we don't need to wait on exit status.
 #![allow(clippy::zombie_processes)]
@@ -19,6 +20,38 @@
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
+
+/// Whether the E2E prerequisites are available: the server binary must have
+/// been built (requires the `anyhow` feature) and `smbclient` must be
+/// installed. Cargo sets `CARGO_BIN_EXE_spin_server_up` even when the binary
+/// is feature-gated out, so check that the path actually exists.
+fn e2e_prereqs_available() -> bool {
+    if !std::path::Path::new(env!("CARGO_BIN_EXE_spin_server_up")).exists() {
+        eprintln!(
+            "skipping: spin_server_up binary not built (enable the `anyhow` feature to build it)"
+        );
+        return false;
+    }
+    let smbclient_found = Command::new("smbclient")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok();
+    if !smbclient_found {
+        eprintln!("skipping: smbclient not found on $PATH");
+    }
+    smbclient_found
+}
+
+/// Skip the current test (by returning early) when E2E prerequisites are missing.
+macro_rules! require_e2e_prereqs {
+    () => {
+        if !e2e_prereqs_available() {
+            return;
+        }
+    };
+}
 
 /// Find a free TCP port by binding to port 0.
 fn free_port() -> u16 {
@@ -74,6 +107,7 @@ fn run_smbclient(args: &[&str]) -> (bool, String, String) {
 /// connection phase.
 #[test]
 fn negotiate_completes() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
@@ -106,6 +140,7 @@ fn negotiate_completes() {
 /// gracefully (no crash).
 #[test]
 fn server_does_not_crash_on_smb1_only() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
@@ -145,6 +180,7 @@ fn server_does_not_crash_on_smb1_only() {
 /// crash.
 #[test]
 fn session_setup_with_credentials() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
@@ -176,6 +212,7 @@ fn session_setup_with_credentials() {
 /// Verify that anonymous (no-auth) session setup is handled.
 #[test]
 fn session_setup_anonymous() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
@@ -214,6 +251,7 @@ fn session_setup_anonymous() {
 /// proper NT status, not crash.
 #[test]
 fn tree_connect_to_share() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
@@ -245,6 +283,7 @@ fn tree_connect_to_share() {
 /// Verify that tree connect to a nonexistent share returns an error.
 #[test]
 fn tree_connect_nonexistent_share() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
@@ -281,6 +320,7 @@ fn tree_connect_nonexistent_share() {
 /// without crashing. smbclient should be able to retrieve file contents.
 #[test]
 fn file_read_does_not_crash_server() {
+    require_e2e_prereqs!();
     use std::io::Write;
 
     let port = free_port();
@@ -359,6 +399,7 @@ fn file_read_does_not_crash_server() {
 /// Verify that smbclient can list files (which triggers QueryInfo).
 #[test]
 fn directory_listing_does_not_crash_server() {
+    require_e2e_prereqs!();
     use std::io::Write;
 
     let port = free_port();
@@ -418,6 +459,7 @@ fn directory_listing_does_not_crash_server() {
 /// Verify that reading a nonexistent file returns an error without crashing.
 #[test]
 fn read_nonexistent_file_returns_error() {
+    require_e2e_prereqs!();
     let port = free_port();
 
     let tmp_dir = std::env::temp_dir().join(format!("smb_test_nofile_{}", port));
@@ -482,6 +524,7 @@ fn read_nonexistent_file_returns_error() {
 /// the contents match what was written.
 #[test]
 fn file_write_uploads_file() {
+    require_e2e_prereqs!();
     use std::io::Write;
 
     let port = free_port();
@@ -562,6 +605,7 @@ fn file_write_uploads_file() {
 /// contents round-trip correctly.
 #[test]
 fn file_write_then_read_round_trip() {
+    require_e2e_prereqs!();
     use std::io::Write;
 
     let port = free_port();
@@ -653,6 +697,7 @@ fn file_write_then_read_round_trip() {
 /// verify the server stays alive through multiple operations.
 #[test]
 fn server_survives_multiple_connections() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
