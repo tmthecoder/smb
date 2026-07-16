@@ -24,15 +24,61 @@ pub trait ResourceHandle: Send + Sync {
     fn is_directory(&self) -> bool;
     fn path(&self) -> &str;
     fn metadata(&self) -> SMBResult<SMBFileMetadata>;
+    fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>>;
+    fn write_data(&mut self, offset: u64, data: &[u8]) -> SMBResult<u32>;
 }
 
 pub struct SMBFileMetadata {
-    pub creation_time: FileTime,
-    pub last_access_time: FileTime,
-    pub last_write_time: FileTime,
-    pub last_modification_time: FileTime,
-    pub allocated_size: u64,
-    pub actual_size: u64,
+    creation_time: FileTime,
+    last_access_time: FileTime,
+    last_write_time: FileTime,
+    last_modification_time: FileTime,
+    allocated_size: u64,
+    actual_size: u64,
+}
+
+impl SMBFileMetadata {
+    pub fn new(
+        creation_time: FileTime,
+        last_access_time: FileTime,
+        last_write_time: FileTime,
+        last_modification_time: FileTime,
+        allocated_size: u64,
+        actual_size: u64,
+    ) -> Self {
+        Self {
+            creation_time,
+            last_access_time,
+            last_write_time,
+            last_modification_time,
+            allocated_size,
+            actual_size,
+        }
+    }
+
+    pub fn creation_time(&self) -> &FileTime {
+        &self.creation_time
+    }
+
+    pub fn last_access_time(&self) -> &FileTime {
+        &self.last_access_time
+    }
+
+    pub fn last_write_time(&self) -> &FileTime {
+        &self.last_write_time
+    }
+
+    pub fn last_modification_time(&self) -> &FileTime {
+        &self.last_modification_time
+    }
+
+    pub fn allocated_size(&self) -> u64 {
+        self.allocated_size
+    }
+
+    pub fn actual_size(&self) -> u64 {
+        self.actual_size
+    }
 }
 
 impl<H: ?Sized + ResourceHandle + 'static> ResourceHandle for Box<H> {
@@ -54,6 +100,14 @@ impl<H: ?Sized + ResourceHandle + 'static> ResourceHandle for Box<H> {
 
     fn metadata(&self) -> SMBResult<SMBFileMetadata> {
         H::metadata(self)
+    }
+
+    fn read_data(&mut self, offset: u64, length: u32) -> SMBResult<Vec<u8>> {
+        H::read_data(self, offset, length)
+    }
+
+    fn write_data(&mut self, offset: u64, data: &[u8]) -> SMBResult<u32> {
+        H::write_data(self, offset, data)
     }
 }
 

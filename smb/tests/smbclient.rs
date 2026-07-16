@@ -7,15 +7,51 @@
 //! The test harness spawns the server on a random port, runs smbclient commands
 //! against it, and asserts on the output / exit codes.
 //!
-//! Run with: `cargo test --test smbclient --features server`
+//! Run with: `cargo test --test smbclient --features server,anyhow`
 //!
-//! These tests are `#[ignore]`d by default so they don't run in normal CI
-//! without the server binary. Use `cargo test --test smbclient --features server -- --ignored`
-//! to run them explicitly.
+//! Each test skips itself (passing trivially) when the prerequisites are
+//! missing — i.e. when the `spin_server_up` binary was not built (it requires
+//! the `anyhow` feature) or `smbclient` is not on `$PATH` — so plain
+//! `cargo test --workspace --features server` stays green everywhere.
+
+// Tests spawn the server and kill it at the end; we don't need to wait on exit status.
+#![allow(clippy::zombie_processes)]
 
 use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
+
+/// Whether the E2E prerequisites are available: the server binary must have
+/// been built (requires the `anyhow` feature) and `smbclient` must be
+/// installed. Cargo sets `CARGO_BIN_EXE_spin_server_up` even when the binary
+/// is feature-gated out, so check that the path actually exists.
+fn e2e_prereqs_available() -> bool {
+    if !std::path::Path::new(env!("CARGO_BIN_EXE_spin_server_up")).exists() {
+        eprintln!(
+            "skipping: spin_server_up binary not built (enable the `anyhow` feature to build it)"
+        );
+        return false;
+    }
+    let smbclient_found = Command::new("smbclient")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok();
+    if !smbclient_found {
+        eprintln!("skipping: smbclient not found on $PATH");
+    }
+    smbclient_found
+}
+
+/// Skip the current test (by returning early) when E2E prerequisites are missing.
+macro_rules! require_e2e_prereqs {
+    () => {
+        if !e2e_prereqs_available() {
+            return;
+        }
+    };
+}
 
 /// Find a free TCP port by binding to port 0.
 fn free_port() -> u16 {
@@ -70,8 +106,8 @@ fn run_smbclient(args: &[&str]) -> (bool, String, String) {
 /// should succeed — indicated by smbclient progressing past the initial
 /// connection phase.
 #[test]
-#[ignore]
 fn negotiate_completes() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
@@ -103,8 +139,8 @@ fn negotiate_completes() {
 /// Verify that the server rejects connections with an unsupported dialect
 /// gracefully (no crash).
 #[test]
-#[ignore]
 fn server_does_not_crash_on_smb1_only() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
@@ -143,8 +179,8 @@ fn server_does_not_crash_on_smb1_only() {
 /// succeeds depends on the auth configuration, but the server should not
 /// crash.
 #[test]
-#[ignore]
 fn session_setup_with_credentials() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
@@ -175,8 +211,8 @@ fn session_setup_with_credentials() {
 
 /// Verify that anonymous (no-auth) session setup is handled.
 #[test]
-#[ignore]
 fn session_setup_anonymous() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
@@ -214,8 +250,8 @@ fn session_setup_anonymous() {
 /// reject it (e.g. due to signing issues) but should respond with a
 /// proper NT status, not crash.
 #[test]
-#[ignore]
 fn tree_connect_to_share() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
@@ -246,8 +282,8 @@ fn tree_connect_to_share() {
 
 /// Verify that tree connect to a nonexistent share returns an error.
 #[test]
-#[ignore]
 fn tree_connect_nonexistent_share() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 
@@ -275,6 +311,383 @@ fn tree_connect_nonexistent_share() {
 }
 
 // ---------------------------------------------------------------------------
+// File Read Tests
+// ---------------------------------------------------------------------------
+
+/// Verify that smbclient can read a file from the share.
+///
+/// Expected: The server handles Create, Read, QueryInfo, and Close
+/// without crashing. smbclient should be able to retrieve file contents.
+#[test]
+fn file_read_does_not_crash_server() {
+    require_e2e_prereqs!();
+    use std::io::Write;
+
+    let port = free_port();
+
+    // Create a temp file in the server's working directory for the share to serve
+    let tmp_dir = std::env::temp_dir().join(format!("smb_test_{}", port));
+    std::fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+    let test_file = tmp_dir.join("testfile.txt");
+    {
+        let mut f = std::fs::File::create(&test_file).expect("Failed to create test file");
+        f.write_all(b"hello from smb server")
+            .expect("Failed to write test file");
+    }
+
+    // Start server with the share path pointing to our temp dir
+    let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
+    let mut server = std::process::Command::new(server_bin)
+        .env("SMB_PORT", port.to_string())
+        .env("SMB_SHARE_PATH", tmp_dir.to_str().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn SMB server binary");
+
+    // Wait for server to start
+    let addr = format!("127.0.0.1:{}", port);
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let download_path = tmp_dir.join("downloaded.txt");
+    let port_str = port.to_string();
+    let download_str = download_path.to_str().unwrap().to_string();
+    let get_cmd = format!("get testfile.txt {}", download_str);
+    let (success, stdout, stderr) = run_smbclient(&[
+        "//127.0.0.1/test",
+        "-p",
+        &port_str,
+        "-U",
+        "tejasmehta%password",
+        "-m",
+        "SMB2",
+        "-c",
+        &get_cmd,
+    ]);
+
+    // Server should not crash
+    std::thread::sleep(Duration::from_millis(200));
+    let status = server.try_wait().expect("Failed to check server status");
+    assert!(
+        status.is_none(),
+        "Server should still be running after file read. stdout: {} stderr: {}",
+        stdout,
+        stderr
+    );
+
+    // Verify the file was downloaded and contents match
+    assert!(
+        success,
+        "smbclient get should succeed. stdout: {} stderr: {}",
+        stdout, stderr
+    );
+    let downloaded = std::fs::read(&download_path).expect("Downloaded file should exist");
+    assert_eq!(
+        downloaded, b"hello from smb server",
+        "Downloaded file contents should match the original"
+    );
+
+    server.kill().ok();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+/// Verify that smbclient can list files (which triggers QueryInfo).
+#[test]
+fn directory_listing_does_not_crash_server() {
+    require_e2e_prereqs!();
+    use std::io::Write;
+
+    let port = free_port();
+
+    let tmp_dir = std::env::temp_dir().join(format!("smb_test_ls_{}", port));
+    std::fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+    let test_file = tmp_dir.join("listing_test.txt");
+    {
+        let mut f = std::fs::File::create(&test_file).expect("Failed to create test file");
+        f.write_all(b"test content")
+            .expect("Failed to write test file");
+    }
+
+    let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
+    let mut server = std::process::Command::new(server_bin)
+        .env("SMB_PORT", port.to_string())
+        .env("SMB_SHARE_PATH", tmp_dir.to_str().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn SMB server binary");
+
+    let addr = format!("127.0.0.1:{}", port);
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let port_str = port.to_string();
+    let (_success, _stdout, stderr) = run_smbclient(&[
+        "//127.0.0.1/test",
+        "-p",
+        &port_str,
+        "-U",
+        "tejasmehta%password",
+        "-m",
+        "SMB2",
+        "-c",
+        "ls",
+    ]);
+
+    // Server should not crash
+    std::thread::sleep(Duration::from_millis(200));
+    let status = server.try_wait().expect("Failed to check server status");
+    assert!(
+        status.is_none(),
+        "Server should still be running after directory listing. stderr: {}",
+        stderr
+    );
+
+    server.kill().ok();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+/// Verify that reading a nonexistent file returns an error without crashing.
+#[test]
+fn read_nonexistent_file_returns_error() {
+    require_e2e_prereqs!();
+    let port = free_port();
+
+    let tmp_dir = std::env::temp_dir().join(format!("smb_test_nofile_{}", port));
+    std::fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+
+    let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
+    let mut server = std::process::Command::new(server_bin)
+        .env("SMB_PORT", port.to_string())
+        .env("SMB_SHARE_PATH", tmp_dir.to_str().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn SMB server binary");
+
+    let addr = format!("127.0.0.1:{}", port);
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let port_str = port.to_string();
+    let (success, stdout, stderr) = run_smbclient(&[
+        "//127.0.0.1/test",
+        "-p",
+        &port_str,
+        "-U",
+        "tejasmehta%password",
+        "-m",
+        "SMB2",
+        "-c",
+        "get nonexistent_file.txt /dev/null",
+    ]);
+
+    // Should fail (file doesn't exist)
+    assert!(
+        !success || stdout.contains("NT_STATUS_") || stderr.contains("NT_STATUS_"),
+        "Reading nonexistent file should fail. stdout: {} stderr: {}",
+        stdout,
+        stderr
+    );
+
+    // Server should not crash
+    std::thread::sleep(Duration::from_millis(200));
+    let status = server.try_wait().expect("Failed to check server status");
+    assert!(
+        status.is_none(),
+        "Server should still be running after failed file read. stderr: {}",
+        stderr
+    );
+
+    server.kill().ok();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+// ---------------------------------------------------------------------------
+// File Write Tests
+// ---------------------------------------------------------------------------
+
+/// Verify that smbclient can write (upload) a file to the share and that
+/// the contents match what was written.
+#[test]
+fn file_write_uploads_file() {
+    require_e2e_prereqs!();
+    use std::io::Write;
+
+    let port = free_port();
+
+    let tmp_dir = std::env::temp_dir().join(format!("smb_test_write_{}", port));
+    std::fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+
+    // Create a source file for smbclient to upload
+    let source_file = tmp_dir.join("upload_source.txt");
+    let source_contents = b"hello written to smb server";
+    {
+        let mut f = std::fs::File::create(&source_file).expect("Failed to create source file");
+        f.write_all(source_contents)
+            .expect("Failed to write source file");
+    }
+
+    let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
+    let mut server = std::process::Command::new(server_bin)
+        .env("SMB_PORT", port.to_string())
+        .env("SMB_SHARE_PATH", tmp_dir.to_str().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn SMB server binary");
+
+    let addr = format!("127.0.0.1:{}", port);
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let port_str = port.to_string();
+    let source_str = source_file.to_str().unwrap().to_string();
+    let put_cmd = format!("put {} uploaded.txt", source_str);
+    let (success, stdout, stderr) = run_smbclient(&[
+        "//127.0.0.1/test",
+        "-p",
+        &port_str,
+        "-U",
+        "tejasmehta%password",
+        "-m",
+        "SMB2",
+        "-c",
+        &put_cmd,
+    ]);
+
+    // Server should not crash
+    std::thread::sleep(Duration::from_millis(200));
+    let status = server.try_wait().expect("Failed to check server status");
+    assert!(
+        status.is_none(),
+        "Server should still be running after file write. stdout: {} stderr: {}",
+        stdout,
+        stderr
+    );
+
+    assert!(
+        success,
+        "smbclient put should succeed. stdout: {} stderr: {}",
+        stdout, stderr
+    );
+
+    // Verify the uploaded file exists on the server side and contents match
+    let uploaded_path = tmp_dir.join("uploaded.txt");
+    let uploaded = std::fs::read(&uploaded_path).expect("Uploaded file should exist on server");
+    assert_eq!(
+        uploaded, source_contents,
+        "Uploaded file contents should match the source"
+    );
+
+    server.kill().ok();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+/// Verify that smbclient can write a file and then read it back, and the
+/// contents round-trip correctly.
+#[test]
+fn file_write_then_read_round_trip() {
+    require_e2e_prereqs!();
+    use std::io::Write;
+
+    let port = free_port();
+
+    let tmp_dir = std::env::temp_dir().join(format!("smb_test_rw_{}", port));
+    std::fs::create_dir_all(&tmp_dir).expect("Failed to create temp dir");
+
+    // Create a source file for smbclient to upload
+    let source_file = tmp_dir.join("rw_source.txt");
+    let source_contents = b"round-trip test data";
+    {
+        let mut f = std::fs::File::create(&source_file).expect("Failed to create source file");
+        f.write_all(source_contents)
+            .expect("Failed to write source file");
+    }
+
+    let server_bin = env!("CARGO_BIN_EXE_spin_server_up");
+    let mut server = std::process::Command::new(server_bin)
+        .env("SMB_PORT", port.to_string())
+        .env("SMB_SHARE_PATH", tmp_dir.to_str().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn SMB server binary");
+
+    let addr = format!("127.0.0.1:{}", port);
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(&addr).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let port_str = port.to_string();
+    let source_str = source_file.to_str().unwrap().to_string();
+    let download_path = tmp_dir.join("rw_downloaded.txt");
+    let download_str = download_path.to_str().unwrap().to_string();
+
+    // Upload, then download in a single smbclient session
+    let cmd = format!(
+        "put {} rw_remote.txt; get rw_remote.txt {}",
+        source_str, download_str
+    );
+    let (success, stdout, stderr) = run_smbclient(&[
+        "//127.0.0.1/test",
+        "-p",
+        &port_str,
+        "-U",
+        "tejasmehta%password",
+        "-m",
+        "SMB2",
+        "-c",
+        &cmd,
+    ]);
+
+    // Server should not crash
+    std::thread::sleep(Duration::from_millis(200));
+    let status = server.try_wait().expect("Failed to check server status");
+    assert!(
+        status.is_none(),
+        "Server should still be running after put+get. stdout: {} stderr: {}",
+        stdout,
+        stderr
+    );
+
+    assert!(
+        success,
+        "smbclient put+get should succeed. stdout: {} stderr: {}",
+        stdout, stderr
+    );
+
+    let downloaded = std::fs::read(&download_path).expect("Downloaded file should exist");
+    assert_eq!(
+        downloaded, source_contents,
+        "Downloaded file contents should match the originally written data"
+    );
+
+    server.kill().ok();
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+}
+
+// ---------------------------------------------------------------------------
 // Echo Tests
 // ---------------------------------------------------------------------------
 
@@ -283,8 +696,8 @@ fn tree_connect_nonexistent_share() {
 /// Note: smbclient doesn't have a direct "echo" command, but we can
 /// verify the server stays alive through multiple operations.
 #[test]
-#[ignore]
 fn server_survives_multiple_connections() {
+    require_e2e_prereqs!();
     let port = free_port();
     let mut server = spawn_server(port);
 

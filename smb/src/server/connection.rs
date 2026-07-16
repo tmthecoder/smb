@@ -283,7 +283,8 @@ where
                     debug!(?status, "handler returned response error");
                     Self::build_error_response(&incoming, status)
                 }
-                Err(_e) => {
+                #[allow(unused_variables)]
+                Err(e) => {
                     error!(?e, "non-response error, sending NOT_SUPPORTED");
                     Self::build_error_response(&incoming, NTStatus::NotSupported)
                 }

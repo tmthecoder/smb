@@ -65,7 +65,7 @@ pub struct SMBCreateRequest {
     create_options: SMBCreateOptions,
     #[smb_string(
         order = 0,
-        start(inner(start = 44, num_type = "u16", subtract = 68)),
+        start(inner(start = 44, num_type = "u16", subtract = 64)),
         length(inner(start = 46, num_type = "u16")),
         underlying = "u16"
     )]
@@ -179,12 +179,12 @@ impl SMBCreateResponse {
             oplock_level: open.oplock_level(),
             flags: SMBCreateFlags::empty(),
             action: SMBCreateAction::Created,
-            creation_time: metadata.creation_time,
-            last_access_time: metadata.last_access_time,
-            last_write_time: metadata.last_write_time,
-            change_time: metadata.last_modification_time,
-            allocation_size: metadata.allocated_size,
-            end_of_file: metadata.actual_size,
+            creation_time: metadata.creation_time().clone(),
+            last_access_time: metadata.last_access_time().clone(),
+            last_write_time: metadata.last_write_time().clone(),
+            change_time: metadata.last_modification_time().clone(),
+            allocation_size: metadata.allocated_size(),
+            end_of_file: metadata.actual_size(),
             attributes: open.file_attributes(),
             reserved: PhantomData,
             file_id: open.file_id(),
