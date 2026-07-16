@@ -173,7 +173,9 @@ impl SMBFileSystemResourceHandle {
             SMBCreateDisposition::Create => options.create_new(true),
             SMBCreateDisposition::OpenIf => options.truncate(false).create(true),
             SMBCreateDisposition::Overwrite => options.truncate(true).create(false),
-            SMBCreateDisposition::OverwriteIf => options.truncate(false).create(true),
+            // MS-SMB2 §2.2.13: FILE_OVERWRITE_IF overwrites (truncates) an
+            // existing file, unlike FILE_OPEN_IF which preserves its contents
+            SMBCreateDisposition::OverwriteIf => options.truncate(true).create(true),
         };
         let file = options.open(path).map_err(SMBError::io_error)?;
         Ok(Self::File(file))
@@ -616,6 +618,55 @@ mod tests {
 
         let read_back = handle.read_data(0, 256).unwrap();
         assert_eq!(read_back, data);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn overwrite_if_truncates_existing_file() {
+        let dir = std::env::temp_dir().join("smb_test_overwrite_if");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("overwrite.bin");
+        std::fs::write(&path, vec![0xAA; 40]).unwrap();
+
+        // Re-opening with OverwriteIf must truncate the existing contents,
+        // otherwise a shorter rewrite leaves stale trailing bytes behind
+        let mut handle = SMBFileSystemHandle {
+            path: path.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::file(
+                path.to_str().unwrap(),
+                SMBCreateDisposition::OverwriteIf,
+            )
+            .unwrap(),
+        };
+
+        let written = handle.write_data(0, b"short").unwrap();
+        assert_eq!(written, 5);
+
+        let contents = std::fs::read(&path).unwrap();
+        assert_eq!(contents, b"short");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn open_if_preserves_existing_file() {
+        let dir = std::env::temp_dir().join("smb_test_open_if");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("preserve.bin");
+        std::fs::write(&path, vec![0xBB; 40]).unwrap();
+
+        let mut handle = SMBFileSystemHandle {
+            path: path.to_string_lossy().into(),
+            resource: SMBFileSystemResourceHandle::file(
+                path.to_str().unwrap(),
+                SMBCreateDisposition::OpenIf,
+            )
+            .unwrap(),
+        };
+
+        let read_back = handle.read_data(0, 40).unwrap();
+        assert_eq!(read_back, vec![0xBB; 40]);
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
